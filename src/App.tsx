@@ -26,7 +26,7 @@ type DocAtleta = typeof DOCS_ATLETA[number];
 const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
 type DocSocio = typeof DOCS_SOCIO[number];
 
-const LS_KEY = "bb_app_refactor_v3";
+const LS_KEY = "bb_app_refactor_v4";
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -38,10 +38,11 @@ function toDataUrl(file: File): Promise<string> {
 }
 function isPasswordStrong(p: string) {
   const lengthOk = p.length >= 8;
-  const hasLetter = /[A-Za-z]/.test(p);
+  const hasUpper = /[A-Z]/.test(p);
+  const hasLower = /[a-z]/.test(p);
   const hasDigit = /\d/.test(p);
   const hasSpecial = /[^A-Za-z0-9]/.test(p);
-  return { ok: lengthOk && hasLetter && hasDigit && hasSpecial, lengthOk, hasLetter, hasDigit, hasSpecial };
+  return { ok: lengthOk && hasUpper && hasLower && hasDigit && hasSpecial, lengthOk, hasUpper, hasLower, hasDigit, hasSpecial };
 }
 
 type Conta = { email: string };
@@ -54,12 +55,13 @@ type State = {
   docsAtleta: Record<string, Partial<Record<DocAtleta, UploadMeta>>>;
   tesouraria?: string; // "Campo em atualização"
   noticias?: string;
+  verificationPendingEmail?: string | null;
 };
 
 function loadState(): State {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return { conta: null, perfil: null, atletas: [], docsSocio: {}, docsAtleta: {}, tesouraria: "Campo em atualização", noticias: "" };
+    if (!raw) return { conta: null, perfil: null, atletas: [], docsSocio: {}, docsAtleta: {}, tesouraria: "Campo em atualização", noticias: "", verificationPendingEmail: null };
     const s = JSON.parse(raw);
     return {
       conta: s.conta ?? null,
@@ -69,22 +71,30 @@ function loadState(): State {
       docsAtleta: s.docsAtleta ?? {},
       tesouraria: s.tesouraria ?? "Campo em atualização",
       noticias: s.noticias ?? "",
+      verificationPendingEmail: s.verificationPendingEmail ?? null,
     } as State;
   } catch {
-    return { conta: null, perfil: null, atletas: [], docsSocio: {}, docsAtleta: {}, tesouraria: "Campo em atualização", noticias: "" };
+    return { conta: null, perfil: null, atletas: [], docsSocio: {}, docsAtleta: {}, tesouraria: "Campo em atualização", noticias: "", verificationPendingEmail: null };
   }
 }
 function saveState(s: State) { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
 
-async function apiRegister(email: string, password: string): Promise<{ token: string }> {
-  if (!API_BASE) return { token: `demo-${uid()}` };
-  const r = await fetch(`${API_BASE}/auth/register`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email, password }), credentials: "include" });
-  if (!r.ok) throw new Error("Falha no registo"); return r.json();
+async function apiRegister(email: string, password: string): Promise<{ ok: true }> {
+  if (!API_BASE) return { ok: true };
+  const r = await fetch(`${API_BASE}/auth/register`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email, password }) });
+  if (!r.ok) throw new Error("Falha no registo");
+  return { ok: true };
 }
 async function apiLogin(email: string, password: string): Promise<{ token: string }> {
   if (!API_BASE) return { token: `demo-${uid()}` };
   const r = await fetch(`${API_BASE}/auth/login`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email, password }), credentials: "include" });
-  if (!r.ok) throw new Error("Credenciais inválidas"); return r.json();
+  if (!r.ok) throw new Error("Credenciais inválidas ou conta por validar");
+  return r.json();
+}
+async function apiForgot(email: string): Promise<void> {
+  if (!API_BASE) return;
+  const r = await fetch(`${API_BASE}/auth/forgot`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email }) });
+  if (!r.ok) throw new Error("Não foi possível enviar o email de recuperação");
 }
 
 function PasswordChecklist({ pass }: { pass: string }) {
@@ -98,7 +108,8 @@ function PasswordChecklist({ pass }: { pass: string }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       <Item ok={v.lengthOk} text="Mínimo 8 caracteres"/>
-      <Item ok={v.hasLetter} text="Pelo menos 1 letra"/>
+      <Item ok={v.hasUpper} text="Pelo menos 1 letra maiúscula"/>
+      <Item ok={v.hasLower} text="Pelo menos 1 letra minúscula"/>
       <Item ok={v.hasDigit} text="Pelo menos 1 dígito"/>
       <Item ok={v.hasSpecial} text="Pelo menos 1 especial"/>
     </div>
@@ -106,39 +117,124 @@ function PasswordChecklist({ pass }: { pass: string }) {
 }
 
 function ContaSection({ state, setState, setToken }: { state: State; setState: (s: State) => void; setToken: (t: string|null) => void }) {
-  const [mode, setMode] = useState<"login" | "register">("register");
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState(state.conta?.email || "");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string|undefined>();
+  const [info, setInfo] = useState<string|undefined>();
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+
+  useEffect(()=>{
+    const savedToken = localStorage.getItem("authToken");
+    const savedEmail = localStorage.getItem("authEmail");
+    if (savedToken && savedEmail) {
+      setToken(savedToken);
+      const next = { ...state, conta: { email: savedEmail } } as State;
+      setState(next); saveState(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function submit(ev: React.FormEvent) {
-    ev.preventDefault(); setError(undefined);
-    const chk = isPasswordStrong(password);
-    if (mode === "register" && !chk.ok) { setError("A palavra-passe não cumpre os requisitos."); return; }
+    ev.preventDefault(); setError(undefined); setInfo(undefined);
+    if (mode === "register") {
+      const chk = isPasswordStrong(password);
+      if (!chk.ok) { setError("A palavra‑passe não cumpre os requisitos."); return; }
+      try {
+        setLoading(true);
+        await apiRegister(email, password);
+        const next = { ...state, verificationPendingEmail: email, conta: { email } } as State;
+        setState(next); saveState(next);
+        setInfo("Registo efetuado. Verifique o seu email para validar a conta.");
+      } catch (e:any) {
+        setError(e.message || "Erro no registo");
+      } finally { setLoading(false); }
+      return;
+    }
+
     try {
       setLoading(true);
-      const r = mode === "register" ? await apiRegister(email, password) : await apiLogin(email, password);
+      const r = await apiLogin(email, password);
       setToken(r.token);
-      const next = { ...state, conta: { email } } as State;
+      const next = { ...state, conta: { email }, verificationPendingEmail: null } as State;
       setState(next); saveState(next);
+      if (remember) {
+        localStorage.setItem("authToken", r.token);
+        localStorage.setItem("authEmail", email);
+      }
     } catch (e:any) {
       setError(e.message || "Erro de autenticação");
     } finally { setLoading(false); }
   }
+
+  async function submitForgot(ev: React.FormEvent) {
+    ev.preventDefault(); setError(undefined); setInfo(undefined);
+    try{
+      await apiForgot(forgotEmail || email);
+      setInfo("Se o email existir, foi enviado um link de recuperação.");
+      setForgotOpen(false);
+    }catch(e:any){
+      setError(e.message || "Não foi possível enviar o email de recuperação");
+    }
+  }
+
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2">{mode==="register"?<UserPlus className="h-5 w-5"/>:<LogIn className="h-5 w-5"/>}{mode==="register"?"Criar conta":"Entrar"}</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {mode==="register"?<UserPlus className="h-5 w-5"/>:<LogIn className="h-5 w-5"/>}
+          {mode==="register"?"Criar conta":"Entrar"}
+        </CardTitle>
+      </CardHeader>
       <CardContent>
+        {state.verificationPendingEmail && (
+          <div className="mb-3 rounded-lg bg-blue-50 text-blue-900 text-sm p-2">
+            Registo efetuado para <strong>{state.verificationPendingEmail}</strong>. Verifique o seu email para validar a conta.
+          </div>
+        )}
         <form className="space-y-4" onSubmit={submit}>
           <div className="space-y-1"><Label>Email</Label><Input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></div>
-          <div className="space-y-1"><Label>Palavra-passe {mode==="register" && <span className="text-xs text-gray-500">(requisitos abaixo)</span>}</Label><Input type="password" value={password} onChange={e=>setPassword(e.target.value)} required/>{mode==="register"&&<PasswordChecklist pass={password}/>}</div>
+          <div className="space-y-1">
+            <Label>Palavra‑passe {mode==="register" && <span className="text-xs text-gray-500">(requisitos abaixo)</span>}</Label>
+            <Input type="password" value={password} onChange={e=>setPassword(e.target.value)} required/>
+            {mode==="register"&&<PasswordChecklist pass={password}/>}
+          </div>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={remember} onChange={(e)=>setRemember(e.target.checked)} />
+              Manter sessão iniciada
+            </label>
+            <button type="button" className="text-sm underline" onClick={()=>{ setForgotEmail(email); setForgotOpen(true); }}>
+              Recuperar palavra‑passe
+            </button>
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
+          {info && <p className="text-sm text-green-700">{info}</p>}
           <div className="flex items-center justify-between">
             <Button type="submit" disabled={loading}>{loading?"Aguarde...":(mode==="register"?"Registar":"Entrar")}</Button>
             <Button type="button" variant="secondary" onClick={()=>setMode(m=>m==="register"?"login":"register")}>{mode==="register"?"Já tenho conta":"Criar conta"}</Button>
           </div>
           <div className="mt-2 text-xs text-gray-500 flex items-start gap-2"><Shield className="h-4 w-4 mt-0.5"/><p>Produção: hash Argon2id, cookies httpOnly, sessão, rate limiting, MFA.</p></div>
         </form>
+
+        <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Recuperar palavra‑passe</DialogTitle></DialogHeader>
+            <form className="space-y-3" onSubmit={submitForgot}>
+              <div className="space-y-1">
+                <Label>Email</Label>
+                <Input type="email" value={forgotEmail} onChange={e=>setForgotEmail(e.target.value)} required />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={()=>setForgotOpen(false)}>Cancelar</Button>
+                <Button type="submit">Enviar link</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
@@ -308,7 +404,7 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
               return (
                 <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
                   <div><div className="font-medium">{doc}{state.perfil?.tipoSocio && doc==="Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}</div><div className="text-xs text-gray-500">{meta?`Carregado: ${new Date(meta.uploadedAt).toLocaleString()}`:"Em falta"}</div></div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadSocio(doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadSocio(doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}>Carregar/Substituir</Button></label>
                 </div>
               );
             })}
@@ -331,7 +427,7 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
                     return (
                       <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
                         <div><div className="font-medium">{doc}</div><div className="text-xs text-gray-500">{meta?`Carregado: ${new Date(meta.uploadedAt).toLocaleString()}`:"Em falta"}</div></div>
-                        <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadAtleta(a.id, doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
+                        <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadAtleta(a.id, doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}>Carregar/Substituir</Button></label>
                       </div>
                     );
                   })}
@@ -353,7 +449,7 @@ export default function App(){
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">Inscrições — Basquetebol</h1></div>
-        {token ? (<Button variant="outline" onClick={()=>setToken(null)}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
+        {token ? (<Button variant="outline" onClick={()=>{ setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
       </header>
       {!token ? (<ContaSection state={state} setState={setState} setToken={setToken}/>) : (
         <Tabs defaultValue="pessoais">
