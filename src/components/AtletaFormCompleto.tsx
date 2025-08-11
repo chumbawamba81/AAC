@@ -112,7 +112,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
       <Field label="NIF *"><input className="input" value={a.nif} onChange={e=>setA({...a, nif:e.target.value})} required/></Field>
 
       <Field className="md:col-span-2" label="Morada *"><input className="input" value={a.morada} onChange={e=>setA({...a, morada:e.target.value})} required/></Field>
-      <div className="grid grid-cols-[1fr_auto] gap-2">
+      <div className="md:col-span-2 grid grid-cols-[1fr_auto] gap-2">
         <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:formatPostal(e.target.value)})} required/></Field>
         <div className="flex items-end pb-1">
           <button

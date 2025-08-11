@@ -376,6 +376,11 @@ function getSlotsForPlano(p: PlanoPagamento) {
 }
 
 function PagamentosSection({ state, setState }:{ state: State; setState: (s: State)=>void }) {
+  function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
+    if (plano === 'Anual') return 'Pagamento da anuidade';
+    if (plano === 'Trimestral') return `Pagamento - ${idx+1}º Trimestre`;
+    return `Pagamento - ${idx+1}º Mês`;
+  }
   useEffect(()=>{
     const next = { ...state, pagamentos: { ...state.pagamentos } } as State;
     let changed = false;
@@ -431,8 +436,8 @@ function PagamentosSection({ state, setState }:{ state: State; setState: (s: Sta
                   return (
                     <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
                       <div>
-                        <div className="font-medium">Pagamento {i+1}</div>
-                        <div className="text-xs text-gray-500">{meta?`Carregado: ${new Date(meta.uploadedAt).toLocaleString()}`:"Em falta"}</div>
+                        <div className="font-medium">{getPagamentoLabel(a.planoPagamento, i)}</div>
+                        <div className="text-xs text-gray-500">{"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}</div>
                       </div>
                       <label className="inline-flex items-center gap-2 cursor-pointer">
                         <input type="file" className="hidden" onChange={e=> e.target.files && handleUpload(a.id, i, e.target.files[0])}/>
@@ -601,7 +606,7 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
               const meta = state.docsSocio[doc];
               return (
                 <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
-                  <div><div className="font-medium">{doc}{state.perfil?.tipoSocio && doc==="Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}</div><div className="text-xs text-gray-500">{meta?`Carregado: ${new Date(meta.uploadedAt).toLocaleString()}`:"Em falta"}</div></div>
+                  <div><div className="font-medium">{doc}{state.perfil?.tipoSocio && doc==="Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}</div><div className="text-xs text-gray-500">{"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}</div></div>
                   <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadSocio(doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
                 </div>
               );
@@ -624,7 +629,7 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
                     const meta = state.docsAtleta[a.id]?.[doc];
                     return (
                       <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
-                        <div><div className="font-medium">{doc}</div><div className="text-xs text-gray-500">{meta?`Carregado: ${new Date(meta.uploadedAt).toLocaleString()}`:"Em falta"}</div></div>
+                        <div><div className="font-medium">{doc}</div><div className="text-xs text-gray-500">{"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}</div></div>
                         <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadAtleta(a.id, doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
                       </div>
                     );
