@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/u
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload, Facebook, Instagram, Mail } from "lucide-react";
 
 import type { PessoaDados } from "./types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "./types/Atleta";
@@ -527,7 +527,7 @@ export default function App(){
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">Inscrições — Basquetebol</h1></div>
+        <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">AAC-SB</h1></div>
         {token ? (<Button variant="outline" onClick={()=>{ setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
       </header>
 
@@ -572,6 +572,22 @@ export default function App(){
           </div>
         </DialogContent>
       </Dialog>
+
+      
+      <div className="flex items-center justify-center gap-4 pt-6">
+        <a href="https://www.facebook.com/basketacademica" target="_blank" rel="noreferrer" aria-label="Facebook AAC Basquetebol" className="opacity-80 hover:opacity-100">
+          <Facebook className="h-6 w-6" />
+        </a>
+        <a href="https://www.instagram.com/academicabasket/" target="_blank" rel="noreferrer" aria-label="Instagram AAC Basquetebol" className="opacity-80 hover:opacity-100">
+          <Instagram className="h-6 w-6" />
+        </a>
+        <a href="https://aacbasquetebol.clubeo.com/" target="_blank" rel="noreferrer" aria-label="Site AAC Basquetebol" className="opacity-80 hover:opacity-100">
+          <img src="https://aacbasquetebol.clubeo.com/favicon.ico" alt="AAC Basquetebol" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+        </a>
+        <a href="mailto:basquetebol@academica.pt" aria-label="Email AAC Basquetebol" className="opacity-80 hover:opacity-100">
+          <Mail className="h-6 w-6" />
+        </a>
+      </div>
 
       <footer className="text-xs text-gray-500 text-center">DEMO local — ficheiros em DataURL. Em produção, usa API + armazenamento seguro.</footer>
     </div>
