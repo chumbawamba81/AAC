@@ -582,7 +582,7 @@ export default function App(){
           <Instagram className="h-6 w-6" />
         </a>
         <a href="https://aacbasquetebol.clubeo.com/" target="_blank" rel="noreferrer" aria-label="Site AAC Basquetebol" className="opacity-80 hover:opacity-100">
-          <Globe className="h-6 w-6" />
+          <img src="/favicon.svg" alt="AAC Basquetebol" style={{ width: 24, height: 24, objectFit: 'contain' }} />
         </a>
         <a href="mailto:basquetebol@academica.pt" aria-label="Email AAC Basquetebol" className="opacity-80 hover:opacity-100">
           <Mail className="h-6 w-6" />
