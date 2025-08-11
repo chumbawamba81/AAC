@@ -4,8 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
-import { Textarea } from "./components/ui/textarea";
-import { Badge } from "./components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload } from "lucide-react";
 
@@ -26,7 +24,7 @@ type DocAtleta = typeof DOCS_ATLETA[number];
 const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
 type DocSocio = typeof DOCS_SOCIO[number];
 
-const LS_KEY = "bb_app_refactor_v4";
+const LS_KEY = "bb_app_homeflow_v1";
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -116,7 +114,7 @@ function PasswordChecklist({ pass }: { pass: string }) {
   );
 }
 
-function ContaSection({ state, setState, setToken }: { state: State; setState: (s: State) => void; setToken: (t: string|null) => void }) {
+function ContaSection({ state, setState, setToken, onLogged }: { state: State; setState: (s: State) => void; setToken: (t: string|null) => void; onLogged: ()=>void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState(state.conta?.email || "");
   const [password, setPassword] = useState("");
@@ -134,6 +132,7 @@ function ContaSection({ state, setState, setToken }: { state: State; setState: (
       setToken(savedToken);
       const next = { ...state, conta: { email: savedEmail } } as State;
       setState(next); saveState(next);
+      onLogged();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -165,6 +164,7 @@ function ContaSection({ state, setState, setToken }: { state: State; setState: (
         localStorage.setItem("authToken", r.token);
         localStorage.setItem("authEmail", email);
       }
+      onLogged();
     } catch (e:any) {
       setError(e.message || "Erro de autenticação");
     } finally { setLoading(false); }
@@ -240,7 +240,58 @@ function ContaSection({ state, setState, setToken }: { state: State; setState: (
   );
 }
 
-function DadosPessoaisSection({ state, setState }: { state: State; setState: (s: State)=>void }) {
+function HomeResumo({ state, onEdit }: { state: State; onEdit: ()=>void }) {
+  const socioMissing = DOCS_SOCIO.filter(d=> !state.docsSocio[d]).length;
+  const totalAthDocs = state.atletas.length * 5; // 5 docs no DOCS_ATLETA
+  const uploadedAthDocs = state.atletas.reduce((acc,a)=> acc + (state.docsAtleta[a.id] ? Object.keys(state.docsAtleta[a.id]!).length : 0), 0);
+  const missingAthDocs = Math.max(0, totalAthDocs - uploadedAthDocs);
+
+  return (
+    <div className="space-y-4">
+      {/* cartão resumo */}
+      <div className="mb-1 rounded-xl border p-3 bg-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-semibold">{state.perfil?.nomeCompleto}</div>
+            <div className="text-xs text-gray-500">{state.perfil?.email} · {state.perfil?.telefone} · {state.perfil?.codigoPostal}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-sm">Situação de Tesouraria:</div>
+            <div className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
+              {state.tesouraria || "Campo em atualização"}
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 flex gap-3 text-sm">
+          <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
+            <FileUp className="h-3 w-3"/> Sócio: {socioMissing} documento(s) em falta
+          </div>
+          <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
+            <FileUp className="h-3 w-3"/> Atletas: {missingAthDocs} documento(s) em falta
+          </div>
+        </div>
+        <div className="mt-3">
+          <Button variant="outline" onClick={onEdit}><PencilLine className="h-4 w-4 mr-1"/> Editar dados</Button>
+        </div>
+      </div>
+
+      {/* notícias */}
+      <Card>
+        <CardHeader><CardTitle>Notícias da Secção de Basquetebol</CardTitle></CardHeader>
+        <CardContent>
+          {state.noticias ? (
+            <div className="prose prose-sm max-w-none">{state.noticias}</div>
+          ) : (
+            <p className="text-sm text-gray-500">Sem notícias no momento.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; setState: (s: State)=>void; onAfterSave: ()=>void }) {
+  const [editMode, setEditMode] = useState<boolean>(!state.perfil);
   const [form, setForm] = useState<PessoaDados>(()=> state.perfil || {
     nomeCompleto: "",
     tipoSocio: "Não pretendo ser sócio",
@@ -254,6 +305,7 @@ function DadosPessoaisSection({ state, setState }: { state: State; setState: (s:
     email: state.conta?.email || "",
     profissao: "",
   });
+
   function save(ev: React.FormEvent) {
     ev.preventDefault();
     const errs: string[] = [];
@@ -267,28 +319,18 @@ function DadosPessoaisSection({ state, setState }: { state: State; setState: (s:
     if (!form.email.trim()) errs.push("Email obrigatório");
     if (errs.length) { alert(errs.join("\n")); return; }
     const next = { ...state, perfil: form } as State; setState(next); saveState(next);
+    setEditMode(false);
+    onAfterSave();
   }
+
+  if (!editMode && state.perfil) {
+    return <HomeResumo state={state} onEdit={()=>setEditMode(true)} />;
+  }
+
   return (
     <Card>
       <CardHeader><CardTitle>Dados Pessoais</CardTitle></CardHeader>
       <CardContent>
-        {state.perfil && (
-          <div className="mb-4 rounded-xl border p-3 bg-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold">{state.perfil.nomeCompleto}</div>
-                <div className="text-xs text-gray-500">{state.perfil.email} · {state.perfil.telefone} · {state.perfil.codigoPostal}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm">Situação de Tesouraria:</div>
-                <div className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
-                  {state.tesouraria || "Campo em atualização"}
-                </div>
-              </div>
-            </div>
-            {state.noticias && <div className="mt-2 text-sm"><strong>Notícias:</strong> {state.noticias}</div>}
-          </div>
-        )}
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
           <div className="space-y-1"><Label>Nome Completo *</Label><Input value={form.nomeCompleto} onChange={e=>setForm({...form,nomeCompleto:e.target.value})} required/></div>
           <div className="space-y-1">
@@ -317,7 +359,9 @@ function DadosPessoaisSection({ state, setState }: { state: State; setState: (s:
           <div className="space-y-1"><Label>Contacto telefónico *</Label><Input value={form.telefone} onChange={e=>setForm({...form,telefone:e.target.value})} required/></div>
           <div className="space-y-1"><Label>Endereço eletrónico *</Label><Input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required/></div>
           <div className="space-y-1 md:col-span-2"><Label>Profissão (opcional)</Label><Input value={form.profissao||""} onChange={e=>setForm({...form,profissao:e.target.value})}/></div>
-          <div className="md:col-span-2 flex justify-end gap-2"><Button type="submit"><Shield className="h-4 w-4 mr-1"/> Guardar</Button></div>
+          <div className="md:col-span-2 flex justify-end gap-2">
+            <Button type="submit"><Shield className="h-4 w-4 mr-1"/> Guardar</Button>
+          </div>
         </form>
       </CardContent>
     </Card>
@@ -344,7 +388,7 @@ function AtletasSection({ state, setState }:{ state: State; setState: (s: State)
             return (
               <div key={a.id} className="border rounded-xl p-3 flex items-center justify-between">
                 <div>
-                  <div className="font-medium flex items-center gap-2">{a.nomeCompleto}{missing.length>0? <Badge variant="destructive" className="gap-1"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</Badge> : <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3"/> Documentação completa</Badge>}</div>
+                  <div className="font-medium flex items-center gap-2">{a.nomeCompleto}{missing.length>0? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</span> : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Documentação completa</span>}</div>
                   <div className="text-xs text-gray-500">{a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao}</div>
                 </div>
                 <div className="flex gap-2">
@@ -404,7 +448,7 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
               return (
                 <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
                   <div><div className="font-medium">{doc}{state.perfil?.tipoSocio && doc==="Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}</div><div className="text-xs text-gray-500">{meta?`Carregado: ${new Date(meta.uploadedAt).toLocaleString()}`:"Em falta"}</div></div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadSocio(doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}>Carregar/Substituir</Button></label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadSocio(doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
                 </div>
               );
             })}
@@ -418,7 +462,7 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
             return (
               <div key={a.id} className="border rounded-xl p-3">
                 <div className="flex items-center justify-between">
-                  <div className="font-medium flex items-center gap-2">{a.nomeCompleto} {missing.length>0 ? <Badge variant="destructive" className="gap-1"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</Badge> : <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3"/> Completo</Badge>}</div>
+                  <div className="font-medium flex items-center gap-2">{a.nomeCompleto} {missing.length>0 ? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</span> : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Completo</span>}</div>
                   <div className="text-xs text-gray-500">Escalão: {a.escalao}</div>
                 </div>
                 <div className="grid md:grid-cols-2 gap-3 mt-3">
@@ -427,7 +471,7 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
                     return (
                       <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
                         <div><div className="font-medium">{doc}</div><div className="text-xs text-gray-500">{meta?`Carregado: ${new Date(meta.uploadedAt).toLocaleString()}`:"Em falta"}</div></div>
-                        <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadAtleta(a.id, doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}>Carregar/Substituir</Button></label>
+                        <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" onChange={e=> e.target.files && uploadAtleta(a.id, doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
                       </div>
                     );
                   })}
@@ -444,25 +488,62 @@ function UploadDocsSection({ state, setState }:{ state: State; setState: (s: Sta
 export default function App(){
   const [token, setToken] = useState<string|null>(null);
   const [state, setState] = useState<State>(loadState());
+  const [activeTab, setActiveTab] = useState<string>("home");
+  const [postSavePrompt, setPostSavePrompt] = useState(false);
+
   useEffect(()=>{ saveState(state); }, [state]);
+
+  const hasPerfil = !!state.perfil;
+  const mainTabLabel = hasPerfil ? "Página Inicial" : "Dados Pessoais";
+
+  function afterSavePerfil(){
+    setPostSavePrompt(true);
+    setActiveTab("home");
+  }
+
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">Inscrições — Basquetebol</h1></div>
         {token ? (<Button variant="outline" onClick={()=>{ setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
       </header>
-      {!token ? (<ContaSection state={state} setState={setState} setToken={setToken}/>) : (
-        <Tabs defaultValue="pessoais">
+
+      {!token ? (
+        <ContaSection state={state} setState={setState} setToken={setToken} onLogged={()=>setActiveTab("home")} />
+      ) : (
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
-            <TabsTrigger value="pessoais">Dados Pessoais</TabsTrigger>
-            <TabsTrigger value="atletas">Atletas</TabsTrigger>
-            <TabsTrigger value="docs">Documentos</TabsTrigger>
+            <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
+            {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
+            {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
           </TabsList>
-          <TabsContent value="pessoais"><DadosPessoaisSection state={state} setState={setState}/></TabsContent>
-          <TabsContent value="atletas"><AtletasSection state={state} setState={setState}/></TabsContent>
-          <TabsContent value="docs"><UploadDocsSection state={state} setState={setState}/></TabsContent>
+
+          <TabsContent value="home">
+            <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil} />
+          </TabsContent>
+          {hasPerfil && (
+            <TabsContent value="atletas">
+              <AtletasSection state={state} setState={setState} />
+            </TabsContent>
+          )}
+          {hasPerfil && (
+            <TabsContent value="docs">
+              <UploadDocsSection state={state} setState={setState} />
+            </TabsContent>
+          )}
         </Tabs>
       )}
+
+      <Dialog open={postSavePrompt} onOpenChange={setPostSavePrompt}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Deseja inscrever um atleta agora?</DialogTitle></DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={()=>setPostSavePrompt(false)}>Agora não</Button>
+            <Button onClick={()=>{ setPostSavePrompt(false); setActiveTab("atletas"); }}>Sim, inscrever</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <footer className="text-xs text-gray-500 text-center">DEMO local — ficheiros em DataURL. Em produção, usa API + armazenamento seguro.</footer>
     </div>
   );
