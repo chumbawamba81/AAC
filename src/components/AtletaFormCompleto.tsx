@@ -17,6 +17,11 @@ type Props = {
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
 export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPessoais }: Props) {
+  function formatPostal(v: string){
+    const d = v.replace(/\D/g, '').slice(0,7);
+    if (d.length <= 4) return d;
+    return d.slice(0,4) + '-' + d.slice(4);
+  }
   const [a, setA] = useState<Atleta>({
     id: initial?.id || uid(),
     nomeCompleto: initial?.nomeCompleto || '',
@@ -108,7 +113,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
 
       <Field className="md:col-span-2" label="Morada *"><input className="input" value={a.morada} onChange={e=>setA({...a, morada:e.target.value})} required/></Field>
       <div className="grid grid-cols-[1fr_auto] gap-2">
-        <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:e.target.value})} required/></Field>
+        <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:formatPostal(e.target.value)})} required/></Field>
         <div className="flex items-end pb-1">
           <button
             type="button"
@@ -129,10 +134,9 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
         </div>
       </div>
 
-      <Field label="Telefone (opcional)"><input className="input" value={a.telefoneOpc||''} onChange={e=>setA({...a, telefoneOpc:e.target.value})}/></Field>
-      <Field label="Email (opcional)"><input type="email" className="input" value={a.emailOpc||''} onChange={e=>setA({...a, emailOpc:e.target.value})}/></Field>
-
-      {showEscola && (
+<Field label="Email (opcional)"><input type="email" className="input" value={a.emailOpc||''} onChange={e=>setA({...a, emailOpc:e.target.value})}/></Field>
+<Field label="Telefone (opcional)"><input className="input" value={a.telefoneOpc||''} onChange={e=>setA({...a, telefoneOpc:e.target.value})}/></Field>
+{showEscola && (
         <>
           <Field className="md:col-span-2" label="Escola (2025/26) *"><input className="input" value={a.escola} onChange={e=>setA({...a, escola:e.target.value})} required/></Field>
           <Field label="Ano de escolaridade (2025/26) *"><input className="input" value={a.anoEscolaridade} onChange={e=>setA({...a, anoEscolaridade:e.target.value})} required/></Field>

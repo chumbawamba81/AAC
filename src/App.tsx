@@ -243,14 +243,10 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
 }
 
 function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; setState: (s: State)=>void; onAfterSave: ()=>void }) {
-  function isValidBirthDate(iso: string) {
-    if (!iso) return false;
-    const dt = new Date(iso);
-    if (Number.isNaN(dt.getTime())) return false;
-    const today = new Date();
-    const min = new Date();
-    min.setFullYear(min.getFullYear() - 120);
-    return dt <= today && dt >= min;
+  function formatPostal(v: string){
+    const d = v.replace(/\D/g, '').slice(0,7);
+    if (d.length <= 4) return d;
+    return d.slice(0,4) + '-' + d.slice(4);
   }
   const [editMode, setEditMode] = useState<boolean>(!state.perfil);
   const [form, setForm] = useState<PessoaDados>(()=> state.perfil || {
@@ -271,7 +267,7 @@ function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; 
     ev.preventDefault();
     const errs: string[] = [];
     if (!form.nomeCompleto.trim()) errs.push("Nome obrigatório");
-    if (!isValidBirthDate(form.dataNascimento)) errs.push("Data de nascimento inválida");
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(form.dataNascimento)) errs.push("Data de nascimento inválida");
     if (!form.morada.trim()) errs.push("Morada obrigatória");
     if (!isValidPostalCode(form.codigoPostal)) errs.push("Código-postal inválido (####-###)");
     if (!form.numeroDocumento.trim()) errs.push("Número de documento obrigatório");
@@ -350,7 +346,7 @@ function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; 
           </div>
           <div className="space-y-1"><Label>Data de Nascimento *</Label><Input type="date" value={form.dataNascimento} onChange={e=>setForm({...form,dataNascimento:e.target.value})} required/></div>
           <div className="space-y-1 md:col-span-2"><Label>Morada *</Label><Input value={form.morada} onChange={e=>setForm({...form,morada:e.target.value})} required/></div>
-          <div className="space-y-1"><Label>Código Postal *</Label><Input value={form.codigoPostal} onChange={e=>setForm({...form,codigoPostal:e.target.value})} placeholder="0000-000" required/></div>
+          <div className="space-y-1"><Label>Código Postal *</Label><Input value={form.codigoPostal} onChange={e=>setForm({...form,codigoPostal:formatPostal(e.target.value)})} placeholder="0000-000" required/></div>
           <div className="space-y-1">
             <Label>Tipo de documento *</Label>
             <select className="w-full rounded-xl border px-3 py-2 text-sm" value={form.tipoDocumento} onChange={e=>setForm({...form,tipoDocumento:e.target.value as PessoaDados["tipoDocumento"]})}>
