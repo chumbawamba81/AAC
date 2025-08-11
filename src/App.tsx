@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/u
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload, Facebook, Instagram, Mail } , Globe from "lucide-react";
+import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload, Facebook, Instagram, Mail } from "lucide-react";
 
 import type { PessoaDados } from "./types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "./types/Atleta";
