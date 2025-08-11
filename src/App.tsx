@@ -243,6 +243,15 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
 }
 
 function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; setState: (s: State)=>void; onAfterSave: ()=>void }) {
+  function isValidBirthDate(iso: string) {
+    if (!iso) return false;
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return false;
+    const today = new Date();
+    const min = new Date();
+    min.setFullYear(min.getFullYear() - 120);
+    return dt <= today && dt >= min;
+  }
   const [editMode, setEditMode] = useState<boolean>(!state.perfil);
   const [form, setForm] = useState<PessoaDados>(()=> state.perfil || {
     nomeCompleto: "",
@@ -262,7 +271,7 @@ function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; 
     ev.preventDefault();
     const errs: string[] = [];
     if (!form.nomeCompleto.trim()) errs.push("Nome obrigatório");
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(form.dataNascimento)) errs.push("Data de nascimento inválida");
+    if (!isValidBirthDate(form.dataNascimento)) errs.push("Data de nascimento inválida");
     if (!form.morada.trim()) errs.push("Morada obrigatória");
     if (!isValidPostalCode(form.codigoPostal)) errs.push("Código-postal inválido (####-###)");
     if (!form.numeroDocumento.trim()) errs.push("Número de documento obrigatório");
