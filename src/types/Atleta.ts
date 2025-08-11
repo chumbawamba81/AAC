@@ -14,7 +14,7 @@ export type Escalao =
   | 'Sub 18 masculinos (2008-2009)'
   | 'Seniores femininas (≤2007)'
   | 'Seniores masculinos Sub23 (2002-2007)'
-  | 'Masters femininas (<1995)'
+  | 'Masters (<1995)'
   | 'Fora de escalões';
 
 export interface Atleta {

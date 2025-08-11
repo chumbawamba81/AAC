@@ -1,3 +1,5 @@
+import type { Escalao, Genero } from '../types/Atleta';
+
 export function isValidPostalCode(pt: string) {
   return /^\d{4}-\d{3}$/.test(pt.trim());
 }
@@ -30,8 +32,6 @@ export function yearsAtSeasonStart(dobIso: string) {
   return age;
 }
 
-import type { Escalao, Genero } from '../types/Atleta';
-
 export function computeEscalao(dobIso: string, genero: Genero): Escalao {
   if (!dobIso) return 'Fora de escalões';
   const y = new Date(dobIso).getFullYear();
@@ -42,11 +42,8 @@ export function computeEscalao(dobIso: string, genero: Genero): Escalao {
   if (y === 2012 || y === 2013) return genero === 'Feminino' ? 'Sub 14 feminino (2012-2013)' : 'Sub 14 masculino (2012-2013)';
   if (y === 2010 || y === 2011) return genero === 'Feminino' ? 'Sub 16 feminino (2010-2011)' : 'Sub 16 masculino (2010-2011)';
   if (y === 2008 || y === 2009) return genero === 'Feminino' ? 'Sub 18 femininos (2008-2009)' : 'Sub 18 masculinos (2008-2009)';
-  if (genero === 'Feminino') {
-    if (y <= 2007 && y >= 1995) return 'Seniores femininas (≤2007)';
-    if (y < 1995) return 'Masters femininas (<1995)';
-  } else {
-    if (y >= 2002 && y <= 2007) return 'Seniores masculinos Sub23 (2002-2007)';
-  }
+  if (genero === 'Masculino' && y >= 2002 && y <= 2007) return 'Seniores masculinos Sub23 (2002-2007)';
+  if (genero === 'Feminino' && y <= 2007) return 'Seniores femininas (≤2007)';
+  if (y < 1995) return 'Masters (<1995)'; // Masters global
   return 'Fora de escalões';
 }

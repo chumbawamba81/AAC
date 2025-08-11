@@ -6,11 +6,17 @@ type Props = {
   initial?: Partial<Atleta>;
   onSave: (a: Atleta) => void;
   onCancel?: () => void;
+  dadosPessoais?: {
+    morada?: string;
+    codigoPostal?: string;
+    telefone?: string; // contactos de urgência
+    email?: string;    // email preferencial
+  };
 };
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
-export default function AtletaFormCompleto({ initial, onSave, onCancel }: Props) {
+export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPessoais }: Props) {
   const [a, setA] = useState<Atleta>({
     id: initial?.id || uid(),
     nomeCompleto: initial?.nomeCompleto || '',
@@ -43,6 +49,8 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel }: Props)
   }, [a.dataNascimento, a.genero]);
 
   const isMinor = useMemo(()=> a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false, [a.dataNascimento]);
+  const isMasters = a.escalao === 'Masters (<1995)';
+  const showEscola = !!a.dataNascimento && !isMasters;
 
   function save(ev: React.FormEvent) {
     ev.preventDefault();
@@ -54,21 +62,21 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel }: Props)
     if (!isValidNIF(a.nif)) errs.push('NIF inválido');
     if (!isValidPostalCode(a.codigoPostal)) errs.push('Código‑postal inválido (####-###)');
     if (!a.morada.trim()) errs.push('Morada é obrigatória');
-    if (!a.escola.trim()) errs.push('Escola é obrigatória');
-    if (!a.anoEscolaridade.trim()) errs.push('Ano de escolaridade é obrigatório');
+    if (showEscola && !a.escola.trim()) errs.push('Escola é obrigatória');
+    if (showEscola && !a.anoEscolaridade.trim()) errs.push('Ano de escolaridade é obrigatório');
+    if (!a.alergias.trim()) errs.push('Alergias / problemas de saúde é obrigatório');
     if (!a.contactosUrgencia.trim()) errs.push('Contactos de urgência são obrigatórios');
     if (!a.emailsPreferenciais.trim() || !areEmailsValid(a.emailsPreferenciais)) errs.push('Email(s) preferenciais inválidos');
     if (a.nacionalidade === 'Outra' && !a.nacionalidadeOutra?.trim()) errs.push('Indicar a nacionalidade');
     if (isMinor && !a.encarregadoEducacao) errs.push('Selecionar Encarregado de Educação');
     if (a.encarregadoEducacao === 'Outro' && !a.parentescoOutro?.trim()) errs.push('Indicar parentesco (Outro)');
-
     if (errs.length) { alert(errs.join('\n')); return; }
     onSave(a);
   }
 
   return (
     <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
-      <Field label="Nome Completo *"><input className="input" value={a.nomeCompleto} onChange={e=>setA({...a, nomeCompleto:e.target.value})} required/></Field>
+      <Field className="md:col-span-2" label="Nome Completo *"><input className="input" value={a.nomeCompleto} onChange={e=>setA({...a, nomeCompleto:e.target.value})} required/></Field>
       <Field label="Data de Nascimento *"><input type="date" className="input" value={a.dataNascimento} onChange={e=>setA({...a, dataNascimento:e.target.value})} required/></Field>
 
       <Field label="Género *">
@@ -77,6 +85,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel }: Props)
           <option>Masculino</option>
         </select>
       </Field>
+
       <Field label="Nacionalidade *">
         <select className="input" value={a.nacionalidade} onChange={e=>setA({...a, nacionalidade: e.target.value as Nacionalidade})}>
           <option>Portuguesa</option>
@@ -99,13 +108,36 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel }: Props)
       <Field className="md:col-span-2" label="Morada *"><input className="input" value={a.morada} onChange={e=>setA({...a, morada:e.target.value})} required/></Field>
       <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:e.target.value})} required/></Field>
 
+      <div className="md:col-span-2 flex gap-2">
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => {
+            if (!dadosPessoais) return;
+            setA(prev => ({
+              ...prev,
+              morada: dadosPessoais.morada || prev.morada,
+              codigoPostal: dadosPessoais.codigoPostal || prev.codigoPostal,
+              contactosUrgencia: dadosPessoais.telefone || prev.contactosUrgencia,
+              emailsPreferenciais: dadosPessoais.email || prev.emailsPreferenciais,
+            }));
+          }}
+        >
+          Copiar dados pessoais
+        </button>
+      </div>
+
       <Field label="Telefone (opcional)"><input className="input" value={a.telefoneOpc||''} onChange={e=>setA({...a, telefoneOpc:e.target.value})}/></Field>
       <Field label="Email (opcional)"><input type="email" className="input" value={a.emailOpc||''} onChange={e=>setA({...a, emailOpc:e.target.value})}/></Field>
 
-      <Field className="md:col-span-2" label="Escola (2025/26) *"><input className="input" value={a.escola} onChange={e=>setA({...a, escola:e.target.value})} required/></Field>
-      <Field label="Ano de escolaridade (2025/26) *"><input className="input" value={a.anoEscolaridade} onChange={e=>setA({...a, anoEscolaridade:e.target.value})} required/></Field>
+      {showEscola && (
+        <>
+          <Field className="md:col-span-2" label="Escola (2025/26) *"><input className="input" value={a.escola} onChange={e=>setA({...a, escola:e.target.value})} required/></Field>
+          <Field label="Ano de escolaridade (2025/26) *"><input className="input" value={a.anoEscolaridade} onChange={e=>setA({...a, anoEscolaridade:e.target.value})} required/></Field>
+        </>
+      )}
 
-      <Field className="md:col-span-2" label="Alergias / problemas de saúde"><textarea className="input min-h-[100px]" value={a.alergias} onChange={e=>setA({...a, alergias:e.target.value})}/></Field>
+      <Field className="md:col-span-2" label="Alergias / problemas de saúde *"><textarea className="input min-h-[100px]" value={a.alergias} onChange={e=>setA({...a, alergias:e.target.value})} required/></Field>
 
       {isMinor && (
         <>
