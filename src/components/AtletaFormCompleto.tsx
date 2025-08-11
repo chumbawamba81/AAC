@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { Atleta, Genero, Nacionalidade, TipoDocId } from '../types/Atleta';
+import type { Atleta, Genero, Nacionalidade, TipoDocId, PlanoPagamento } from '../types/Atleta';
 import { computeEscalao, isValidNIF, isValidPostalCode, yearsAtSeasonStart, areEmailsValid } from '../utils/form-utils';
 
 type Props = {
@@ -42,6 +42,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
     contactosUrgencia: initial?.contactosUrgencia || '',
     emailsPreferenciais: initial?.emailsPreferenciais || '',
     escalao: initial?.escalao || 'Fora de escalões',
+    planoPagamento: (initial?.planoPagamento as PlanoPagamento) || 'Mensal',
   });
 
   useEffect(()=>{
@@ -106,25 +107,26 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
       <Field label="NIF *"><input className="input" value={a.nif} onChange={e=>setA({...a, nif:e.target.value})} required/></Field>
 
       <Field className="md:col-span-2" label="Morada *"><input className="input" value={a.morada} onChange={e=>setA({...a, morada:e.target.value})} required/></Field>
-      <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:e.target.value})} required/></Field>
-
-      <div className="md:col-span-2 flex gap-2">
-        <button
-          type="button"
-          className="btn secondary"
-          onClick={() => {
-            if (!dadosPessoais) return;
-            setA(prev => ({
-              ...prev,
-              morada: dadosPessoais.morada || prev.morada,
-              codigoPostal: dadosPessoais.codigoPostal || prev.codigoPostal,
-              contactosUrgencia: dadosPessoais.telefone || prev.contactosUrgencia,
-              emailsPreferenciais: dadosPessoais.email || prev.emailsPreferenciais,
-            }));
-          }}
-        >
-          Copiar dados pessoais
-        </button>
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:e.target.value})} required/></Field>
+        <div className="flex items-end pb-1">
+          <button
+            type="button"
+            className="btn secondary h-10"
+            onClick={() => {
+              if (!dadosPessoais) return;
+              setA(prev => ({
+                ...prev,
+                morada: dadosPessoais.morada || prev.morada,
+                codigoPostal: dadosPessoais.codigoPostal || prev.codigoPostal,
+                contactosUrgencia: dadosPessoais.telefone || prev.contactosUrgencia,
+                emailsPreferenciais: dadosPessoais.email || prev.emailsPreferenciais,
+              }));
+            }}
+          >
+            Copiar dados pessoais
+          </button>
+        </div>
       </div>
 
       <Field label="Telefone (opcional)"><input className="input" value={a.telefoneOpc||''} onChange={e=>setA({...a, telefoneOpc:e.target.value})}/></Field>
@@ -162,6 +164,13 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
       </Field>
 
       <Field label="Escalão (sugestão automática)"><input className="input bg-gray-100" value={a.escalao} readOnly/></Field>
+      <Field label="Opção de Pagamentos *">
+        <select className="input" value={a.planoPagamento} onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}>
+          <option>Mensal</option>
+          <option>Trimestral</option>
+          <option>Anual</option>
+        </select>
+      </Field>
 
       <div className="md:col-span-2 flex justify-end gap-2 pt-2">
         {onCancel && <button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>}

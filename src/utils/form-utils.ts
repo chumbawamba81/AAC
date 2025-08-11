@@ -44,6 +44,6 @@ export function computeEscalao(dobIso: string, genero: Genero): Escalao {
   if (y === 2008 || y === 2009) return genero === 'Feminino' ? 'Sub 18 femininos (2008-2009)' : 'Sub 18 masculinos (2008-2009)';
   if (genero === 'Masculino' && y >= 2002 && y <= 2007) return 'Seniores masculinos Sub23 (2002-2007)';
   if (genero === 'Feminino' && y <= 2007) return 'Seniores femininas (≤2007)';
-  if (y < 1995) return 'Masters (<1995)'; // Masters global
+  if (y < 1995) return 'Masters (<1995)';
   return 'Fora de escalões';
 }

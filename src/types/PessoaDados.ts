@@ -1,7 +1,7 @@
 export interface PessoaDados {
   nomeCompleto: string;
   tipoSocio: 'Sócio Pro' | 'Sócio Família' | 'Sócio Geral Renovação' | 'Sócio Geral Novo' | 'Não pretendo ser sócio';
-  dataNascimento: string; // YYYY-MM-DD
+  dataNascimento: string;
   morada: string;
   codigoPostal: string;
   tipoDocumento: 'Cartão de cidadão' | 'Passaporte' | 'Título de Residência';

@@ -17,6 +17,8 @@ export type Escalao =
   | 'Masters (<1995)'
   | 'Fora de escalões';
 
+export type PlanoPagamento = 'Mensal' | 'Trimestral' | 'Anual';
+
 export interface Atleta {
   id: string;
   nomeCompleto: string;
@@ -42,4 +44,5 @@ export interface Atleta {
   contactosUrgencia: string;          // "912...; 913..."
   emailsPreferenciais: string;        // "a@x.pt; b@y.pt"
   escalao: Escalao;
+  planoPagamento: PlanoPagamento;
 }
