@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/u
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload, Facebook, Instagram, Mail } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload, Facebook, Instagram, Mail } , Globe from "lucide-react";
 
 import type { PessoaDados } from "./types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "./types/Atleta";
@@ -582,7 +582,7 @@ export default function App(){
           <Instagram className="h-6 w-6" />
         </a>
         <a href="https://aacbasquetebol.clubeo.com/" target="_blank" rel="noreferrer" aria-label="Site AAC Basquetebol" className="opacity-80 hover:opacity-100">
-          <img src="/favicon.svg" alt="AAC Basquetebol" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+          <Globe className="h-6 w-6" />
         </a>
         <a href="mailto:basquetebol@academica.pt" aria-label="Email AAC Basquetebol" className="opacity-80 hover:opacity-100">
           <Mail className="h-6 w-6" />
