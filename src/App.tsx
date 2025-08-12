@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { signIn, signUp, signOut } from "./services/authService";
+import { supabase } from "./supabaseClient";
+
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
@@ -146,7 +149,7 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
       if (!chk.ok) { setError("A palavra‑passe não cumpre os requisitos."); return; }
       try {
         setLoading(true);
-        await apiRegister(email, password);
+        await signUp(email, password);
         const next = { ...state, verificationPendingEmail: email, conta: { email } } as State;
         setState(next); saveState(next);
         setInfo("Registo efetuado. Verifique o seu email para validar a conta.");
@@ -158,12 +161,13 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
 
     try {
       setLoading(true);
-      const r = await apiLogin(email, password);
-      setToken(r.token);
+      const data = await signIn(email, password);
+      const access = data.session?.access_token ?? "supabase";
+      setToken(access);
       const next = { ...state, conta: { email }, verificationPendingEmail: null } as State;
       setState(next); saveState(next);
       if (remember) {
-        localStorage.setItem("authToken", r.token);
+        localStorage.setItem("authToken", access);
         localStorage.setItem("authEmail", email);
       }
       onLogged();
@@ -175,7 +179,7 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
   async function submitForgot(ev: React.FormEvent) {
     ev.preventDefault(); setError(undefined); setInfo(undefined);
     try{
-      await apiForgot(forgotEmail || email);
+      await supabase.auth.resetPasswordForEmail(($1).trim(), { redirectTo: `${window.location.origin}/auth/callback` });
       setInfo("Se o email existir, foi enviado um link de recuperação.");
       setForgotOpen(false);
     }catch(e:any){
@@ -508,6 +512,21 @@ function AtletasSection({ state, setState }:{ state: State; setState: (s: State)
 }
 
 export default function App(){
+
+
+// Subscreve alterações de sessão do Supabase (login/logout)
+useEffect(() => {
+  let mounted = true;
+  supabase.auth.getSession().then(({ data }) => {
+    if (!mounted) return;
+    const access = data.session?.access_token ?? null;
+    setToken(access);
+  });
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    setToken(session?.access_token ?? null);
+  });
+  return () => { mounted = false; subscription.unsubscribe(); };
+}, []);
   const [token, setToken] = useState<string|null>(null);
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
@@ -528,7 +547,7 @@ export default function App(){
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">AAC-SB</h1></div>
-        {token ? (<Button variant="outline" onClick={()=>{ setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
+        {token ? (<Button variant="outline" onClick={async ()=>{ await signOut(); setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
       </header>
 
       {!token ? (
