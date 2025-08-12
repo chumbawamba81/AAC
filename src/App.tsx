@@ -179,7 +179,7 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
   async function submitForgot(ev: React.FormEvent) {
     ev.preventDefault(); setError(undefined); setInfo(undefined);
     try{
-      await supabase.auth.resetPasswordForEmail(($1).trim(), { redirectTo: `${window.location.origin}/auth/callback` });
+      await supabase.auth.resetPasswordForEmail((forgotEmail || email).trim(), { redirectTo: `${window.location.origin}/auth/callback` });
       setInfo("Se o email existir, foi enviado um link de recuperação.");
       setForgotOpen(false);
     }catch(e:any){
