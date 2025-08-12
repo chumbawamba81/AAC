@@ -271,7 +271,11 @@ function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; 
     ev.preventDefault();
     const errs: string[] = [];
     if (!form.nomeCompleto.trim()) errs.push("Nome obrigatório");
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(form.dataNascimento)) errs.push("Data de nascimento inválida");
+	const isValidISODate = (s: string) =>
+	/^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
+
+	if (!isValidISODate(form.dataNascimento)) errs.push("Data de nascimento inválida");
+
     if (!form.morada.trim()) errs.push("Morada obrigatória");
     if (!isValidPostalCode(form.codigoPostal)) errs.push("Código-postal inválido (####-###)");
     if (!form.numeroDocumento.trim()) errs.push("Número de documento obrigatório");
