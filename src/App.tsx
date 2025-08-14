@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
+// Import Supabase auth and data services
 import { signIn, signUp, signOut } from "./services/authService";
-import { supabase } from "./supabaseClient";
-
+import { getMyProfile, upsertMyProfile } from "./services/profileService";
+import { listAtletas, upsertAtleta as saveAtleta, deleteAtleta as removeAtleta } from "./services/atletasService";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
@@ -82,18 +83,7 @@ function loadState(): State {
 }
 function saveState(s: State) { localStorage.setItem(LS_KEY, JSON.stringify(s)); }
 
-async function apiRegister(email: string, password: string): Promise<{ ok: true }> {
-  if (!API_BASE) return { ok: true };
-  const r = await fetch(`${API_BASE}/auth/register`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email, password }) });
-  if (!r.ok) throw new Error("Falha no registo");
-  return { ok: true };
-}
-async function apiLogin(email: string, password: string): Promise<{ token: string }> {
-  if (!API_BASE) return { token: `demo-${uid()}` };
-  const r = await fetch(`${API_BASE}/auth/login`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email, password }), credentials: "include" });
-  if (!r.ok) throw new Error("Credenciais inválidas ou conta por validar");
-  return r.json();
-}
+// As funções de autenticação via Supabase são fornecidas por authService.ts
 async function apiForgot(email: string): Promise<void> {
   if (!API_BASE) return;
   const r = await fetch(`${API_BASE}/auth/forgot`, { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ email }) });
@@ -149,6 +139,7 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
       if (!chk.ok) { setError("A palavra‑passe não cumpre os requisitos."); return; }
       try {
         setLoading(true);
+        // Registo via Supabase: envia email de verificação
         await signUp(email, password);
         const next = { ...state, verificationPendingEmail: email, conta: { email } } as State;
         setState(next); saveState(next);
@@ -162,12 +153,13 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
     try {
       setLoading(true);
       const data = await signIn(email, password);
-      const access = data.session?.access_token ?? "supabase";
-      setToken(access);
+      // Usa o access token da sessão Supabase ou uma string de fallback
+      const supaToken = data?.session?.access_token || `supabase-${uid()}`;
+      setToken(supaToken);
       const next = { ...state, conta: { email }, verificationPendingEmail: null } as State;
       setState(next); saveState(next);
       if (remember) {
-        localStorage.setItem("authToken", access);
+        localStorage.setItem("authToken", supaToken);
         localStorage.setItem("authEmail", email);
       }
       onLogged();
@@ -179,7 +171,7 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
   async function submitForgot(ev: React.FormEvent) {
     ev.preventDefault(); setError(undefined); setInfo(undefined);
     try{
-      await supabase.auth.resetPasswordForEmail((forgotEmail || email).trim(), { redirectTo: `${window.location.origin}/auth/callback` });
+      await apiForgot(forgotEmail || email);
       setInfo("Se o email existir, foi enviado um link de recuperação.");
       setForgotOpen(false);
     }catch(e:any){
@@ -267,25 +259,31 @@ function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; 
     profissao: "",
   });
 
-  function save(ev: React.FormEvent) {
+  async function save(ev: React.FormEvent) {
     ev.preventDefault();
     const errs: string[] = [];
     if (!form.nomeCompleto.trim()) errs.push("Nome obrigatório");
-	const isValidISODate = (s: string) =>
-	/^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
-
-	if (!isValidISODate(form.dataNascimento)) errs.push("Data de nascimento inválida");
-
+    // Usa validação robusta de data ISO
+    const isValidISODate = (s: string) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
+    if (!isValidISODate(form.dataNascimento)) errs.push("Data de nascimento inválida");
     if (!form.morada.trim()) errs.push("Morada obrigatória");
     if (!isValidPostalCode(form.codigoPostal)) errs.push("Código-postal inválido (####-###)");
     if (!form.numeroDocumento.trim()) errs.push("Número de documento obrigatório");
     if (!isValidNIF(form.nif)) errs.push("NIF inválido");
     if (!form.telefone.trim()) errs.push("Telefone obrigatório");
     if (!form.email.trim()) errs.push("Email obrigatório");
-    if (errs.length) { alert(errs.join("\\n")); return; }
-    const next = { ...state, perfil: form } as State; setState(next); saveState(next);
-    setEditMode(false);
-    onAfterSave();
+    if (errs.length) { alert(errs.join("\n")); return; }
+    try {
+      // Persiste o perfil no Supabase e atualiza o estado
+      const savedPerfil = await upsertMyProfile(form);
+      const next = { ...state, perfil: savedPerfil } as State;
+      setState(next); saveState(next);
+      setEditMode(false);
+      onAfterSave();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível guardar o perfil no servidor");
+    }
   }
 
   if (!editMode && state.perfil) {
@@ -466,12 +464,17 @@ function PagamentosSection({ state, setState }:{ state: State; setState: (s: Sta
 function AtletasSection({ state, setState }:{ state: State; setState: (s: State)=>void }){
   const [open,setOpen]=useState(false);
   const [editing,setEditing]=useState<Atleta|undefined>();
-  function remove(id: string){
+  async function remove(id: string){
     if (!confirm("Remover o atleta?")) return;
-    const next = { ...state, atletas: state.atletas.filter(x=>x.id!==id) } as State;
-    delete next.docsAtleta[id];
-    delete next.pagamentos[id];
-    setState(next); saveState(next);
+    try {
+      await removeAtleta(id);
+      const next = { ...state, atletas: state.atletas.filter(x=>x.id!==id) } as State;
+      delete next.docsAtleta[id];
+      delete next.pagamentos[id];
+      setState(next); saveState(next);
+    } catch (e: any) {
+      alert(e.message || "Falha ao remover o atleta");
+    }
   }
   return (
     <Card>
@@ -502,10 +505,15 @@ function AtletasSection({ state, setState }:{ state: State; setState: (s: State)
               initial={editing}
               dadosPessoais={{ morada: state.perfil?.morada, codigoPostal: state.perfil?.codigoPostal, telefone: state.perfil?.telefone, email: state.perfil?.email }}
               onCancel={()=>setOpen(false)}
-              onSave={(novo)=>{
-                const exists = state.atletas.some(x=>x.id===novo.id);
-                const next = { ...state, atletas: exists? state.atletas.map(x=>x.id===novo.id?novo:x) : [novo, ...state.atletas] } as State;
-                setState(next); saveState(next); setOpen(false);
+              onSave={async (novo)=>{
+                try {
+                  await saveAtleta(novo);
+                  const exists = state.atletas.some(x=>x.id===novo.id);
+                  const next = { ...state, atletas: exists? state.atletas.map(x=>x.id===novo.id?novo:x) : [novo, ...state.atletas] } as State;
+                  setState(next); saveState(next); setOpen(false);
+                } catch (e: any) {
+                  alert(e.message || "Falha ao guardar o atleta");
+                }
               }}
             />
           </DialogContent>
@@ -516,25 +524,40 @@ function AtletasSection({ state, setState }:{ state: State; setState: (s: State)
 }
 
 export default function App(){
-
-
-// Subscreve alterações de sessão do Supabase (login/logout)
-useEffect(() => {
-  let mounted = true;
-  supabase.auth.getSession().then(({ data }) => {
-    if (!mounted) return;
-    const access = data.session?.access_token ?? null;
-    setToken(access);
-  });
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    setToken(session?.access_token ?? null);
-  });
-  return () => { mounted = false; subscription.unsubscribe(); };
-}, []);
   const [token, setToken] = useState<string|null>(null);
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
+
+  // Sincroniza dados do Supabase (perfil e atletas) quando o utilizador inicia sessão
+  useEffect(() => {
+    async function syncFromSupabase() {
+      // Só tenta sincronizar se existir um token (utilizador autenticado)
+      if (!token) return;
+      try {
+        const [perfilDb, atletasDb] = await Promise.all([
+          getMyProfile(),
+          listAtletas(),
+        ]);
+        const next: State = { ...state };
+        // Se existir perfil no Supabase, usa-o
+        if (perfilDb) {
+          next.perfil = perfilDb;
+        }
+        // Se existirem atletas no Supabase, usa-os
+        if (atletasDb) {
+          next.atletas = atletasDb;
+        }
+        setState(next);
+        saveState(next);
+      } catch (e) {
+        console.error('Falha a sincronizar do Supabase:', e);
+      }
+    }
+    syncFromSupabase();
+    // A dependência inclui apenas o token para que a sincronização ocorra sempre que o token mudar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   useEffect(()=>{ saveState(state); }, [state]);
 
@@ -551,7 +574,7 @@ useEffect(() => {
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">AAC-SB</h1></div>
-        {token ? (<Button variant="outline" onClick={async ()=>{ await signOut(); setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
+        {token ? (<Button variant="outline" onClick={()=>{ setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}><LogOut className="h-4 w-4 mr-1"/> Sair</Button>) : null}
       </header>
 
       {!token ? (
@@ -604,6 +627,9 @@ useEffect(() => {
         <a href="https://www.instagram.com/academicabasket/" target="_blank" rel="noreferrer" aria-label="Instagram AAC Basquetebol" className="opacity-80 hover:opacity-100">
           <Instagram className="h-6 w-6" />
         </a>
+        <a href="https://aacbasquetebol.clubeo.com/" target="_blank" rel="noreferrer" aria-label="Site AAC Basquetebol" className="opacity-80 hover:opacity-100">
+		<i className="fa-solid fa-globe" style={{ fontSize: 24 }}></i>
+		</a>
         <a href="mailto:basquetebol@academica.pt" aria-label="Email AAC Basquetebol" className="opacity-80 hover:opacity-100">
           <Mail className="h-6 w-6" />
         </a>

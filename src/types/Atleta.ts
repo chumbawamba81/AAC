@@ -1,48 +1,44 @@
-export type Genero = 'Feminino' | 'Masculino';
-export type TipoDocId = 'Cartão de cidadão' | 'Passaporte' | 'Título de Residência';
-export type Nacionalidade = 'Portuguesa' | 'Outra';
-export type Escalao =
-  | 'Baby Basket (2020-2021)'
-  | 'Mini 8 (2018-2019)'
-  | 'Mini 10 (2016-2017)'
-  | 'Mini 12 (2014-2015)'
-  | 'Sub 14 feminino (2012-2013)'
-  | 'Sub 14 masculino (2012-2013)'
-  | 'Sub 16 feminino (2010-2011)'
-  | 'Sub 16 masculino (2010-2011)'
-  | 'Sub 18 femininos (2008-2009)'
-  | 'Sub 18 masculinos (2008-2009)'
-  | 'Seniores femininas (≤2007)'
-  | 'Seniores masculinos Sub23 (2002-2007)'
-  | 'Masters (<1995)'
-  | 'Fora de escalões';
+// Type definitions for athlete records.
 
+// PlanoPagamento descreve o tipo de pagamento que um atleta pode
+// selecionar para a sua inscrição: mensal, trimestral ou anual.
 export type PlanoPagamento = 'Mensal' | 'Trimestral' | 'Anual';
 
+/**
+ * Interface que representa um atleta inscrito na secção. Nem todos os
+ * campos são obrigatórios à partida; a aplicação preencherá os
+ * valores opcionais quando apropriado (p.ex. morada, escola). O
+ * superset destes campos permite mapear registos simples da base de
+ * dados para o modelo utilizado no frontend.
+ */
 export interface Atleta {
   id: string;
   nomeCompleto: string;
-  dataNascimento: string; // ISO YYYY-MM-DD
-  genero: Genero;
-  nacionalidade: Nacionalidade;
-  nacionalidadeOutra?: string;
-  tipoDoc: TipoDocId;
-  numDoc: string;
-  validadeDoc: string; // ISO YYYY-MM-DD
-  nif: string;
-  nomePai: string;
-  nomeMae: string;
-  morada: string;
-  codigoPostal: string;
-  telefoneOpc?: string;
-  emailOpc?: string;
-  escola: string;
-  anoEscolaridade: string;
-  alergias: string;
-  encarregadoEducacao?: 'Pai' | 'Mãe' | 'Outro';
-  parentescoOutro?: string;
-  contactosUrgencia: string;          // "912...; 913..."
-  emailsPreferenciais: string;        // "a@x.pt; b@y.pt"
-  escalao: Escalao;
+  dataNascimento: string;
+  genero: 'Feminino' | 'Masculino';
+  /**
+   * Escalão calculado automaticamente a partir da data de nascimento e
+   * género. Este campo é armazenado como string para facilitar a
+   * apresentação. Pode ser "Fora de escalões" para casos sem
+   * correspondência.
+   */
+  escalao: string;
+  /**
+   * Plano de pagamento selecionado pelo atleta. Este campo controla
+   * quantos comprovativos de pagamento são necessários (mensal: 10,
+   * trimestral: 3, anual: 1).
+   */
   planoPagamento: PlanoPagamento;
+  /**
+   * Campos opcionais adicionais. Podem estar vazios quando não
+   * preenchidos. Estes campos são utilizados no formulário mas não são
+   * estritamente necessários para o registo mínimo de um atleta no
+   * backend.
+   */
+  escola?: string;
+  morada?: string;
+  codigoPostal?: string;
+  alergias?: string;
+  emailPreferencial?: string;
+  contactoUrgencia?: string;
 }
