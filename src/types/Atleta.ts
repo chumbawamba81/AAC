@@ -1,44 +1,43 @@
-// Type definitions for athlete records.
-
-// PlanoPagamento descreve o tipo de pagamento que um atleta pode
-// selecionar para a sua inscrição: mensal, trimestral ou anual.
+export type Genero = 'Feminino' | 'Masculino';
+export type Nacionalidade = 'Portuguesa' | 'Outra';
+export type TipoDocId = 'Cartão de cidadão' | 'Passaporte' | 'Título de Residência';
 export type PlanoPagamento = 'Mensal' | 'Trimestral' | 'Anual';
 
-/**
- * Interface que representa um atleta inscrito na secção. Nem todos os
- * campos são obrigatórios à partida; a aplicação preencherá os
- * valores opcionais quando apropriado (p.ex. morada, escola). O
- * superset destes campos permite mapear registos simples da base de
- * dados para o modelo utilizado no frontend.
- */
 export interface Atleta {
   id: string;
   nomeCompleto: string;
-  dataNascimento: string;
-  genero: 'Feminino' | 'Masculino';
-  /**
-   * Escalão calculado automaticamente a partir da data de nascimento e
-   * género. Este campo é armazenado como string para facilitar a
-   * apresentação. Pode ser "Fora de escalões" para casos sem
-   * correspondência.
-   */
+  dataNascimento: string; // ISO yyyy-mm-dd
+  genero: Genero;
   escalao: string;
-  /**
-   * Plano de pagamento selecionado pelo atleta. Este campo controla
-   * quantos comprovativos de pagamento são necessários (mensal: 10,
-   * trimestral: 3, anual: 1).
-   */
   planoPagamento: PlanoPagamento;
-  /**
-   * Campos opcionais adicionais. Podem estar vazios quando não
-   * preenchidos. Estes campos são utilizados no formulário mas não são
-   * estritamente necessários para o registo mínimo de um atleta no
-   * backend.
-   */
-  escola?: string;
+
+  // Campos opcionais (compatibilidade com formulário completo)
+  nacionalidade?: Nacionalidade;
+  nacionalidadeOutra?: string;
+  tipoDoc?: TipoDocId;
+  numDoc?: string;
+  validadeDoc?: string; // ISO yyyy-mm-dd
+  nif?: string;
+  nomePai?: string;
+  nomeMae?: string;
+
   morada?: string;
   codigoPostal?: string;
+
+  telefoneOpc?: string;
+  emailOpc?: string;
+
+  escola?: string;
+  anoEscolaridade?: string;
   alergias?: string;
-  emailPreferencial?: string;
+
+  encarregadoEducacao?: 'Pai' | 'Mãe' | 'Outro';
+  parentescoOutro?: string;
+
+  contactosUrgencia?: string;
+  emailsPreferenciais?: string;
+
+  // Alternativos usados na integração mais simples
   contactoUrgencia?: string;
+  emailPreferencial?: string;
 }
