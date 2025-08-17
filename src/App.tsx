@@ -14,6 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/u
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { testSupabaseConnection } from "./services/healthService";
+
 
 import {
   AlertCircle,
@@ -676,6 +678,24 @@ export default function App(){
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
+const [testingDB, setTestingDB] = useState(false);
+
+async function handleTestConnection() {
+  setTestingDB(true);
+  try {
+    const rep = await testSupabaseConnection();
+    const lines: string[] = [];
+    lines.push(`Sessão: ${rep.authenticated ? "OK (autenticado)" : "Sem sessão"}`);
+    for (const p of rep.probes) {
+      lines.push(`${p.ok ? "✅" : "❌"} ${p.name}${p.detail ? ` — ${p.detail}` : ""}`);
+    }
+    alert(lines.join("\n"));
+  } catch (e: any) {
+    alert(`Erro inesperado: ${e?.message || e}`);
+  } finally {
+    setTestingDB(false);
+  }
+}
 
   // Sincroniza dados do Supabase (perfil e atletas) quando o utilizador inicia sessão
   useEffect(() => {
@@ -724,6 +744,31 @@ export default function App(){
           <Button variant="outline" onClick={()=>{ try{ signOut(); }catch{} setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}>
             <LogOut className="h-4 w-4 mr-1"/> Sair
           </Button>
+		  <header className="flex items-center justify-between">
+  <div className="flex items-center gap-2">
+    <Users className="h-6 w-6" />
+    <h1 className="text-2xl font-bold">AAC-SB</h1>
+  </div>
+  <div className="flex items-center gap-2">
+    <Button variant="secondary" onClick={handleTestConnection} disabled={testingDB}>
+      {testingDB ? "A testar..." : "Testar ligação"}
+    </Button>
+    {token ? (
+      <Button
+        variant="outline"
+        onClick={() => {
+          try { signOut(); } catch {}
+          setToken(null);
+          localStorage.removeItem("authToken");
+          localStorage.removeItem("authEmail");
+        }}
+      >
+        <LogOut className="h-4 w-4 mr-1" /> Sair
+      </Button>
+    ) : null}
+  </div>
+</header>
+
         ) : null}
       </header>
 
