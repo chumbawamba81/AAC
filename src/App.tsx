@@ -652,7 +652,7 @@ export default function App() {
       {!token ? (
         <ContaSection state={state} setState={setState} setToken={setToken} onLogged={() => setActiveTab("home")} />
       ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs key={activeTab} defaultValue={activeTab}>
           <TabsList>
             <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
             {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
