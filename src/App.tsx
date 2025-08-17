@@ -777,7 +777,7 @@ export default function App(){
 
           {hasPerfil && (
             <TabsContent value="docs">
-              <UploadDocsSection state={state} setState={setState} saveState={saveState}/>
+              <UploadDocsSection state={state} setState={setState} />
             </TabsContent>
           )}
 
