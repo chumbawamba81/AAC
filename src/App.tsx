@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useEffect, useState } from "react";
 // Serviços (Supabase) de autenticação e dados
 import { signIn, signUp, signOut } from "./services/authService";
@@ -40,7 +41,7 @@ import AtletaFormCompleto from "./components/AtletaFormCompleto";
 import UploadDocsSection from "./components/UploadDocsSection";
 import FilePickerButton from "./components/FilePickerButton";
 
-// 👉 Tipos partilhados
+// 👉 Tipos/constantes partilhados (ajusta se no teu projeto estiverem noutro ficheiro)
 import type { State, UploadMeta } from "./types/AppState";
 import { DOCS_SOCIO } from "./types/AppState";
 
@@ -445,7 +446,6 @@ function DadosPessoaisSection({
     fetchDocCounters().catch((e) => {
       console.error("[fetchDocCounters]", e);
     });
-  // re-calcula quando muda user, lista de atletas ou número de atletas
   }, [userId, state.atletas.map(a => a.id).join(",")]);
 
   async function save(ev: React.FormEvent) {
@@ -474,7 +474,6 @@ function DadosPessoaisSection({
   }
 
   if (!editMode && basePerfil) {
-    // usar os contadores reais calculados acima
     const socioMissing = socioMissingCount;
     const missingAthDocs = athMissingCount;
 
@@ -656,9 +655,91 @@ function PagamentosSection({ state, setState }:{ state: State; setState: React.D
 
 /* ----------------------------- AtletasSection ----------------------------- */
 
-function AtletasSection({ state, setState }:{ state: State; setState: React.Dispatch<React.SetStateAction<State>> }){
+function AtletasSection({
+  state,
+  setState,
+}:{
+  state: State;
+  setState: React.Dispatch<React.SetStateAction<State>>;
+}){
   const [open,setOpen]=useState(false);
   const [editing,setEditing]=useState<Atleta|undefined>();
+
+  // 🚀 NOVO: missing por atleta calculado do Supabase + Realtime
+  const [userId, setUserId] = useState<string | null>(null);
+  const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let mounted = true;
+    const sub = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!mounted) return;
+      setUserId(session?.user?.id ?? null);
+    });
+    supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return;
+      setUserId(data?.user?.id ?? null);
+    });
+    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+  }, []);
+
+  async function recomputeMissing(currentUserId: string) {
+    // buscar todos os docs de atleta do utilizador
+    const { data, error } = await supabase
+      .from("documentos")
+      .select("atleta_id, doc_tipo")
+      .eq("user_id", currentUserId)
+      .eq("doc_nivel", "atleta");
+
+    if (error) {
+      console.error("[AtletasSection] SELECT documentos:", error.message);
+      return;
+    }
+
+    const byAth: Map<string, Set<string>> = new Map();
+    for (const r of (data || []) as any[]) {
+      if (!r.atleta_id) continue;
+      const set = byAth.get(r.atleta_id) || new Set<string>();
+      set.add(r.doc_tipo);
+      byAth.set(r.atleta_id, set);
+    }
+
+    const out: Record<string, number> = {};
+    for (const a of state.atletas) {
+      const have = byAth.get(a.id) || new Set<string>();
+      let miss = 0;
+      for (const t of DOCS_ATLETA) if (!have.has(t)) miss++;
+      out[a.id] = miss;
+    }
+    setMissingByAth(out);
+  }
+
+  // recalc inicial e quando atletas mudarem
+  useEffect(() => {
+    if (!userId) return;
+    recomputeMissing(userId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, state.atletas.map(a => a.id).join(",")]);
+
+  // Realtime: reagir a inserts/updates/deletes na tabela documentos
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel("docs-atletas")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "documentos", filter: `user_id=eq.${userId}` },
+        () => {
+          // qualquer mudança → recomputar
+          recomputeMissing(userId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
   async function remove(id: string){
     if (!confirm("Remover o atleta?")) return;
     try {
@@ -671,6 +752,7 @@ function AtletasSection({ state, setState }:{ state: State; setState: React.Disp
       alert(e.message || "Falha ao remover o atleta");
     }
   }
+
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
@@ -685,14 +767,14 @@ function AtletasSection({ state, setState }:{ state: State; setState: React.Disp
         {state.atletas.length===0 && <p className="text-sm text-gray-500">Sem atletas. Clique em “Novo atleta”.</p>}
         <div className="grid gap-3">
           {state.atletas.map(a=>{
-            const missing = DOCS_ATLETA.filter(d=> !state.docsAtleta[a.id] || !state.docsAtleta[a.id][d]);
+            const missing = missingByAth[a.id] ?? DOCS_ATLETA.length;
             return (
               <div key={a.id} className="border rounded-xl p-3 flex items-center justify-between">
                 <div>
                   <div className="font-medium flex items-center gap-2">
                     {a.nomeCompleto}
-                    {missing.length>0
-                      ? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</span>
+                    {missing>0
+                      ? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing} doc(s) em falta</span>
                       : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Documentação completa</span>
                     }
                   </div>
