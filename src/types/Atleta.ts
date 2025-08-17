@@ -1,43 +1,18 @@
-export type Genero = 'Feminino' | 'Masculino';
-export type Nacionalidade = 'Portuguesa' | 'Outra';
-export type TipoDocId = 'Cartão de cidadão' | 'Passaporte' | 'Título de Residência';
+export type Genero = 'Feminino' | 'Masculino' | 'Outro';
 export type PlanoPagamento = 'Mensal' | 'Trimestral' | 'Anual';
 
 export interface Atleta {
   id: string;
-  nomeCompleto: string;
-  dataNascimento: string; // ISO yyyy-mm-dd
-  genero: Genero;
-  escalao: string;
-  planoPagamento: PlanoPagamento;
+  nomeCompleto: string;       // map -> atletas.nome
+  dataNascimento: string;     // ISO yyyy-mm-dd -> atletas.data_nascimento
+  genero?: Genero;            // (opcional no schema)
+  escalao?: string;           // map -> atletas.escalao (ver migração abaixo)
+  alergias: string;           // not null
+  planoPagamento: PlanoPagamento; // map -> atletas.opcao_pagamento
 
-  // Campos opcionais (compatibilidade com formulário completo)
-  nacionalidade?: Nacionalidade;
-  nacionalidadeOutra?: string;
-  tipoDoc?: TipoDocId;
-  numDoc?: string;
-  validadeDoc?: string; // ISO yyyy-mm-dd
-  nif?: string;
-  nomePai?: string;
-  nomeMae?: string;
-
+  // Extra (não obrigatórios no schema actual)
   morada?: string;
   codigoPostal?: string;
-
-  telefoneOpc?: string;
-  emailOpc?: string;
-
-  escola?: string;
-  anoEscolaridade?: string;
-  alergias?: string;
-
-  encarregadoEducacao?: 'Pai' | 'Mãe' | 'Outro';
-  parentescoOutro?: string;
-
   contactosUrgencia?: string;
   emailsPreferenciais?: string;
-
-  // Alternativos usados na integração mais simples
-  contactoUrgencia?: string;
-  emailPreferencial?: string;
 }

@@ -1,36 +1,19 @@
-// Type definitions for personal profile data (PessoaDados)
-
-export type TipoSocio =
-  | "Sócio Pro"
-  | "Sócio Família"
-  | "Sócio Geral Renovação"
-  | "Sócio Geral Novo"
-  | "Não pretendo ser sócio";
-
-export type TipoDocumento =
-  | "Cartão de cidadão"
-  | "Passaporte"
-  | "Título de Residência";
-
-/**
- * PessoaDados descreve os campos de um perfil pessoal.
- * Todos os campos são strings simples exceto aqueles marcados
- * como opcionais (profissao).
- */
 export interface PessoaDados {
+  // Campos existentes na tabela `dados_pessoais`
   nomeCompleto: string;
-  tipoSocio: TipoSocio;
-  dataNascimento: string;
-  morada: string;
-  codigoPostal: string;
-  tipoDocumento: TipoDocumento;
-  numeroDocumento: string;
-  nif: string;
-  telefone: string;
+  dataNascimento: string;  // ISO yyyy-mm-dd
+  genero?: 'Masculino' | 'Feminino' | 'Outro';
+  morada?: string;
+  codigoPostal?: string;   // ####-###
+  telefone?: string;
   email: string;
-  /**
-   * Profissão é opcional. Pode ser uma string vazia quando o
-   * utilizador não pretende indicar uma profissão.
-   */
+  situacaoTesouraria?: string;
+  noticias?: string;
+
+  // Campos extra usados na UI (não persistidos enquanto não existirem no schema)
+  tipoSocio?: 'Sócio Pro' | 'Sócio Família' | 'Sócio Geral Renovação' | 'Sócio Geral Novo' | 'Não pretendo ser sócio';
+  tipoDocumento?: 'Cartão de cidadão' | 'Passaporte' | 'Título de Residência';
+  numeroDocumento?: string;
+  nif?: string;
   profissao?: string;
 }

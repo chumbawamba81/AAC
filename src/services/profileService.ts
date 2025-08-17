@@ -1,103 +1,58 @@
 import { supabase } from '../supabaseClient';
 import type { PessoaDados } from '../types/PessoaDados';
 
-/**
- * Service functions for managing a user's personal profile in Supabase.
- *
- * The profile is stored in the `perfis` table keyed by the authenticated
- * user's ID. Only a single profile row is stored per user (enforced via
- * unique constraint on `user_id`).
- */
+const TBL = 'dados_pessoais';
 
-const TABLE_NAME = 'perfis';
-
-/**
- * Fetch the current user's profile from Supabase.
- * Returns `null` if no profile exists yet.
- */
-export async function getMyProfile() {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
-    throw userError;
-  }
-  const user = userData.user;
-  if (!user) return null;
-  const { data, error } = await supabase
-    .from(TABLE_NAME)
-    .select('*')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  if (error) {
-    throw error;
-  }
-  if (!data) return null;
-  // Map database columns back to our PessoaDados type
-  const perfil: PessoaDados = {
-    nomeCompleto: data.nome_completo,
-    tipoSocio: data.tipo_socio,
-    dataNascimento: data.data_nascimento,
-    morada: data.morada,
-    codigoPostal: data.codigo_postal,
-    tipoDocumento: data.tipo_documento,
-    numeroDocumento: data.numero_documento,
-    nif: data.nif,
-    telefone: data.telefone,
-    email: data.email,
-    profissao: data.profissao ?? '',
-  };
-  return perfil;
+async function getUserId() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  if (!data.user) throw new Error('Sem sessão activa');
+  return data.user.id;
 }
 
-/**
- * Create or update the current user's profile.
- * Accepts a PessoaDados object and returns the saved profile (mapped back
- * to PessoaDados). Requires that the user is authenticated.
- */
-export async function upsertMyProfile(payload: PessoaDados) {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) {
-    throw userError;
-  }
-  const user = userData.user;
-  if (!user) {
-    throw new Error('Sem sessão');
-  }
-  // Map our type to the database column names
+export async function getMyProfile(): Promise<(PessoaDados & { id: string }) | null> {
+  const uid = await getUserId();
+  const { data, error } = await supabase
+    .from(TBL)
+    .select('*')
+    .eq('user_id', uid)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    nomeCompleto: data.nome_completo,
+    dataNascimento: data.data_nascimento,
+    genero: data.genero ?? undefined,
+    morada: data.morada ?? '',
+    codigoPostal: data.codigo_postal ?? '',
+    telefone: data.telefone ?? '',
+    email: data.email,
+    situacaoTesouraria: data.situacao_tesouraria ?? 'Campo em atualização',
+    noticias: data.noticias ?? '',
+  };
+}
+
+export async function upsertMyProfile(payload: PessoaDados): Promise<{ id: string }> {
+  const uid = await getUserId();
   const row = {
-    user_id: user.id,
+    user_id: uid,
     nome_completo: payload.nomeCompleto,
-    tipo_socio: payload.tipoSocio,
     data_nascimento: payload.dataNascimento,
-    morada: payload.morada,
-    codigo_postal: payload.codigoPostal,
-    tipo_documento: payload.tipoDocumento,
-    numero_documento: payload.numeroDocumento,
-    nif: payload.nif,
-    telefone: payload.telefone,
+    genero: payload.genero ?? null,
+    morada: payload.morada ?? null,
+    codigo_postal: payload.codigoPostal ?? null,
+    telefone: payload.telefone ?? null,
     email: payload.email,
-    profissao: payload.profissao ?? null,
+    situacao_tesouraria: payload.situacaoTesouraria ?? 'Campo em atualização',
+    noticias: payload.noticias ?? null,
   };
   const { data, error } = await supabase
-    .from(TABLE_NAME)
+    .from(TBL)
     .upsert(row, { onConflict: 'user_id' })
-    .select()
+    .select('id')
     .single();
-  if (error) {
-    throw error;
-  }
-  // Map back to PessoaDados
-  const saved: PessoaDados = {
-    nomeCompleto: data.nome_completo,
-    tipoSocio: data.tipo_socio,
-    dataNascimento: data.data_nascimento,
-    morada: data.morada,
-    codigoPostal: data.codigo_postal,
-    tipoDocumento: data.tipo_documento,
-    numeroDocumento: data.numero_documento,
-    nif: data.nif,
-    telefone: data.telefone,
-    email: data.email,
-    profissao: data.profissao ?? '',
-  };
-  return saved;
+  if (error) throw error;
+  return { id: data.id };
 }
