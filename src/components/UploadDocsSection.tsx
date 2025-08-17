@@ -16,8 +16,6 @@ import {
 } from '../services/documentosService';
 
 import { migrateLocalDataUrls } from '../services/migracaoDocumentos';
-
-// Estado partilhado
 import type { State } from '../types/AppState';
 
 type Props = {
@@ -61,7 +59,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
   // Atletas -> tipo -> páginas
   const [athDocs, setAthDocs] = useState<Record<string, Map<string, DocumentoRow[]>>>({});
 
-  // refs de inputs de ficheiro (um por “slot”, para abrir o picker sem depender de <label>)
+  // refs de inputs de ficheiro
   const socioPickersRef = useRef<Record<string, HTMLInputElement | null>>({});
   const replacePickersRef = useRef<Record<string, HTMLInputElement | null>>({});
   const atletaPickersRef = useRef<Record<string, Record<string, HTMLInputElement | null>>>({}); // atletaId -> tipo -> input
@@ -69,13 +67,18 @@ export default function UploadDocsSection({ state, setState }: Props) {
   // obter o user id atual
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      const { data, error } = await supabase.auth.getUser();
-      if (!error && data?.user && mounted) {
-        setUserId(data.user.id);
-      }
-    })();
-    return () => { mounted = false; };
+    const sub = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!mounted) return;
+      setUserId(session?.user?.id ?? null);
+    });
+    supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return;
+      setUserId(data?.user?.id ?? null);
+    });
+    return () => {
+      mounted = false;
+      sub.data.subscription.unsubscribe();
+    };
   }, []);
 
   // carregar documentos do supabase
@@ -352,9 +355,9 @@ export default function UploadDocsSection({ state, setState }: Props) {
               Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || 'Conta'})
             </div>
             <div className="text-xs text-gray-500">
-              {socioMissingCount > 0 ? (
+              {Array.from(DOCS_SOCIO).filter(t => !(socioDocs.get(t) || []).length).length > 0 ? (
                 <span className="text-red-600 inline-flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> {socioMissingCount} documento(s) em falta
+                  <AlertCircle className="h-3 w-3" /> {Array.from(DOCS_SOCIO).filter(t => !(socioDocs.get(t) || []).length).length} documento(s) em falta
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1">
