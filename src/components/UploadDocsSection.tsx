@@ -1,298 +1,271 @@
 // src/components/UploadDocsSection.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "./ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { AlertCircle, CheckCircle2, FileUp, Plus, Trash2, Upload } from "lucide-react";
-
-import type { Atleta } from "../types/Atleta";
-import type { PessoaDados } from "../types/PessoaDados";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { FileUp, AlertCircle, CheckCircle2, Upload, Replace, Trash2, RefreshCw, HardDriveUpload } from 'lucide-react';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Label } from './ui/label';
+import type { Atleta } from '../types/Atleta';
 
 import {
-  Documento,
-  DocumentoFicheiro,
-  uploadDocumento,
-  listDocumentos,
-  listFicheiros,
+  listDocs,
   withSignedUrls,
-  replaceDocumentoFile,
-  deleteDocumentoFile,
-} from "../services/documentosService";
-import { getMyProfile } from "../services/profileService";
+  uploadDoc,
+  replaceDoc,
+  deleteDoc,
+  type DocumentoRow,
+} from '../services/documentosService';
 
-// --- Configuração das listas de documentos ---
-const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
+const DOCS_SOCIO = ['Ficha de Sócio', 'Comprovativo de pagamento de sócio'] as const;
 type DocSocio = (typeof DOCS_SOCIO)[number];
 
 const DOCS_ATLETA = [
-  "Ficha de sócio de atleta",
-  "Ficha de jogador FPB",
-  "Ficha inscrição AAC",
-  "Exame médico",
-  "Comprovativo de pagamento de inscrição",
+  'Ficha de sócio de atleta',
+  'Ficha de jogador FPB',
+  'Ficha inscrição AAC',
+  'Exame médico',
+  'Comprovativo de pagamento de inscrição',
 ] as const;
 type DocAtleta = (typeof DOCS_ATLETA)[number];
 
-// --- Props esperadas do App ---
 type Props = {
-  state: {
-    conta: { email: string } | null;
-    perfil: PessoaDados | null;
-    atletas: Atleta[];
-    // legacy (DataURL) para migração:
-    docsSocio: Partial<Record<DocSocio, { name: string; dataUrl: string; uploadedAt: string }>>;
-    docsAtleta: Record<string, Partial<Record<DocAtleta, { name: string; dataUrl: string; uploadedAt: string }>>>;
-  };
-  setState: (s: any) => void;
+  perfilNome?: string | null;
+  contaEmail?: string | null;
+  atletas: Atleta[];
 };
 
-// --- Helpers ---
-async function dataURLtoFile(dataURL: string, filename: string): Promise<File> {
-  const res = await fetch(dataURL);
+function useFileInput() {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const open = () => ref.current?.click();
+  const InputEl = (
+    <input
+      ref={ref}
+      type="file"
+      accept="image/*,application/pdf"
+      className="hidden"
+      onClick={(e) => {
+        // permite re-selecionar o mesmo ficheiro
+        (e.target as HTMLInputElement).value = '';
+      }}
+    />
+  );
+  return { ref, open, InputEl };
+}
+
+async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
+  const res = await fetch(dataUrl);
   const blob = await res.blob();
-  return new File([blob], filename || "upload.bin", { type: blob.type || "application/octet-stream" });
+  return new File([blob], name, { type: blob.type || 'application/octet-stream' });
 }
 
-function useInputRefs() {
-  const map = useRef(new Map<string, HTMLInputElement | null>());
-  const setRef = (key: string) => (el: HTMLInputElement | null) => map.current.set(key, el);
-  const openFor = (key: string) => () => map.current.get(key)?.click();
-  return { setRef, openFor };
-}
-
-async function hydrateDocumentoWithFiles(doc: Documento) {
-  const files = await listFicheiros(doc.id);
-  const withUrls = await withSignedUrls(files);
-  return { doc, files: withUrls };
-}
-
-// --- Componente ---
-export default function UploadDocsSection({ state, setState }: Props) {
+export default function UploadDocsSection({ perfilNome, contaEmail, atletas }: Props) {
+  // Estado de listagens (com URLs assinadas)
+  const [docsSocio, setDocsSocio] = useState<Record<DocSocio, DocumentoRow[]>>({} as any);
+  const [docsPorAtleta, setDocsPorAtleta] = useState<Record<string, Record<DocAtleta, DocumentoRow[]>>>({});
   const [loading, setLoading] = useState(false);
-  const [pessoaId, setPessoaId] = useState<string | null>(null);
+  const [migOpen, setMigOpen] = useState(false);
+  const [migRunning, setMigRunning] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  // Sócio
-  const [socioDocs, setSocioDocs] = useState<Array<{ doc: Documento; files: DocumentoFicheiro[] }>>([]);
+  // Inputs escondidos reutilizáveis
+  const socioPicker = useFileInput();
+  const atletaPicker = useFileInput();
 
-  // Por atleta
-  const [docsByAtleta, setDocsByAtleta] = useState<
-    Record<string, Array<{ doc: Documento; files: DocumentoFicheiro[] }>>
-  >({});
-
-  // Migração
-  const [migrOpen, setMigrOpen] = useState(false);
-  const [migrLog, setMigrLog] = useState<string[]>([]);
-  const [migrBusy, setMigrBusy] = useState(false);
-  const hasLocalLegacy = useMemo(() => {
-    const hasSocio = Object.keys(state.docsSocio || {}).length > 0;
-    const hasAt = Object.keys(state.docsAtleta || {}).length > 0;
-    return hasSocio || hasAt;
-  }, [state.docsSocio, state.docsAtleta]);
-
-  // Carrega ids e documentos
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const perfil = await getMyProfile();
-        setPessoaId(perfil?.id ?? null);
-
-        if (perfil?.id) {
-          const docs = await listDocumentos("socio", { pessoaId: perfil.id });
-          const hydrated = await Promise.all(docs.map(hydrateDocumentoWithFiles));
-          setSocioDocs(hydrated);
-        } else {
-          setSocioDocs([]);
-        }
-
-        const byA: Record<string, Array<{ doc: Documento; files: DocumentoFicheiro[] }>> = {};
-        for (const a of state.atletas) {
-          const docsA = await listDocumentos("atleta", { atletaId: a.id });
-          const hydratedA = await Promise.all(docsA.map(hydrateDocumentoWithFiles));
-          byA[a.id] = hydratedA;
-        }
-        setDocsByAtleta(byA);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [state.atletas]);
-
-  const socioMissingCount = useMemo(() => {
-    const present = new Set(socioDocs.map((x) => x.doc.nome));
-    return DOCS_SOCIO.filter((n) => !present.has(n)).length;
-  }, [socioDocs]);
-
-  function missingCountForAtleta(athleteId: string) {
-    const present = new Set((docsByAtleta[athleteId] || []).map((x) => x.doc.nome));
-    return DOCS_ATLETA.filter((n) => !present.has(n)).length;
-  }
-
-  // Upload handlers
-  async function addFilesSocio(docName: DocSocio, files: FileList | null) {
-    if (!files || !files.length || !pessoaId) return;
+  async function refreshAll() {
     setLoading(true);
-    try {
-      for (const f of Array.from(files)) await uploadDocumento("socio", docName, f, { pessoaId });
-      const docs = await listDocumentos("socio", { pessoaId });
-      const hydrated = await Promise.all(docs.map(hydrateDocumentoWithFiles));
-      setSocioDocs(hydrated);
-    } catch (e: any) {
-      alert(e.message || "Falha no upload");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function addFilesAtleta(docName: DocAtleta, atletaId: string, files: FileList | null) {
-    if (!files || !files.length) return;
-    setLoading(true);
-    try {
-      for (const f of Array.from(files)) await uploadDocumento("atleta", docName, f, { atletaId });
-      const docsA = await listDocumentos("atleta", { atletaId });
-      const hydratedA = await Promise.all(docsA.map(hydrateDocumentoWithFiles));
-      setDocsByAtleta((prev) => ({ ...prev, [atletaId]: hydratedA }));
-    } catch (e: any) {
-      alert(e.message || "Falha no upload");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function replaceFile(fileId: string, newFile: File | null, atletaId?: string) {
-    if (!newFile) return;
-    setLoading(true);
-    try {
-      await replaceDocumentoFile(fileId, newFile);
-      if (typeof atletaId === "string") {
-        const docsA = await listDocumentos("atleta", { atletaId });
-        const hydratedA = await Promise.all(docsA.map(hydrateDocumentoWithFiles));
-        setDocsByAtleta((prev) => ({ ...prev, [atletaId]: hydratedA }));
-      } else if (pessoaId) {
-        const docs = await listDocumentos("socio", { pessoaId });
-        const hydrated = await Promise.all(docs.map(hydrateDocumentoWithFiles));
-        setSocioDocs(hydrated);
-      }
-    } catch (e: any) {
-      alert(e.message || "Falha ao substituir ficheiro");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function deleteFile(fileId: string, atletaId?: string) {
-    if (!confirm("Remover este ficheiro?")) return;
-    setLoading(true);
-    try {
-      await deleteDocumentoFile(fileId);
-      if (typeof atletaId === "string") {
-        const docsA = await listDocumentos("atleta", { atletaId });
-        const hydratedA = await Promise.all(docsA.map(hydrateDocumentoWithFiles));
-        setDocsByAtleta((prev) => ({ ...prev, [atletaId]: hydratedA }));
-      } else if (pessoaId) {
-        const docs = await listDocumentos("socio", { pessoaId });
-        const hydrated = await Promise.all(docs.map(hydrateDocumentoWithFiles));
-        setSocioDocs(hydrated);
-      }
-    } catch (e: any) {
-      alert(e.message || "Falha ao remover ficheiro");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Refs de inputs
-  const socioRefs = useInputRefs(); // `SOCIO::<docName>`
-  const atletaAddRefs = useInputRefs(); // `ATLETA_ADD::<atletaId>::<docName>`
-  const fileReplaceRefs = useInputRefs(); // `REPLACE::<fileId>`
-
-  // Migração (DataURL -> Storage+DB)
-  async function migrateLocalToStorage() {
-    if (!pessoaId) {
-      alert("Sem id do perfil (pessoa). Guarde primeiro os dados pessoais.");
-      return;
-    }
-    setMigrBusy(true);
-    setMigrLog([]);
-
-    const log = (s: string) => setMigrLog((prev) => [...prev, s]);
-
     try {
       // Sócio
-      for (const docName of Object.keys(state.docsSocio || {}) as DocSocio[]) {
-        const meta = state.docsSocio[docName];
-        if (!meta) continue;
-        log(`Sócio: ${docName} — a migrar...`);
-        const file = await dataURLtoFile(meta.dataUrl, meta.name || `${docName}.bin`);
-        await uploadDocumento("socio", docName, file, { pessoaId });
-        log(`Sócio: ${docName} — OK`);
+      const socioObj: Record<DocSocio, DocumentoRow[]> = {} as any;
+      for (const t of DOCS_SOCIO) {
+        const rows = await listDocs('socio', t);
+        socioObj[t] = await withSignedUrls(rows);
       }
+      setDocsSocio(socioObj);
 
       // Atletas
-      for (const atleta of state.atletas) {
-        const docs = state.docsAtleta[atleta.id] || {};
-        for (const docName of Object.keys(docs) as DocAtleta[]) {
-          const meta = docs[docName];
-          if (!meta) continue;
-          log(`Atleta ${atleta.nomeCompleto}: ${docName} — a migrar...`);
-          const file = await dataURLtoFile(meta.dataUrl, meta.name || `${docName}.bin`);
-          await uploadDocumento("atleta", docName, file, { atletaId: atleta.id });
-          log(`Atleta ${atleta.nomeCompleto}: ${docName} — OK`);
+      const porAtleta: Record<string, Record<DocAtleta, DocumentoRow[]>> = {};
+      for (const a of atletas) {
+        const d: Record<DocAtleta, DocumentoRow[]> = {} as any;
+        for (const t of DOCS_ATLETA) {
+          const rows = await listDocs('atleta', t, { atletaId: a.id });
+          d[t] = await withSignedUrls(rows);
+        }
+        porAtleta[a.id] = d;
+      }
+      setDocsPorAtleta(porAtleta);
+    } catch (e: any) {
+      setMsg(e.message || 'Falha ao listar documentos');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atletas.map(a => a.id).join('|')]);
+
+  /* ---------- Ações Sócio ---------- */
+
+  async function handleUploadSocio(tipo: DocSocio, file: File) {
+    try {
+      const row = await uploadDoc('socio', tipo, file, { page: null });
+      // atualiza cache
+      const next = { ...docsSocio };
+      next[tipo] = await withSignedUrls(await listDocs('socio', tipo));
+      setDocsSocio(next);
+    } catch (e: any) {
+      setMsg(e.message || 'Falha no upload');
+    }
+  }
+
+  async function handleReplaceSocio(fileRowId: string, file: File, tipo: DocSocio) {
+    try {
+      await replaceDoc(fileRowId, file);
+      const next = { ...docsSocio };
+      next[tipo] = await withSignedUrls(await listDocs('socio', tipo));
+      setDocsSocio(next);
+    } catch (e: any) {
+      setMsg(e.message || 'Falha ao substituir');
+    }
+  }
+
+  async function handleDeleteSocio(fileRowId: string, tipo: DocSocio) {
+    if (!confirm('Apagar este ficheiro?')) return;
+    try {
+      await deleteDoc(fileRowId);
+      const next = { ...docsSocio };
+      next[tipo] = await withSignedUrls(await listDocs('socio', tipo));
+      setDocsSocio(next);
+    } catch (e: any) {
+      setMsg(e.message || 'Falha ao apagar');
+    }
+  }
+
+  /* ---------- Ações Atleta ---------- */
+
+  async function handleUploadAtleta(atletaId: string, tipo: DocAtleta, file: File) {
+    try {
+      const row = await uploadDoc('atleta', tipo, file, { atletaId, page: null });
+      const next = { ...docsPorAtleta };
+      next[atletaId][tipo] = await withSignedUrls(await listDocs('atleta', tipo, { atletaId }));
+      setDocsPorAtleta(next);
+    } catch (e: any) {
+      setMsg(e.message || 'Falha no upload');
+    }
+  }
+
+  async function handleReplaceAtleta(atletaId: string, fileRowId: string, tipo: DocAtleta, file: File) {
+    try {
+      await replaceDoc(fileRowId, file);
+      const next = { ...docsPorAtleta };
+      next[atletaId][tipo] = await withSignedUrls(await listDocs('atleta', tipo, { atletaId }));
+      setDocsPorAtleta(next);
+    } catch (e: any) {
+      setMsg(e.message || 'Falha ao substituir');
+    }
+  }
+
+  async function handleDeleteAtleta(atletaId: string, fileRowId: string, tipo: DocAtleta) {
+    if (!confirm('Apagar este ficheiro?')) return;
+    try {
+      await deleteDoc(fileRowId);
+      const next = { ...docsPorAtleta };
+      next[atletaId][tipo] = await withSignedUrls(await listDocs('atleta', tipo, { atletaId }));
+      setDocsPorAtleta(next);
+    } catch (e: any) {
+      setMsg(e.message || 'Falha ao apagar');
+    }
+  }
+
+  /* ---------------- Migração DataURL -> Storage ---------------- */
+
+  function openMigration() {
+    setMigOpen(true);
+  }
+
+  async function runMigration() {
+    setMigRunning(true);
+    setMsg(null);
+    try {
+      const LS_KEY = 'bb_app_payments_v1';
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) {
+        setMsg('Não foram encontrados dados antigos para migrar.');
+        setMigRunning(false);
+        return;
+      }
+      const s = JSON.parse(raw);
+
+      // docs do sócio: s.docsSocio: { [nomeDoc]: { name, dataUrl, uploadedAt } }
+      if (s.docsSocio && typeof s.docsSocio === 'object') {
+        for (const [nome, meta] of Object.entries<any>(s.docsSocio)) {
+          if (meta?.dataUrl && meta?.name) {
+            const f = await dataUrlToFile(meta.dataUrl, meta.name);
+            await uploadDoc('socio', nome, f, { page: null });
+          }
         }
       }
 
-      // Limpa legacy local
-      setState((prev: any) => ({ ...prev, docsSocio: {}, docsAtleta: {} }));
-      log("Limpeza do legacy (localStorage) concluída.");
-
-      // Refresh
-      const docs = await listDocumentos("socio", { pessoaId });
-      const hydrated = await Promise.all(docs.map(hydrateDocumentoWithFiles));
-      setSocioDocs(hydrated);
-
-      const byA: Record<string, Array<{ doc: Documento; files: DocumentoFicheiro[] }>> = {};
-      for (const a of state.atletas) {
-        const docsA = await listDocumentos("atleta", { atletaId: a.id });
-        const hydratedA = await Promise.all(docsA.map(hydrateDocumentoWithFiles));
-        byA[a.id] = hydratedA;
+      // docs por atleta: s.docsAtleta: { [atletaId]: { [nomeDoc]: { name, dataUrl } } }
+      if (s.docsAtleta && typeof s.docsAtleta === 'object') {
+        for (const [athleteId, setByDoc] of Object.entries<any>(s.docsAtleta)) {
+          if (setByDoc && typeof setByDoc === 'object') {
+            for (const [nome, meta] of Object.entries<any>(setByDoc)) {
+              if (meta?.dataUrl && meta?.name) {
+                const f = await dataUrlToFile(meta.dataUrl, meta.name);
+                await uploadDoc('atleta', nome, f, { atletaId: athleteId, page: null });
+              }
+            }
+          }
+        }
       }
-      setDocsByAtleta(byA);
 
-      log("Migração terminada ✅");
+      // pagamentos antigos não tratados aqui (apenas docs)
+      setMsg('Migração concluída com sucesso.');
+      // opcionalmente, limpar chaves antigas
+      // localStorage.removeItem(LS_KEY);
+
+      // refrescar listagens
+      await refreshAll();
     } catch (e: any) {
-      log("Erro: " + (e.message || String(e)));
+      setMsg(e.message || 'Falha na migração');
     } finally {
-      setMigrBusy(false);
+      setMigRunning(false);
+      setMigOpen(false);
     }
   }
+
+  const socioMissingCount = useMemo(() => {
+    let m = 0;
+    for (const d of DOCS_SOCIO) if (!(docsSocio[d]?.length)) m++;
+    return m;
+  }, [docsSocio]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileUp className="h-5 w-5" />
-          Upload de Documentos
+          <FileUp className="h-5 w-5" /> Upload de Documentos
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-8">
-        {/* Barra de estado + migração */}
-        <section className="flex items-center justify-between gap-3">
-          <div className="text-sm">
-            {loading ? "A carregar…" : "Pronto"}
-            {pessoaId ? null : <span className="ml-2 text-red-600">• Guarde os Dados Pessoais para ativar uploads</span>}
-          </div>
-          {hasLocalLegacy && (
-            <Button variant="secondary" onClick={() => setMigrOpen(true)}>
-              Migrar ficheiros antigos
-            </Button>
-          )}
-        </section>
+      <CardContent className="space-y-6">
+        {/* Ações topo */}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={refreshAll} title="Atualizar">
+            <RefreshCw className="h-4 w-4 mr-2" /> Atualizar
+          </Button>
+          <Button variant="secondary" onClick={openMigration} title="Migrar DataURLs antigos">
+            <HardDriveUpload className="h-4 w-4 mr-2" /> Migrar dados antigos (localStorage)
+          </Button>
+          {msg && <span className="text-sm text-gray-600">{msg}</span>}
+        </div>
 
-        {/* Documentos do Sócio */}
+        {/* Sócio */}
         <section>
-          <div className="font-medium">Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})</div>
+          <div className="font-medium">
+            Documentos do Sócio ({perfilNome || contaEmail || 'Conta'})
+          </div>
           <div className="text-xs text-gray-500 mb-2">
             {socioMissingCount > 0 ? (
               <span className="text-red-600 flex items-center gap-1">
@@ -306,94 +279,77 @@ export default function UploadDocsSection({ state, setState }: Props) {
           </div>
 
           <div className="grid md:grid-cols-2 gap-3">
-            {DOCS_SOCIO.map((docName) => {
-              const existing = socioDocs.find((x) => x.doc.nome === docName);
-              const files = existing?.files || [];
-              const inputKey = `SOCIO::${docName}`;
-
+            {DOCS_SOCIO.map((tipo) => {
+              const rows = docsSocio[tipo] || [];
               return (
-                <div key={docName} className="border rounded-lg p-3">
+                <div key={tipo} className="border rounded-lg p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="font-medium">
-                        {docName}
-                        {state.perfil?.tipoSocio && docName === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
-                      </div>
+                      <div className="font-medium">{tipo}</div>
                       <div className="text-xs text-gray-500">
-                        {files.length > 0 ? `${files.length} ficheiro(s)` : "Nenhum ficheiro"}
+                        {rows.length ? `${rows.length} ficheiro(s)` : 'Em falta'}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        ref={socioRefs.setRef(inputKey)}
-                        type="file"
-                        accept="image/*,application/pdf"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          if (!e.target.files) return;
-                          void addFilesSocio(docName, e.target.files);
-                          e.currentTarget.value = "";
-                        }}
-                      />
+
+                    {/* Picker hidden para este bloco */}
+                    {socioPicker.InputEl}
+
+                    <div className="flex gap-2">
                       <Button
-                        variant={files.length > 0 ? "secondary" : "outline"}
-                        onClick={socioRefs.openFor(inputKey)}
-                        disabled={!pessoaId}
+                        variant={rows.length ? 'secondary' : 'outline'}
+                        onClick={() => {
+                          // anexar handler 1x e abrir
+                          const el = socioPicker.ref.current!;
+                          el.onchange = async (e: any) => {
+                            const f: File | undefined = e.target.files?.[0];
+                            if (!f) return;
+                            await handleUploadSocio(tipo, f);
+                          };
+                          socioPicker.open();
+                        }}
                       >
                         <Upload className="h-4 w-4 mr-1" />
-                        {files.length > 0 ? "Adicionar" : "Carregar"}
+                        {rows.length ? 'Adicionar' : 'Carregar'}
                       </Button>
                     </div>
                   </div>
 
-                  {files.length > 0 && (
-                    <ul className="mt-2 space-y-2 text-sm">
-                      {files.map((f) => {
-                        const repKey = `REPLACE::${f.id}`;
-                        return (
-                          <li key={f.id} className="flex items-center justify-between gap-2">
-                            <a
-                              href={f.signedUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="truncate underline"
-                              title={f.file_name}
+                  {rows.length > 0 && (
+                    <ul className="mt-3 space-y-2">
+                      {rows.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between rounded-md bg-gray-50 p-2">
+                          <a
+                            className="truncate underline text-sm"
+                            href={r.signedUrl || '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {r.file_name || r.path}
+                          </a>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                const el = socioPicker.ref.current!;
+                                el.onchange = async (e: any) => {
+                                  const f: File | undefined = e.target.files?.[0];
+                                  if (!f) return;
+                                  await handleReplaceSocio(r.id, f, tipo);
+                                };
+                                socioPicker.open();
+                              }}
                             >
-                              {f.file_name}
-                            </a>
-                            <div className="flex items-center gap-2">
-                              <input
-                                ref={fileReplaceRefs.setRef(repKey)}
-                                type="file"
-                                accept="image/*,application/pdf"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0] || null;
-                                  void replaceFile(f.id, file);
-                                  e.currentTarget.value = "";
-                                }}
-                              />
-                              <Button
-                                className="h-8 px-3 text-sm"
-                                variant="outline"
-                                onClick={fileReplaceRefs.openFor(repKey)}
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Substituir
-                              </Button>
-                              <Button
-                                className="h-8 px-3 text-sm"
-                                variant="destructive"
-                                onClick={() => deleteFile(f.id)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                Remover
-                              </Button>
-                            </div>
-                          </li>
-                        );
-                      })}
+                              <Replace className="h-4 w-4 mr-1" /> Substituir
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleDeleteSocio(r.id, tipo)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" /> Apagar
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
                     </ul>
                   )}
                 </div>
@@ -402,29 +358,27 @@ export default function UploadDocsSection({ state, setState }: Props) {
           </div>
         </section>
 
-        {/* Documentos por Atleta */}
+        {/* Atletas */}
         <section className="space-y-3">
           <div className="font-medium">Documentos por Atleta</div>
-          {state.atletas.length === 0 && <p className="text-sm text-gray-500">Sem atletas criados.</p>}
+          {atletas.length === 0 && <p className="text-sm text-gray-500">Sem atletas criados.</p>}
 
-          {state.atletas.map((a) => {
-            const packs = docsByAtleta[a.id] || [];
-            const filesByName = new Map<string, DocumentoFicheiro[]>(packs.map((p) => [p.doc.nome, p.files]));
+          {atletas.map((a) => {
+            const byType = docsPorAtleta[a.id] || {};
+            const missing = DOCS_ATLETA.filter((t) => !(byType[t]?.length)).length;
 
             return (
               <div key={a.id} className="border rounded-xl p-3">
                 <div className="flex items-center justify-between">
                   <div className="font-medium flex items-center gap-2">
-                    {a.nomeCompleto}
-                    {missingCountForAtleta(a.id) > 0 ? (
+                    {a.nomeCompleto}{' '}
+                    {missing > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
-                        <AlertCircle className="h-3 w-3" />
-                        {missingCountForAtleta(a.id)} doc(s) em falta
+                        <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Completo
+                        <CheckCircle2 className="h-3 w-3" /> Completo
                       </span>
                     )}
                   </div>
@@ -432,89 +386,77 @@ export default function UploadDocsSection({ state, setState }: Props) {
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-3 mt-3">
-                  {DOCS_ATLETA.map((docName) => {
-                    const files = filesByName.get(docName) || [];
-                    const addKey = `ATLETA_ADD::${a.id}::${docName}`;
+                  {DOCS_ATLETA.map((tipo) => {
+                    const rows = byType[tipo] || [];
 
                     return (
-                      <div key={docName} className="border rounded-lg p-3">
+                      <div key={tipo} className="border rounded-lg p-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <div className="font-medium">{docName}</div>
+                            <div className="font-medium">{tipo}</div>
                             <div className="text-xs text-gray-500">
-                              {files.length > 0 ? `${files.length} ficheiro(s)` : "Nenhum ficheiro"}
+                              {rows.length ? `${rows.length} ficheiro(s)` : 'Em falta'}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              ref={atletaAddRefs.setRef(addKey)}
-                              type="file"
-                              accept="image/*,application/pdf"
-                              multiple
-                              className="hidden"
-                              onChange={(e) => {
-                                if (!e.target.files) return;
-                                void addFilesAtleta(docName, a.id, e.target.files);
-                                e.currentTarget.value = "";
-                              }}
-                            />
+
+                          {/* Picker hidden reusável para atleta */}
+                          {atletaPicker.InputEl}
+
+                          <div className="flex gap-2">
                             <Button
-                              variant={files.length > 0 ? "secondary" : "outline"}
-                              onClick={atletaAddRefs.openFor(addKey)}
+                              variant={rows.length ? 'secondary' : 'outline'}
+                              onClick={() => {
+                                const el = atletaPicker.ref.current!;
+                                el.onchange = async (e: any) => {
+                                  const f: File | undefined = e.target.files?.[0];
+                                  if (!f) return;
+                                  await handleUploadAtleta(a.id, tipo, f);
+                                };
+                                atletaPicker.open();
+                              }}
                             >
                               <Upload className="h-4 w-4 mr-1" />
-                              {files.length > 0 ? "Adicionar" : "Carregar"}
+                              {rows.length ? 'Adicionar' : 'Carregar'}
                             </Button>
                           </div>
                         </div>
 
-                        {files.length > 0 && (
-                          <ul className="mt-2 space-y-2 text-sm">
-                            {files.map((f) => {
-                              const repKey = `REPLACE::${f.id}`;
-                              return (
-                                <li key={f.id} className="flex items-center justify-between gap-2">
-                                  <a
-                                    href={f.signedUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="truncate underline"
-                                    title={f.file_name}
+                        {rows.length > 0 && (
+                          <ul className="mt-3 space-y-2">
+                            {rows.map((r) => (
+                              <li key={r.id} className="flex items-center justify-between rounded-md bg-gray-50 p-2">
+                                <a
+                                  className="truncate underline text-sm"
+                                  href={r.signedUrl || '#'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {r.file_name || r.path}
+                                </a>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                      const el = atletaPicker.ref.current!;
+                                      el.onchange = async (e: any) => {
+                                        const f: File | undefined = e.target.files?.[0];
+                                        if (!f) return;
+                                        await handleReplaceAtleta(a.id, r.id, tipo, f);
+                                      };
+                                      atletaPicker.open();
+                                    }}
                                   >
-                                    {f.file_name}
-                                  </a>
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      ref={fileReplaceRefs.setRef(repKey)}
-                                      type="file"
-                                      accept="image/*,application/pdf"
-                                      className="hidden"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0] || null;
-                                        void replaceFile(f.id, file, a.id);
-                                        e.currentTarget.value = "";
-                                      }}
-                                    />
-                                    <Button
-                                      className="h-8 px-3 text-sm"
-                                      variant="outline"
-                                      onClick={fileReplaceRefs.openFor(repKey)}
-                                    >
-                                      <Plus className="h-4 w-4 mr-1" />
-                                      Substituir
-                                    </Button>
-                                    <Button
-                                      className="h-8 px-3 text-sm"
-                                      variant="destructive"
-                                      onClick={() => deleteFile(f.id, a.id)}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-1" />
-                                      Remover
-                                    </Button>
-                                  </div>
-                                </li>
-                              );
-                            })}
+                                    <Replace className="h-4 w-4 mr-1" /> Substituir
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    onClick={() => handleDeleteAtleta(a.id, r.id, tipo)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-1" /> Apagar
+                                  </Button>
+                                </div>
+                              </li>
+                            ))}
                           </ul>
                         )}
                       </div>
@@ -528,32 +470,22 @@ export default function UploadDocsSection({ state, setState }: Props) {
       </CardContent>
 
       {/* Diálogo de migração */}
-      <Dialog open={migrOpen} onOpenChange={setMigrOpen}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={migOpen} onOpenChange={setMigOpen}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Migração de ficheiros locais → Storage</DialogTitle>
+            <DialogTitle>Migrar documentos antigos (localStorage → Storage)</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm">
-              Isto envia os comprovativos/ficheiros guardados localmente (DataURL) para o Storage do Supabase e cria
-              registos nas tabelas <code>documentos</code>/<code>documentos_ficheiros</code>. No fim, limpa o
-              armazenamento local legado.
-            </p>
-            <div className="rounded-lg border p-2 h-40 overflow-auto text-xs bg-gray-50">
-              {migrLog.length === 0 ? (
-                <span className="text-gray-500">Sem logs ainda…</span>
-              ) : (
-                migrLog.map((l, i) => <div key={i}>{l}</div>)
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="secondary" onClick={() => setMigrOpen(false)} disabled={migrBusy}>
-                Fechar
-              </Button>
-              <Button onClick={() => void migrateLocalToStorage()} disabled={migrBusy || !pessoaId}>
-                {migrBusy ? "A migrar…" : "Iniciar migração"}
-              </Button>
-            </div>
+          <p className="text-sm text-gray-600">
+            Isto vai procurar ficheiros guardados localmente em DataURL (demo antiga) e carregá-los para o
+            Storage privado, criando entradas na tabela <code>documentos</code>.
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="secondary" onClick={() => setMigOpen(false)} disabled={migRunning}>
+              Cancelar
+            </Button>
+            <Button onClick={runMigration} disabled={migRunning}>
+              {migRunning ? 'A migrar…' : 'Migrar agora'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

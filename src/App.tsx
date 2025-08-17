@@ -777,8 +777,12 @@ export default function App(){
 
           {hasPerfil && (
             <TabsContent value="docs">
-              <UploadDocsSection state={state} setState={setState} />
-            </TabsContent>
+  <UploadDocsSection
+    perfilNome={state.perfil?.nomeCompleto || null}
+    contaEmail={state.conta?.email || null}
+    atletas={state.atletas}
+  />
+</TabsContent>
           )}
 
           {hasPerfil && hasAtletas && (
