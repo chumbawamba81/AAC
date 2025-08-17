@@ -36,6 +36,7 @@ export function computeEscalao(dobIso: string, genero: 'Feminino'|'Masculino'): 
     if (y < 1995) return 'Masters (<1995)';
   } else {
     if (y >= 2002 && y <= 2007) return 'Seniores masculinos Sub23 (2002-2007)';
+	if (y < 1995) return 'Masters (<1995)';
   }
   return 'Fora de escalões';
 }
