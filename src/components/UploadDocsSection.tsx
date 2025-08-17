@@ -1,9 +1,11 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
 import { Upload, FileUp, CheckCircle2, AlertCircle } from "lucide-react";
 import FilePickerButton from "./FilePickerButton";
+import type { PessoaDados } from "../types/PessoaDados";
+import type { Atleta } from "../types/Atleta";
 
+/** Listas de documentos */
 const DOCS_ATLETA = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
@@ -16,37 +18,10 @@ type DocAtleta = (typeof DOCS_ATLETA)[number];
 const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
 type DocSocio = (typeof DOCS_SOCIO)[number];
 
+/** Tipos auxiliares (reutilizam os tipos globais do projeto) */
 type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
 
-type PessoaDados = {
-  nomeCompleto: string;
-  tipoSocio: string;
-  dataNascimento: string;
-  morada: string;
-  codigoPostal: string;
-  tipoDocumento: string;
-  numeroDocumento: string;
-  nif: string;
-  telefone: string;
-  email: string;
-  profissao?: string;
-};
-
-type Atleta = {
-  id: string;
-  nomeCompleto: string;
-  dataNascimento: string;
-  genero?: "Masculino" | "Feminino";
-  escalao: string;
-  planoPagamento: "Mensal" | "Trimestral" | "Anual";
-  morada?: string;
-  codigoPostal?: string;
-  contactosUrgencia?: string;
-  emailsPreferenciais?: string;
-  alergias?: string;
-};
-
-type State = {
+type UploadStateSlice = {
   conta: { email: string } | null;
   perfil: PessoaDados | null;
   atletas: Atleta[];
@@ -54,6 +29,7 @@ type State = {
   docsAtleta: Record<string, Partial<Record<DocAtleta, UploadMeta>>>;
 };
 
+/** Util local: File -> dataURL (mantemos compat local; quando houver Storage, trocamos por upload) */
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -68,31 +44,34 @@ export default function UploadDocsSection({
   setState,
   saveState,
 }: {
-  state: State;
-  setState: (s: State) => void;
-  saveState: (s: State) => void;
+  state: UploadStateSlice;
+  setState: React.Dispatch<React.SetStateAction<any>>;
+  saveState: (s: any) => void;
 }) {
   async function toMeta(file: File) {
     const dataUrl = await toDataUrl(file);
-    return { name: file.name, dataUrl, uploadedAt: new Date().toISOString() };
+    return { name: file.name, dataUrl, uploadedAt: new Date().toISOString() } as UploadMeta;
   }
 
   async function uploadSocio(doc: DocSocio, file: File) {
-    const meta = (await toMeta(file)) as UploadMeta;
-    const next: State = { ...state, docsSocio: { ...state.docsSocio, [doc]: meta } };
+    const meta = await toMeta(file);
+    const next: UploadStateSlice = {
+      ...state,
+      docsSocio: { ...state.docsSocio, [doc]: meta },
+    };
     setState(next);
-    saveState(next);
+    saveState(next as any);
   }
 
   async function uploadAtleta(athleteId: string, doc: DocAtleta, file: File) {
-    const meta = (await toMeta(file)) as UploadMeta;
+    const meta = await toMeta(file);
     const current = state.docsAtleta[athleteId] || {};
-    const next: State = {
+    const next: UploadStateSlice = {
       ...state,
       docsAtleta: { ...state.docsAtleta, [athleteId]: { ...current, [doc]: meta } },
     };
     setState(next);
-    saveState(next);
+    saveState(next as any);
   }
 
   const socioMissing = DOCS_SOCIO.filter((d) => !state.docsSocio[d]);
@@ -141,7 +120,7 @@ export default function UploadDocsSection({
                   <FilePickerButton
                     variant={meta ? "secondary" : "outline"}
                     accept="image/*,application/pdf"
-                    onFiles={(files) => uploadSocio(doc, files[0])}
+                    onFiles={(files) => files[0] && uploadSocio(doc, files[0])}
                   >
                     <Upload className="h-4 w-4 mr-1" />
                     {meta ? "Substituir" : "Carregar"}
@@ -196,7 +175,7 @@ export default function UploadDocsSection({
                         <FilePickerButton
                           variant={meta ? "secondary" : "outline"}
                           accept="image/*,application/pdf"
-                          onFiles={(files) => uploadAtleta(a.id, doc, files[0])}
+                          onFiles={(files) => files[0] && uploadAtleta(a.id, doc, files[0])}
                         >
                           <Upload className="h-4 w-4 mr-1" />
                           {meta ? "Substituir" : "Carregar"}
