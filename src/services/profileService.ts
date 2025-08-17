@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient';
 import type { PessoaDados } from '../types/PessoaDados';
 
 // Se no teu domínio existir o tipo Genero, usa-o aqui; caso contrário, define-o:
-type Genero = "Masculino" | "Feminino" | "Outro";
+type Genero = "Masculino" | "Feminino";
 
 const TBL = 'dados_pessoais';
 
@@ -29,7 +29,7 @@ async function getUserId() {
 }
 
 function coerceGenero(x: string | null | undefined): Genero | undefined {
-  return x === "Masculino" || x === "Feminino" || x === "Outro" ? x : undefined;
+  return x === "Masculino" || x === "Feminino" ? x : undefined;
 }
 
 function mapDbToDomain(row: DbDadosPessoaisRow): (PessoaDados & { id: string }) {

@@ -29,7 +29,7 @@ async function getPerfilId(): Promise<string> {
 }
 
 function coerceGenero(x: string | null | undefined): Genero | undefined {
-  return x === 'Masculino' || x === 'Feminino' || x === 'Outro' ? x : undefined;
+  return x === 'Masculino' || x === 'Feminino' ? x : undefined;
 }
 
 function coercePlano(x: string | null | undefined): PlanoPagamento {
