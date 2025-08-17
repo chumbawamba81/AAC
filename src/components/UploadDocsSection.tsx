@@ -18,7 +18,7 @@ import {
   jaMigrado,
 } from '../services/migracaoDocumentos';
 
-// --- Tipos/constantes locais (mantém em linha com o resto da app) ---
+// --- Tipos/constantes locais ---
 type DocSocio = 'Ficha de Sócio' | 'Comprovativo de pagamento de sócio';
 const DOCS_SOCIO: DocSocio[] = ['Ficha de Sócio', 'Comprovativo de pagamento de sócio'];
 
@@ -56,9 +56,7 @@ export default function UploadDocsSection({
   });
 
   // Por atleta: { [atletaId]: { [docTipo]: Documento[] } }
-  const [docsAtleta, setDocsAtleta] = useState<Record<string, Record<DocAtleta, Documento[]>>>(
-    {},
-  );
+  const [docsAtleta, setDocsAtleta] = useState<Record<string, Record<DocAtleta, Documento[]>>>({});
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -95,10 +93,9 @@ export default function UploadDocsSection({
 
   useEffect(() => {
     // Recarrega quando a lista de atletas muda
-    const dep = JSON.stringify((state.atletas || []).map((x: any) => x.id));
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     refresh();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify((state.atletas || []).map((x: any) => x.id))]);
 
   // --- Handlers Sócio / Atleta ---
@@ -230,4 +227,113 @@ export default function UploadDocsSection({
                 <DocList
                   items={docsSocio[tipo] || []}
                   onReplace={replaceOne}
-                  onDelete={remove
+                  onDelete={removeOne}
+                  busy={busy}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Documentos por Atleta */}
+        <section className="space-y-4">
+          <div className="font-medium">Documentos por Atleta</div>
+          {(state.atletas || []).length === 0 ? (
+            <p className="text-sm text-gray-500">Sem atletas criados.</p>
+          ) : (
+            (state.atletas || []).map((a: any) => (
+              <div key={a.id} className="border rounded-xl p-3">
+                <div className="mb-2 font-medium">
+                  {a.nomeCompleto} — Escalão: {a.escalao}
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {DOCS_ATLETA.map((tipo) => (
+                    <div key={tipo} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">{tipo}</div>
+                        <label className="inline-flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="file"
+                            className="hidden"
+                            multiple
+                            onChange={(e) => uploadAtleta(a.id, tipo, e.target.files)}
+                          />
+                          <Button variant="outline" disabled={busy}>
+                            <Upload className="h-4 w-4 mr-1" />
+                            Carregar
+                          </Button>
+                        </label>
+                      </div>
+                      <DocList
+                        items={(docsAtleta[a.id]?.[tipo] || []) as Documento[]}
+                        onReplace={replaceOne}
+                        onDelete={removeOne}
+                        busy={busy}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </section>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DocList({
+  items,
+  onReplace,
+  onDelete,
+  busy,
+}: {
+  items: Documento[];
+  onReplace: (id: string, f: File | null) => void;
+  onDelete: (id: string) => void;
+  busy: boolean;
+}) {
+  if (!items || items.length === 0) {
+    return <p className="text-sm text-gray-500">Sem ficheiros.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {items.map((it) => (
+        <div key={it.id} className="flex items-center justify-between border rounded-md p-2">
+          <div className="text-sm">
+            <div className="font-medium">
+              Página {it.page} — {it.file_name}
+            </div>
+            {it.signedUrl ? (
+              <a
+                href={it.signedUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs underline"
+              >
+                Abrir
+              </a>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => onReplace(it.id, e.target.files?.[0] || null)}
+              />
+              <Button variant="secondary" disabled={busy}>
+                <Upload className="h-4 w-4 mr-1" />
+                Substituir
+              </Button>
+            </label>
+            <Button variant="destructive" onClick={() => onDelete(it.id)} disabled={busy}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Apagar
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
