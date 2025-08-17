@@ -1,22 +1,22 @@
-// src/services/atletasService.ts
 import { supabase } from '../supabaseClient';
 import type { Atleta, PlanoPagamento } from '../types/Atleta';
 import { getMyProfile } from './profileService';
 
+// Se tiveres o tipo Genero no domínio, importa-o; caso contrário, define-o:
+type Genero = "Masculino" | "Feminino" | "Outro";
+
 const TBL = 'atletas';
 
-/** Row tal como na BD (public.atletas) */
 type DbAtleta = {
   id: string;
   dados_pessoais_id: string | null;
   nome: string;
-  data_nascimento: string; // date como string YYYY-MM-DD
+  data_nascimento: string; // YYYY-MM-DD
   genero: string | null;
-  escalao?: string | null;    // coluna sem acento
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  ['escalão']?: string | null; // caso exista versão com acento
+  escalao?: string | null;
+  ['escalão']?: string | null;
   alergias: string;
-  opcao_pagamento: string | null; // 'Mensal' | 'Trimestral' | 'Anual'
+  opcao_pagamento: string | null; // Mensal|Trimestral|Anual
   morada: string | null;
   codigo_postal: string | null;
   contactos_urgencia: string | null;
@@ -30,19 +30,25 @@ async function getPerfilId(): Promise<string> {
   return p.id;
 }
 
+function coerceGenero(x: string | null | undefined): Genero | undefined {
+  return x === "Masculino" || x === "Feminino" || x === "Outro" ? x : undefined;
+}
+
+function coercePlano(x: string | null | undefined): PlanoPagamento {
+  return x === "Trimestral" || x === "Anual" ? x : "Mensal";
+}
+
 /** BD → Domínio */
 function mapDbToDomain(r: DbAtleta): Atleta {
-  // suporta ambas colunas: 'escalao' (ASCII) ou 'escalão' (acento)
   const escalao = (r.escalao ?? (r as any)['escalão']) ?? undefined;
-
   return {
     id: r.id,
     nomeCompleto: r.nome,
     dataNascimento: r.data_nascimento,
-    genero: r.genero ?? undefined,
+    genero: coerceGenero(r.genero),
     escalao,
     alergias: r.alergias ?? '',
-    planoPagamento: (r.opcao_pagamento as PlanoPagamento) ?? 'Mensal',
+    planoPagamento: coercePlano(r.opcao_pagamento),
     morada: r.morada ?? '',
     codigoPostal: r.codigo_postal ?? '',
     contactosUrgencia: r.contactos_urgencia ?? '',
@@ -53,7 +59,7 @@ function mapDbToDomain(r: DbAtleta): Atleta {
 /** Domínio → BD */
 function mapDomainToDb(perfilId: string, a: Atleta): Partial<DbAtleta> {
   const base: Partial<DbAtleta> = {
-    id: a.id, // a tua tabela tem default uuid_generate_v4(), mas como fazes onConflict:'id' convém enviar o id quando já existe
+    id: a.id,
     dados_pessoais_id: perfilId,
     nome: a.nomeCompleto,
     data_nascimento: a.dataNascimento,
@@ -65,12 +71,7 @@ function mapDomainToDb(perfilId: string, a: Atleta): Partial<DbAtleta> {
     contactos_urgencia: a.contactosUrgencia ?? null,
     emails_preferenciais: a.emailsPreferenciais ?? null,
   };
-
-  // escreve na coluna disponível: prioriza 'escalao'
   (base as any).escalao = a.escalao ?? null;
-  // Se usares apenas a versão com acento, troca a linha acima por:
-  // (base as any)['escalão'] = a.escalao ?? null;
-
   return base;
 }
 
@@ -79,12 +80,12 @@ export async function listAtletas(): Promise<Atleta[]> {
 
   const { data, error } = await supabase
     .from(TBL)
-    .select<DbAtleta>('id, dados_pessoais_id, nome, data_nascimento, genero, escalao, "escalão", alergias, opcao_pagamento, morada, codigo_postal, contactos_urgencia, emails_preferenciais, created_at')
+    .select('id, dados_pessoais_id, nome, data_nascimento, genero, escalao, "escalão", alergias, opcao_pagamento, morada, codigo_postal, contactos_urgencia, emails_preferenciais, created_at')
     .eq('dados_pessoais_id', perfilId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .returns<DbAtleta[]>(); // <- aqui
 
   if (error) throw error;
-
   return (data ?? []).map(mapDbToDomain);
 }
 
@@ -95,8 +96,9 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
   const { data, error } = await supabase
     .from(TBL)
     .upsert(row, { onConflict: 'id' })
-    .select<DbAtleta>('id, dados_pessoais_id, nome, data_nascimento, genero, escalao, "escalão", alergias, opcao_pagamento, morada, codigo_postal, contactos_urgencia, emails_preferenciais, created_at')
-    .single();
+    .select('id, dados_pessoais_id, nome, data_nascimento, genero, escalao, "escalão", alergias, opcao_pagamento, morada, codigo_postal, contactos_urgencia, emails_preferenciais, created_at')
+    .single()
+    .returns<DbAtleta>(); // <- aqui
 
   if (error) throw error;
   return mapDbToDomain(data);
@@ -104,7 +106,6 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
 
 export async function deleteAtleta(id: string) {
   const perfilId = await getPerfilId();
-  // filtra também por dados_pessoais_id por segurança (evita apagar registos de outros utilizadores por engano)
   const { error } = await supabase.from(TBL).delete().eq('id', id).eq('dados_pessoais_id', perfilId);
   if (error) throw error;
 }

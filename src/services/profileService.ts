@@ -1,15 +1,16 @@
-// src/services/profileService.ts
 import { supabase } from '../supabaseClient';
 import type { PessoaDados } from '../types/PessoaDados';
 
+// Se no teu domínio existir o tipo Genero, usa-o aqui; caso contrário, define-o:
+type Genero = "Masculino" | "Feminino" | "Outro";
+
 const TBL = 'dados_pessoais';
 
-/** Row tal como está na BD (schema public.dados_pessoais) */
 type DbDadosPessoaisRow = {
   id: string;
   user_id: string | null;
   nome_completo: string;
-  data_nascimento: string; // Supabase devolve 'date' como string YYYY-MM-DD
+  data_nascimento: string; // YYYY-MM-DD
   genero: string | null;
   morada: string | null;
   codigo_postal: string | null;
@@ -27,13 +28,16 @@ async function getUserId() {
   return data.user.id;
 }
 
-/** BD → Domínio */
+function coerceGenero(x: string | null | undefined): Genero | undefined {
+  return x === "Masculino" || x === "Feminino" || x === "Outro" ? x : undefined;
+}
+
 function mapDbToDomain(row: DbDadosPessoaisRow): (PessoaDados & { id: string }) {
   return {
     id: row.id,
     nomeCompleto: row.nome_completo,
     dataNascimento: row.data_nascimento,
-    genero: row.genero ?? undefined,
+    genero: coerceGenero(row.genero),
     morada: row.morada ?? '',
     codigoPostal: row.codigo_postal ?? '',
     telefone: row.telefone ?? '',
@@ -43,7 +47,6 @@ function mapDbToDomain(row: DbDadosPessoaisRow): (PessoaDados & { id: string }) 
   };
 }
 
-/** Domínio → BD */
 function mapDomainToDb(uid: string, payload: PessoaDados): Omit<DbDadosPessoaisRow, 'id'> {
   return {
     user_id: uid,
@@ -59,29 +62,20 @@ function mapDomainToDb(uid: string, payload: PessoaDados): Omit<DbDadosPessoaisR
   };
 }
 
-/**
- * Lê o meu perfil. Assume 1-registo-por-user via UNIQUE(user_id).
- */
 export async function getMyProfile(): Promise<(PessoaDados & { id: string }) | null> {
   const uid = await getUserId();
-
   const { data, error } = await supabase
     .from(TBL)
-    .select<DbDadosPessoaisRow>('id, user_id, nome_completo, data_nascimento, genero, morada, codigo_postal, telefone, email, situacao_tesouraria, noticias, created_at')
+    .select('id, user_id, nome_completo, data_nascimento, genero, morada, codigo_postal, telefone, email, situacao_tesouraria, noticias, created_at')
     .eq('user_id', uid)
-    .maybeSingle();
+    .maybeSingle()
+    .returns<DbDadosPessoaisRow | null>(); // <- aqui
 
   if (error) throw error;
   if (!data) return null;
-
   return mapDbToDomain(data);
 }
 
-/**
- * Cria/actualiza o meu perfil com base em user_id.
- * Requer índice único:
- *   create unique index if not exists dados_pessoais_user_id_key on public.dados_pessoais(user_id);
- */
 export async function upsertMyProfile(payload: PessoaDados): Promise<PessoaDados & { id: string }> {
   const uid = await getUserId();
   const row = mapDomainToDb(uid, payload);
@@ -89,45 +83,10 @@ export async function upsertMyProfile(payload: PessoaDados): Promise<PessoaDados
   const { data, error } = await supabase
     .from(TBL)
     .upsert(row, { onConflict: 'user_id' })
-    .select<DbDadosPessoaisRow>('id, user_id, nome_completo, data_nascimento, genero, morada, codigo_postal, telefone, email, situacao_tesouraria, noticias, created_at')
-    .single(); // após upsert, queremos a linha final
+    .select('id, user_id, nome_completo, data_nascimento, genero, morada, codigo_postal, telefone, email, situacao_tesouraria, noticias, created_at')
+    .single()
+    .returns<DbDadosPessoaisRow>(); // <- aqui
 
   if (error) throw error;
   return mapDbToDomain(data);
-}
-
-/**
- * (Opcional) Garante que existe sempre um registo; se não existir, cria com mínimos.
- */
-export async function getOrCreateMyProfile(minimos?: Partial<PessoaDados>): Promise<PessoaDados & { id: string }> {
-  const existing = await getMyProfile();
-  if (existing) return existing;
-
-  const uid = await getUserId();
-  const base: PessoaDados = {
-    nomeCompleto: minimos?.nomeCompleto ?? '',
-    dataNascimento: minimos?.dataNascimento ?? '',
-    genero: minimos?.genero,
-    morada: minimos?.morada ?? '',
-    codigoPostal: minimos?.codigoPostal ?? '',
-    telefone: minimos?.telefone ?? '',
-    email: minimos?.email ?? '',
-    situacaoTesouraria: minimos?.situacaoTesouraria ?? 'Campo em atualização',
-    noticias: minimos?.noticias ?? '',
-    // Campos de sócio/documento se existirem no teu tipo PessoaDados:
-    tipoSocio: (minimos as any)?.tipoSocio ?? 'Não pretendo ser sócio',
-    tipoDocumento: (minimos as any)?.tipoDocumento ?? 'Cartão de cidadão',
-    numeroDocumento: (minimos as any)?.numeroDocumento ?? '',
-    nif: (minimos as any)?.nif ?? '',
-    profissao: (minimos as any)?.profissao ?? '',
-  };
-
-  // Usa upsert por user_id para criar
-  return upsertMyProfile({ ...base, email: base.email || (await inferEmailFromSession(uid)) });
-}
-
-async function inferEmailFromSession(_uid: string): Promise<string> {
-  // Tenta ler o email do utilizador autenticado (evita criar perfil com email vazio)
-  const { data } = await supabase.auth.getUser();
-  return data.user?.email ?? '';
 }

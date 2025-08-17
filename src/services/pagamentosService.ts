@@ -1,20 +1,13 @@
-// src/services/pagamentosService.ts
 import { supabase } from '../supabaseClient';
 
-/**
- * Estrutura na BD (public.pagamentos)
- */
 type DbPagamento = {
   id: string;
   atleta_id: string | null;
-  descricao: string;                 // p.ex.: "Pagamento - 1º Mês" | "Pagamento - 2º Trimestre" | "Pagamento da anuidade"
-  comprovativo_url: string | null;   // URL (storage) ou outro identificador
+  descricao: string;
+  comprovativo_url: string | null;
   created_at?: string | null;
 };
 
-/**
- * Tipo de domínio usado no front-end
- */
 export type Pagamento = {
   id: string;
   atletaId: string;
@@ -23,7 +16,6 @@ export type Pagamento = {
   createdAt?: string | null;
 };
 
-/** Mapeadores BD ⇄ Domínio */
 function mapDbToDomain(r: DbPagamento): Pagamento {
   return {
     id: r.id,
@@ -34,43 +26,34 @@ function mapDbToDomain(r: DbPagamento): Pagamento {
   };
 }
 
-/**
- * IMPORTANTE: para o upsert por (atleta_id, descricao)
- * deves ter o índice único criado na BD:
- *
- *  create unique index if not exists pagamentos_atleta_descricao_key
- *    on public.pagamentos(atleta_id, descricao);
- */
-
-/** Lista pagamentos de um atleta (ordenados por created_at ascendente) */
+/** Lista pagamentos de um atleta (ordenados por created_at asc) */
 export async function listPagamentos(atletaId: string): Promise<Pagamento[]> {
   const { data, error } = await supabase
     .from('pagamentos')
-    .select<DbPagamento>('id, atleta_id, descricao, comprovativo_url, created_at')
+    .select('id, atleta_id, descricao, comprovativo_url, created_at')
     .eq('atleta_id', atletaId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .returns<DbPagamento[]>(); // <- aqui
 
   if (error) throw error;
   return (data ?? []).map(mapDbToDomain);
 }
 
-/** Obtém (se existir) um pagamento específico por descrição */
+/** Um pagamento específico por descrição */
 export async function getPagamento(atletaId: string, descricao: string): Promise<Pagamento | null> {
   const { data, error } = await supabase
     .from('pagamentos')
-    .select<DbPagamento>('id, atleta_id, descricao, comprovativo_url, created_at')
+    .select('id, atleta_id, descricao, comprovativo_url, created_at')
     .eq('atleta_id', atletaId)
     .eq('descricao', descricao)
-    .maybeSingle();
+    .maybeSingle()
+    .returns<DbPagamento | null>(); // <- aqui
 
   if (error) throw error;
   return data ? mapDbToDomain(data) : null;
 }
 
-/**
- * Guarda/substitui um comprovativo para uma dada descrição (slot).
- * Requer o índice único em (atleta_id, descricao).
- */
+/** Upsert por (atleta_id, descricao) — requer índice único correspondente */
 export async function upsertComprovativo(
   atletaId: string,
   descricao: string,
@@ -81,14 +64,14 @@ export async function upsertComprovativo(
   const { data, error } = await supabase
     .from('pagamentos')
     .upsert(payload, { onConflict: 'atleta_id,descricao' })
-    .select<DbPagamento>('id, atleta_id, descricao, comprovativo_url, created_at')
-    .single();
+    .select('id, atleta_id, descricao, comprovativo_url, created_at')
+    .single()
+    .returns<DbPagamento>(); // <- aqui
 
   if (error) throw error;
   return mapDbToDomain(data);
 }
 
-/** Apaga um comprovativo (linha) por descrição */
 export async function deleteComprovativo(atletaId: string, descricao: string): Promise<void> {
   const { error } = await supabase
     .from('pagamentos')
@@ -99,7 +82,6 @@ export async function deleteComprovativo(atletaId: string, descricao: string): P
   if (error) throw error;
 }
 
-/** Apaga todos os comprovativos de um atleta (útil em remoções cascata no UI) */
 export async function deleteAllComprovativosDoAtleta(atletaId: string): Promise<void> {
   const { error } = await supabase
     .from('pagamentos')
