@@ -570,35 +570,36 @@ useEffect(() => {
   const hasAtletas = state.atletas.length > 0;
   const mainTabLabel = hasPerfil ? "Página Inicial" : "Dados Pessoais";
 
-async function afterSavePerfil(novo: DadosPessoais) {
-  // mantém a lógica atual
-  setPostSavePrompt(true);
-  setActiveTab("home");
+async function afterSavePerfil() {
+  if (!state.dadosPessoais) return;
 
-  // 👇 Inserir ou atualizar no Supabase
   const { data, error } = await supabase.from("dados_pessoais").upsert([
     {
-      id: novo.id,
-      user_id: user?.id,  // associa ao utilizador autenticado
-      nome_completo: novo.nomeCompleto,
-      data_nascimento: novo.dataNascimento,
-      genero: novo.genero,
-      morada: novo.morada,
-      codigo_postal: novo.codigoPostal,
-      telefone: novo.telefone,
-      email: novo.email,
-      situacao_tesouraria: novo.situacaoTesouraria,
-      noticias: novo.noticias,
+      id: state.dadosPessoais.id,
+      user_id: user?.id,
+      nome_completo: state.dadosPessoais.nomeCompleto,
+      data_nascimento: state.dadosPessoais.dataNascimento,
+      genero: state.dadosPessoais.genero,
+      morada: state.dadosPessoais.morada,
+      codigo_postal: state.dadosPessoais.codigoPostal,
+      telefone: state.dadosPessoais.telefone,
+      email: state.dadosPessoais.email,
+      situacao_tesouraria: state.dadosPessoais.situacaoTesouraria,
+      noticias: state.dadosPessoais.noticias,
     },
   ]);
 
   if (error) {
-    console.error("❌ Erro ao guardar dados pessoais no Supabase:", error);
+    console.error("❌ Erro ao guardar dados pessoais:", error);
     alert("Erro ao guardar no servidor");
   } else {
     console.log("✅ Dados pessoais guardados no Supabase:", data);
   }
+
+  setPostSavePrompt(true);
+  setActiveTab("home");
 }
+
 
 
   return (
