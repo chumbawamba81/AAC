@@ -1,5 +1,5 @@
-// src/App.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+// Serviços (Supabase) de autenticação e dados
 import { signIn, signUp, signOut } from "./services/authService";
 import { getMyProfile, upsertMyProfile } from "./services/profileService";
 import {
@@ -41,8 +41,11 @@ import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
 import AtletaFormCompleto from "./components/AtletaFormCompleto";
 import UploadDocsSection from "./components/UploadDocsSection";
 import FilePickerButton from "./components/FilePickerButton";
+
+// Supabase
 import { supabase } from "./supabaseClient";
 
+// Pagamentos (tabela/bucket dedicados)
 import {
   listByAtleta as listPagamentosByAtleta,
   saveComprovativo as saveComprovativoPagamento,
@@ -51,7 +54,7 @@ import {
   type PagamentoRowWithUrl,
 } from "./services/pagamentosService";
 
-/* -------------------- Constantes -------------------- */
+/* -------------------- Constantes locais -------------------- */
 const DOCS_ATLETA = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
@@ -73,7 +76,7 @@ type State = {
   atletas: Atleta[];
   docsSocio: Partial<Record<DocSocio, UploadMeta>>;
   docsAtleta: Record<string, Partial<Record<DocAtleta, UploadMeta>>>;
-  pagamentos: Record<string, Array<UploadMeta | null>>; // legado
+  pagamentos: Record<string, Array<UploadMeta | null>>; // legado (mantido por compat)
   tesouraria?: string;
   noticias?: string;
   verificationPendingEmail?: string | null;
@@ -129,12 +132,11 @@ function isFutureISODate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(s + "T00:00:00");
   if (Number.isNaN(d.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0,0,0,0);
   return d.getTime() > today.getTime();
 }
 
-/* -------------------- Estado local -------------------- */
+/* -------------------- Persistência local -------------------- */
 function loadState(): State {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -239,10 +241,8 @@ function ContaSection({
         onLogged();
       }
     })();
-    return () => {
-      mounted = false;
-    };
-  }, []); // only once
+    return () => { mounted = false; };
+  }, []); // eslint-disable-line
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
@@ -251,10 +251,7 @@ function ContaSection({
 
     if (mode === "register") {
       const chk = isPasswordStrong(password);
-      if (!chk.ok) {
-        setError("A palavra-passe não cumpre os requisitos.");
-        return;
-      }
+      if (!chk.ok) { setError("A palavra-passe não cumpre os requisitos."); return; }
       try {
         setLoading(true);
         await signUp(email, password);
@@ -264,9 +261,7 @@ function ContaSection({
         setInfo("Registo efetuado. Verifique o seu email para validar a conta.");
       } catch (e: any) {
         setError(e.message || "Erro no registo");
-      } finally {
-        setLoading(false);
-      }
+      } finally { setLoading(false); }
       return;
     }
 
@@ -276,17 +271,12 @@ function ContaSection({
       const access = data?.session?.access_token;
       if (!access) throw new Error("Sessão inválida. Verifique o email de confirmação.");
       const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
-      setState(next);
-      saveState(next);
-      if (!remember) {
-        // nothing special
-      }
+      setState(next); saveState(next);
+      if (!remember) { /* opcional: limpezas */ }
       onLogged();
     } catch (e: any) {
       setError(e.message || "Erro de autenticação");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
 
   async function submitForgot(ev: React.FormEvent) {
@@ -364,6 +354,7 @@ function ContaSection({
 
 /* ---------------------------- DadosPessoaisSection ---------------------------- */
 
+// Extensão local para incluir validade do documento (mantendo o tipo original)
 type PessoaDadosWithVal = PessoaDados & { dataValidadeDocumento?: string };
 
 function DadosPessoaisSection({
@@ -401,6 +392,7 @@ function DadosPessoaisSection({
     }
   );
 
+  // ===== Contadores reais do Supabase (documentos) =====
   const [userId, setUserId] = useState<string | null>(null);
   const [socioMissingCount, setSocioMissingCount] = useState<number>(DOCS_SOCIO.length);
   const [athMissingCount, setAthMissingCount] = useState<number>(state.atletas.length * DOCS_ATLETA.length);
@@ -425,6 +417,7 @@ function DadosPessoaisSection({
         setAthMissingCount(state.atletas.length * DOCS_ATLETA.length);
         return;
       }
+      // -- Sócio
       const socioSel = await supabase
         .from("documentos")
         .select("doc_tipo")
@@ -436,6 +429,7 @@ function DadosPessoaisSection({
       const socioMiss = DOCS_SOCIO.filter(t => !socioSet.has(t)).length;
       setSocioMissingCount(socioMiss);
 
+      // -- Atletas
       const athSel = await supabase
         .from("documentos")
         .select("atleta_id, doc_tipo")
@@ -452,16 +446,12 @@ function DadosPessoaisSection({
       let totalMissing = 0;
       for (const a of state.atletas) {
         const have = byAth.get(a.id) || new Set<string>();
-        for (const t of DOCS_ATLETA) {
-          if (!have.has(t)) totalMissing++;
-        }
+        for (const t of DOCS_ATLETA) if (!have.has(t)) totalMissing++;
       }
       setAthMissingCount(totalMissing);
     }
 
-    fetchDocCounters().catch((e) => {
-      console.error("[fetchDocCounters]", e);
-    });
+    fetchDocCounters().catch((e) => console.error("[fetchDocCounters]", e));
   }, [userId, state.atletas.map(a=>a.id).join(",")]);
 
   async function save(ev: React.FormEvent) {
@@ -476,7 +466,6 @@ function DadosPessoaisSection({
     if (!isValidNIF(form.nif)) errs.push("NIF inválido");
     if (!form.telefone.trim()) errs.push("Telefone obrigatório");
     if (!form.email.trim()) errs.push("Email obrigatório");
-
     if (form.tipoDocumento === "Cartão de cidadão") {
       if (!form.dataValidadeDocumento || !/^\d{4}-\d{2}-\d{2}$/.test(form.dataValidadeDocumento)) {
         errs.push("Validade do cartão de cidadão é obrigatória");
@@ -484,7 +473,6 @@ function DadosPessoaisSection({
         errs.push("A validade do cartão de cidadão deve ser futura");
       }
     }
-
     if (errs.length) { alert(errs.join("\n")); return; }
 
     try {
@@ -624,13 +612,10 @@ function PagamentosSection({ state }: { state: State }) {
       if (!mounted) return;
       setUserId(data?.user?.id ?? null);
     });
-    return () => {
-      mounted = false;
-      sub.data.subscription.unsubscribe();
-    };
+    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
   }, []);
 
-  async function refreshPayments() {
+  const refreshPayments = useCallback(async () => {
     if (!userId) return;
     const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
     for (const a of state.atletas) {
@@ -655,11 +640,9 @@ function PagamentosSection({ state }: { state: State }) {
       });
     }
     setPayments(next);
-  }
+  }, [userId, state.atletas]);
 
-  useEffect(() => {
-    refreshPayments();
-  }, [userId, state.atletas.map((a) => a.id + a.planoPagamento).join("|")]); // deps ok
+  useEffect(() => { refreshPayments(); }, [refreshPayments]);
 
   useEffect(() => {
     const channel = supabase
@@ -671,14 +654,12 @@ function PagamentosSection({ state }: { state: State }) {
           const newAth = (payload as any)?.new?.atleta_id;
           const oldAth = (payload as any)?.old?.atleta_id;
           const ids = new Set(state.atletas.map((a) => a.id));
-          if (ids.has(newAth) || ids.has(oldAth)) {
-            refreshPayments();
-          }
+          if (ids.has(newAth) || ids.has(oldAth)) refreshPayments();
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [state.atletas.map((a) => a.id).join("|")]);
+  }, [state.atletas, refreshPayments]);
 
   async function handleUpload(athlete: Atleta, idx: number, file: File) {
     if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
@@ -750,7 +731,7 @@ function PagamentosSection({ state }: { state: State }) {
                           {meta ? (
                             <span className="inline-flex items-center gap-2">
                               Comprovativo carregado
-                              {meta?.signedUrl && (
+                              {meta.signedUrl && (
                                 <a className="underline inline-flex items-center gap-1" href={meta.signedUrl} target="_blank" rel="noreferrer">
                                   <LinkIcon className="h-3 w-3" />
                                   Abrir
@@ -802,6 +783,7 @@ function AtletasSection({
   const [open,setOpen]=useState(false);
   const [editing,setEditing]=useState<Atleta|undefined>();
 
+  // missing por atleta calculado do Supabase + Realtime
   const [userId, setUserId] = useState<string | null>(null);
   const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
 
@@ -848,7 +830,7 @@ function AtletasSection({
   useEffect(() => {
     if (!userId) return;
     recomputeMissing(userId);
-  }, [userId, state.atletas.map(a => a.id).join(",")]); // deps ok
+  }, [userId, state.atletas.map(a => a.id).join(",")]); // eslint-disable-line
 
   useEffect(() => {
     if (!userId) return;
@@ -861,13 +843,11 @@ function AtletasSection({
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [userId]);
+  }, [userId]); // eslint-disable-line
 
-  function isAnuidadeObrigatoriaLocal(a: Atleta) {
-    return isAnuidadeObrigatoria(a.escalao);
-  }
+  // Forçar plano Anual para masters/sub-23 no momento da gravação
   function forcePlanoIfNeeded(a: Atleta): Atleta {
-    if (isAnuidadeObrigatoriaLocal(a) && a.planoPagamento !== "Anual") {
+    if (isAnuidadeObrigatoria(a.escalao) && a.planoPagamento !== "Anual") {
       return { ...a, planoPagamento: "Anual" };
     }
     return a;
@@ -910,9 +890,7 @@ function AtletasSection({
                       : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Documentação completa</span>
                     }
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento: {isAnuidadeObrigatoriaLocal(a) ? "Anual (obrigatório)" : a.planoPagamento}
-                  </div>
+                  <div className="text-xs text-gray-500">{a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento: {isAnuidadeObrigatoria(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}</div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={()=>{setEditing(a); setOpen(true);}}>
@@ -970,32 +948,45 @@ export default function App(){
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
 
+  // --- SYNC sempre que o estado de autenticação muda (corrige o "modo anónimo") ---
   useEffect(() => {
-    let mounted = true;
+    // fetch imediato se já houver sessão (refresh da página)
     (async () => {
       const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      if (!data.session) return;
-      try {
+      if (data.session) {
         const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
-        const perfilNormalizado: PessoaDados | null = perfilDb
-          ? normalizePessoaDados(perfilDb, state.conta?.email)
-          : null;
-
-        const next: State = {
-          ...state,
-          perfil: perfilNormalizado ?? state.perfil,
-          atletas: atletasDb ?? state.atletas,
-        };
-
-        setState(next);
-        saveState(next);
-      } catch (e) {
-        console.error("Falha a sincronizar do Supabase:", e);
+        setState(prev => {
+          const email = data.session?.user?.email || prev.conta?.email || "";
+          return {
+            ...prev,
+            conta: email ? { email } : prev.conta,
+            perfil: perfilDb ? normalizePessoaDados(perfilDb, email) : prev.perfil,
+            atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
+          };
+        });
       }
     })();
-    return () => { mounted = false; };
-  }, []); // only once
+
+    // subscrição para futuros logins/logouts
+    const sub = supabase.auth.onAuthStateChange(async (_e, session) => {
+      if (session) {
+        const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
+        setState(prev => {
+          const email = session.user?.email || prev.conta?.email || "";
+          return {
+            ...prev,
+            conta: email ? { email } : prev.conta,
+            perfil: perfilDb ? normalizePessoaDados(perfilDb, email) : prev.perfil,
+            atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
+          };
+        });
+      }
+    });
+    return () => { sub.data.subscription.unsubscribe(); };
+  }, []);
+
+  // persistência local
+  useEffect(() => { saveState(state); }, [state]);
 
   const hasPerfil = !!state.perfil;
   const hasAtletas = state.atletas.length > 0;
@@ -1005,6 +996,9 @@ export default function App(){
     setPostSavePrompt(true);
     setActiveTab("home");
   }
+
+  // setter compatível com prop do UploadDocsSection (setState: (s: State) => void)
+  const setStatePlain = useCallback((s: State) => setState(s), []);
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
@@ -1036,7 +1030,8 @@ export default function App(){
 
           {hasPerfil && (
             <TabsContent value="docs">
-              <UploadDocsSection state={state} setState={setState} />
+              {/* compat com tua tipagem do componente */}
+              <UploadDocsSection state={state} setState={setStatePlain} />
             </TabsContent>
           )}
 
@@ -1083,10 +1078,7 @@ function AuthButton() {
       setLogged(!!session);
     });
     supabase.auth.getSession().then(({ data }) => setLogged(!!data.session));
-    return () => {
-      mounted = false;
-      sub.data.subscription.unsubscribe();
-    };
+    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
   }, []);
 
   if (!logged) return null;
@@ -1097,7 +1089,7 @@ function AuthButton() {
   );
 }
 
-/** Gate que só renderiza children quando há sessão */
+/** “Gate” que só renderiza children quando há sessão Supabase */
 function AuthGate({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
   const [ready, setReady] = useState<"checking" | "in" | "out">("checking");
   useEffect(() => {
@@ -1107,10 +1099,7 @@ function AuthGate({ children, fallback }: { children: React.ReactNode; fallback:
       setReady(session ? "in" : "out");
     });
     supabase.auth.getSession().then(({ data }) => setReady(data.session ? "in" : "out"));
-    return () => {
-      mounted = false;
-      sub.data.subscription.unsubscribe();
-    };
+    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
   }, []);
   if (ready === "checking") return <div className="text-sm text-gray-500">A verificar sessão...</div>;
   if (ready === "out") return <>{fallback}</>;
