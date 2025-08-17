@@ -1,5 +1,5 @@
 // src/components/UploadDocsSection.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Upload, Trash2, RefreshCw } from 'lucide-react';
@@ -43,6 +43,84 @@ function limparDataUrlsAntigos(nextState: any) {
   nextState.docsAtleta = {};
 }
 
+// ---------- Pequenos componentes utilitários ----------
+function FileTrigger({
+  multiple,
+  disabled,
+  onPick,
+  label,
+  leftIcon,
+}: {
+  multiple?: boolean;
+  disabled?: boolean;
+  onPick: (files: FileList) => void;
+  label: string;
+  leftIcon?: React.ReactNode;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={ref}
+        type="file"
+        className="hidden"
+        multiple={!!multiple}
+        onChange={(e) => {
+          const fs = e.target.files;
+          if (fs && fs.length) onPick(fs);
+          // permitir re-escolher o mesmo ficheiro
+          e.currentTarget.value = '';
+        }}
+      />
+      <Button
+        variant="outline"
+        disabled={disabled}
+        onClick={() => ref.current?.click()}
+      >
+        {leftIcon}
+        {label}
+      </Button>
+    </>
+  );
+}
+
+function SingleFileTrigger({
+  disabled,
+  onPickOne,
+  label,
+  leftIcon,
+}: {
+  disabled?: boolean;
+  onPickOne: (file: File) => void;
+  label: string;
+  leftIcon?: React.ReactNode;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={ref}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPickOne(f);
+          e.currentTarget.value = '';
+        }}
+      />
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => ref.current?.click()}
+      >
+        {leftIcon}
+        {label}
+      </Button>
+    </>
+  );
+}
+// ------------------------------------------------------
+
 export default function UploadDocsSection({
   state,
   setState,
@@ -56,7 +134,9 @@ export default function UploadDocsSection({
   });
 
   // Por atleta: { [atletaId]: { [docTipo]: Documento[] } }
-  const [docsAtleta, setDocsAtleta] = useState<Record<string, Record<DocAtleta, Documento[]>>>({});
+  const [docsAtleta, setDocsAtleta] = useState<Record<string, Record<DocAtleta, Documento[]>>>(
+    {},
+  );
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -92,15 +172,13 @@ export default function UploadDocsSection({
   }
 
   useEffect(() => {
-    // Recarrega quando a lista de atletas muda
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify((state.atletas || []).map((x: any) => x.id))]);
 
   // --- Handlers Sócio / Atleta ---
-  async function uploadSocio(tipo: DocSocio, files: FileList | null) {
-    if (!files?.length) return;
+  async function uploadSocio(tipo: DocSocio, files: FileList) {
     setBusy(true);
     try {
       for (const f of Array.from(files)) {
@@ -114,8 +192,7 @@ export default function UploadDocsSection({
     }
   }
 
-  async function uploadAtleta(atletaId: string, tipo: DocAtleta, files: FileList | null) {
-    if (!files?.length) return;
+  async function uploadAtleta(atletaId: string, tipo: DocAtleta, files: FileList) {
     setBusy(true);
     try {
       for (const f of Array.from(files)) {
@@ -129,8 +206,7 @@ export default function UploadDocsSection({
     }
   }
 
-  async function replaceOne(id: string, file: File | null) {
-    if (!file) return;
+  async function replaceOne(id: string, file: File) {
     setBusy(true);
     try {
       await replaceDocumento(id, file);
@@ -211,18 +287,13 @@ export default function UploadDocsSection({
               <div key={tipo} className="border rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="font-medium">{tipo}</div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="file"
-                      className="hidden"
-                      multiple
-                      onChange={(e) => uploadSocio(tipo, e.target.files)}
-                    />
-                    <Button variant="outline" disabled={busy}>
-                      <Upload className="h-4 w-4 mr-1" />
-                      Carregar
-                    </Button>
-                  </label>
+                  <FileTrigger
+                    multiple
+                    disabled={busy}
+                    label="Carregar"
+                    leftIcon={<Upload className="h-4 w-4 mr-1" />}
+                    onPick={(files) => uploadSocio(tipo, files)}
+                  />
                 </div>
                 <DocList
                   items={docsSocio[tipo] || []}
@@ -251,18 +322,13 @@ export default function UploadDocsSection({
                     <div key={tipo} className="border rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="font-medium">{tipo}</div>
-                        <label className="inline-flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="file"
-                            className="hidden"
-                            multiple
-                            onChange={(e) => uploadAtleta(a.id, tipo, e.target.files)}
-                          />
-                          <Button variant="outline" disabled={busy}>
-                            <Upload className="h-4 w-4 mr-1" />
-                            Carregar
-                          </Button>
-                        </label>
+                        <FileTrigger
+                          multiple
+                          disabled={busy}
+                          label="Carregar"
+                          leftIcon={<Upload className="h-4 w-4 mr-1" />}
+                          onPick={(files) => uploadAtleta(a.id, tipo, files)}
+                        />
                       </div>
                       <DocList
                         items={(docsAtleta[a.id]?.[tipo] || []) as Documento[]}
@@ -289,7 +355,7 @@ function DocList({
   busy,
 }: {
   items: Documento[];
-  onReplace: (id: string, f: File | null) => void;
+  onReplace: (id: string, f: File) => void;
   onDelete: (id: string) => void;
   busy: boolean;
 }) {
@@ -316,17 +382,12 @@ function DocList({
             ) : null}
           </div>
           <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <input
-                type="file"
-                className="hidden"
-                onChange={(e) => onReplace(it.id, e.target.files?.[0] || null)}
-              />
-              <Button variant="secondary" disabled={busy}>
-                <Upload className="h-4 w-4 mr-1" />
-                Substituir
-              </Button>
-            </label>
+            <SingleFileTrigger
+              disabled={busy}
+              label="Substituir"
+              leftIcon={<Upload className="h-4 w-4 mr-1" />}
+              onPickOne={(file) => onReplace(it.id, file)}
+            />
             <Button variant="destructive" onClick={() => onDelete(it.id)} disabled={busy}>
               <Trash2 className="h-4 w-4 mr-1" />
               Apagar
