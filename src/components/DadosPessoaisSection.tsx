@@ -3,10 +3,9 @@ import { supabase } from "./supabaseClient";
 
 export interface DadosPessoais {
   id?: string;
-  user_id?: string;
   nomeCompleto: string;
   dataNascimento: string;
-  genero?: string;
+  genero: string;
   morada?: string;
   codigoPostal?: string;
   telefone?: string;
@@ -18,107 +17,129 @@ export interface DadosPessoais {
 interface Props {
   state: any;
   setState: (s: any) => void;
-  onAfterSave: (novo: DadosPessoais) => void;
+  onAfterSave: (novo: DadosPessoais) => Promise<void>;
 }
-
-const isValidISODate = (s: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
 
 export default function DadosPessoaisSection({ state, setState, onAfterSave }: Props) {
   const [form, setForm] = useState<DadosPessoais>(
-    state.dadosPessoais || {
+    state.perfil ?? {
       nomeCompleto: "",
       dataNascimento: "",
+      genero: "",
+      morada: "",
+      codigoPostal: "",
+      telefone: "",
       email: "",
+      situacaoTesouraria: "Campo em atualização",
+      noticias: "",
     }
   );
 
-  const [saving, setSaving] = useState(false);
-
   const handleChange = (field: keyof DadosPessoais, value: string) => {
-    setForm({ ...form, [field]: value });
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = async () => {
-    const errs: string[] = [];
-
-    if (!form.nomeCompleto) errs.push("Nome completo é obrigatório");
-    if (!isValidISODate(form.dataNascimento))
-      errs.push("Data de nascimento inválida");
-    if (!form.email) errs.push("Email é obrigatório");
-
-    if (errs.length > 0) {
-      alert(errs.join("\n"));
-      return;
-    }
-
-    setSaving(true);
-
-    const { data, error } = await supabase.from("dados_pessoais").upsert([
-      {
-        id: form.id,
-        user_id: form.user_id,
-        nome_completo: form.nomeCompleto,
-        data_nascimento: form.dataNascimento,
-        genero: form.genero,
-        morada: form.morada,
-        codigo_postal: form.codigoPostal,
-        telefone: form.telefone,
-        email: form.email,
-        situacao_tesouraria: form.situacaoTesouraria,
-        noticias: form.noticias,
-      },
-    ])
-    .select()
-    .single();
-
-    setSaving(false);
-
-    if (error) {
-      console.error("❌ Erro ao guardar dados pessoais:", error);
-      alert("Erro ao guardar dados pessoais");
-    } else {
-      console.log("✅ Dados pessoais guardados:", data);
-      setState({ ...state, dadosPessoais: data });
-      onAfterSave(data);
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await onAfterSave(form);
   };
 
   return (
-    <div>
-      <h2>Dados Pessoais</h2>
+    <form onSubmit={handleSubmit} className="p-4 border rounded">
+      <h2 className="text-lg font-bold mb-4">Dados Pessoais</h2>
 
-      <label>Nome Completo</label>
-      <input
-        type="text"
-        value={form.nomeCompleto}
-        onChange={(e) => handleChange("nomeCompleto", e.target.value)}
-      />
+      <div className="mb-2">
+        <label>Nome Completo</label>
+        <input
+          type="text"
+          value={form.nomeCompleto}
+          onChange={(e) => handleChange("nomeCompleto", e.target.value)}
+          required
+        />
+      </div>
 
-      <label>Data de Nascimento</label>
-      <input
-        type="date"
-        value={form.dataNascimento}
-        onChange={(e) => handleChange("dataNascimento", e.target.value)}
-      />
+      <div className="mb-2">
+        <label>Data de Nascimento</label>
+        <input
+          type="date"
+          value={form.dataNascimento}
+          onChange={(e) => handleChange("dataNascimento", e.target.value)}
+          required
+        />
+      </div>
 
-      <label>Email</label>
-      <input
-        type="email"
-        value={form.email}
-        onChange={(e) => handleChange("email", e.target.value)}
-      />
+      <div className="mb-2">
+        <label>Género</label>
+        <select
+          value={form.genero}
+          onChange={(e) => handleChange("genero", e.target.value)}
+          required
+        >
+          <option value="">Selecione...</option>
+          <option value="Masculino">Masculino</option>
+          <option value="Feminino">Feminino</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </div>
 
-      <label>Telefone</label>
-      <input
-        type="text"
-        value={form.telefone || ""}
-        onChange={(e) => handleChange("telefone", e.target.value)}
-      />
+      <div className="mb-2">
+        <label>Morada</label>
+        <input
+          type="text"
+          value={form.morada}
+          onChange={(e) => handleChange("morada", e.target.value)}
+        />
+      </div>
 
-      <button onClick={handleSave} disabled={saving}>
-        {saving ? "A guardar..." : "Guardar"}
+      <div className="mb-2">
+        <label>Código Postal</label>
+        <input
+          type="text"
+          value={form.codigoPostal}
+          onChange={(e) => handleChange("codigoPostal", e.target.value)}
+          placeholder="0000-000"
+        />
+      </div>
+
+      <div className="mb-2">
+        <label>Telefone</label>
+        <input
+          type="text"
+          value={form.telefone}
+          onChange={(e) => handleChange("telefone", e.target.value)}
+        />
+      </div>
+
+      <div className="mb-2">
+        <label>Email</label>
+        <input
+          type="email"
+          value={form.email}
+          onChange={(e) => handleChange("email", e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="mb-2">
+        <label>Situação Tesouraria</label>
+        <input
+          type="text"
+          value={form.situacaoTesouraria}
+          onChange={(e) => handleChange("situacaoTesouraria", e.target.value)}
+        />
+      </div>
+
+      <div className="mb-2">
+        <label>Notícias</label>
+        <textarea
+          value={form.noticias}
+          onChange={(e) => handleChange("noticias", e.target.value)}
+        />
+      </div>
+
+      <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
+        Guardar
       </button>
-    </div>
+    </form>
   );
 }

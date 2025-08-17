@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Users, PencilLine, Plus, Trash2, Upload, Facebook, Instagram, Mail } from "lucide-react";
 
 import type { PessoaDados } from "./types/PessoaDados";
+import type { DadosPessoais } from "./types/DadosPessoais";
 import type { Atleta, PlanoPagamento } from "./types/Atleta";
 import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
 import DadosPessoaisSection from "./components/DadosPessoaisSection";
@@ -246,27 +247,6 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
     </Card>
   );
 }
-
-function DadosPessoaisSection({ state, setState, onAfterSave }: { state: State; setState: (s: State)=>void; onAfterSave: ()=>void }) {
-  function formatPostal(v: string){
-    const d = v.replace(/\D/g, '').slice(0,7);
-    if (d.length <= 4) return d;
-    return d.slice(0,4) + '-' + d.slice(4);
-  }
-  const [editMode, setEditMode] = useState<boolean>(!state.perfil);
-  const [form, setForm] = useState<PessoaDados>(()=> state.perfil || {
-    nomeCompleto: "",
-    tipoSocio: "Não pretendo ser sócio",
-    dataNascimento: "",
-    morada: "",
-    codigoPostal: "",
-    tipoDocumento: "Cartão de cidadão",
-    numeroDocumento: "",
-    nif: "",
-    telefone: "",
-    email: state.conta?.email || "",
-    profissao: "",
-  });
 
   function save(ev: React.FormEvent) {
     ev.preventDefault();
@@ -572,34 +552,33 @@ useEffect(() => {
   const mainTabLabel = hasPerfil ? "Página Inicial" : "Dados Pessoais";
 
 async function afterSavePerfil(novo: DadosPessoais) {
-  try {
-    const { data, error } = await supabase.from("dados_pessoais").upsert([{
-      id: novo.id,
-      user_id: user?.id,   // id do utilizador autenticado
-      nome_completo: novo.nomeCompleto,
-      data_nascimento: novo.dataNascimento,
-      genero: novo.genero,
-      morada: novo.morada,
-      codigo_postal: novo.codigoPostal,
-      telefone: novo.telefone,
-      email: novo.email,
-      situacao_tesouraria: novo.situacaoTesouraria,
-      noticias: novo.noticias,
-    }]);
+  const { data: { user } } = await supabase.auth.getUser();
 
-    if (error) {
-      console.error("❌ Erro ao guardar dados pessoais:", error);
-      alert("Erro ao guardar no servidor");
-    } else {
-      console.log("✅ Dados pessoais guardados no Supabase:", data);
-    }
-  } catch (err) {
-    console.error("Erro inesperado:", err);
+  const { data, error } = await supabase.from("dados_pessoais").upsert([{
+    id: novo.id,
+    user_id: user?.id,
+    nome_completo: novo.nomeCompleto,
+    data_nascimento: novo.dataNascimento,
+    genero: novo.genero,
+    morada: novo.morada,
+    codigo_postal: novo.codigoPostal,
+    telefone: novo.telefone,
+    email: novo.email,
+    situacao_tesouraria: novo.situacaoTesouraria,
+    noticias: novo.noticias,
+  }]);
+
+  if (error) {
+    console.error("❌ Erro ao guardar dados pessoais:", error);
+    alert("Erro ao guardar no servidor");
+  } else {
+    console.log("✅ Dados pessoais guardados no Supabase:", data);
   }
 
   setPostSavePrompt(true);
   setActiveTab("home");
 }
+
 
 
 
