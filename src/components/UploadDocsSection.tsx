@@ -18,7 +18,7 @@ import {
   jaMigrado,
 } from '../services/migracaoDocumentos';
 
-// --- Tipos/constantes locais (alinha com o que tens no resto da app) ---
+// --- Tipos/constantes locais (mantém em linha com o resto da app) ---
 type DocSocio = 'Ficha de Sócio' | 'Comprovativo de pagamento de sócio';
 const DOCS_SOCIO: DocSocio[] = ['Ficha de Sócio', 'Comprovativo de pagamento de sócio'];
 
@@ -37,7 +37,7 @@ const DOCS_ATLETA: DocAtleta[] = [
   'Comprovativo de pagamento de inscrição',
 ];
 
-// Pequena ajuda para limpar os DataURLs locais antigos após migração com sucesso
+// Limpeza do estado local antigo após migração
 function limparDataUrlsAntigos(nextState: any) {
   nextState.docsSocio = {};
   nextState.docsAtleta = {};
@@ -95,8 +95,10 @@ export default function UploadDocsSection({
 
   useEffect(() => {
     // Recarrega quando a lista de atletas muda
+    const dep = JSON.stringify((state.atletas || []).map((x: any) => x.id));
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify((state.atletas || []).map((x: any) => x.id))]);
 
   // --- Handlers Sócio / Atleta ---
@@ -104,7 +106,9 @@ export default function UploadDocsSection({
     if (!files?.length) return;
     setBusy(true);
     try {
-      for (const f of Array.from(files)) await uploadDocumento('socio', tipo, f);
+      for (const f of Array.from(files)) {
+        await uploadDocumento('socio', tipo, f);
+      }
       await refresh();
     } catch (e: any) {
       setMsg(`Erro no upload (sócio): ${e?.message || e}`);
@@ -117,7 +121,9 @@ export default function UploadDocsSection({
     if (!files?.length) return;
     setBusy(true);
     try {
-      for (const f of Array.from(files)) await uploadDocumento('atleta', tipo, f, { atletaId });
+      for (const f of Array.from(files)) {
+        await uploadDocumento('atleta', tipo, f, { atletaId });
+      }
       await refresh();
     } catch (e: any) {
       setMsg(`Erro no upload (atleta): ${e?.message || e}`);
@@ -148,4 +154,80 @@ export default function UploadDocsSection({
     } catch (e: any) {
       setMsg(`Erro ao apagar: ${e?.message || e}`);
     } finally {
-      setBusy(false
+      setBusy(false);
+    }
+  }
+
+  // --- Migração DataURLs → Storage/BD ---
+  async function handleMigracao() {
+    if (jaMigrado()) {
+      setMsg('Migração já executada anteriormente. (Podes limpar os DataURLs locais com segurança.)');
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const rel = await migrarDocumentosLocais({
+        docsSocio: state.docsSocio || {},
+        docsAtleta: state.docsAtleta || {},
+        atletas: state.atletas || [],
+      });
+      // Limpa DataURLs locais se não houve falhas
+      if (rel.falhas === 0) {
+        const next = { ...state };
+        limparDataUrlsAntigos(next);
+        setState(next); // o teu App já persiste no localStorage ao mudar o state
+      }
+      setMsg(`Migração: ${rel.sucesso}/${rel.total} OK, ${rel.falhas} falha(s).`);
+      await refresh();
+    } catch (e: any) {
+      setMsg(`Erro na migração: ${e?.message || e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex items-center justify-between">
+        <CardTitle>Upload de Documentos</CardTitle>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={refresh} disabled={busy}>
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Recarregar
+          </Button>
+          <Button variant="outline" onClick={handleMigracao} disabled={busy}>
+            <Upload className="h-4 w-4 mr-1" />
+            Migrar ficheiros locais
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-8">
+        {msg && <p className="text-sm">{msg}</p>}
+
+        {/* Documentos do Sócio */}
+        <section>
+          <div className="font-medium mb-2">Documentos do Sócio</div>
+          <div className="grid md:grid-cols-2 gap-3">
+            {DOCS_SOCIO.map((tipo) => (
+              <div key={tipo} className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{tipo}</div>
+                  <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="file"
+                      className="hidden"
+                      multiple
+                      onChange={(e) => uploadSocio(tipo, e.target.files)}
+                    />
+                    <Button variant="outline" disabled={busy}>
+                      <Upload className="h-4 w-4 mr-1" />
+                      Carregar
+                    </Button>
+                  </label>
+                </div>
+                <DocList
+                  items={docsSocio[tipo] || []}
+                  onReplace={replaceOne}
+                  onDelete={remove
