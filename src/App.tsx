@@ -356,7 +356,6 @@ function ContaSection({ state, setState, setToken, onLogged }: { state: State; s
       </CardContent>
     </Card>
   );
-}
 
 function getSlotsForPlano(p: PlanoPagamento) {
   if (p === 'Mensal') return 10;
