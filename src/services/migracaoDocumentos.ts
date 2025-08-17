@@ -1,52 +1,61 @@
 // src/services/migracaoDocumentos.ts
-import { uploadDoc, type Nivel } from './documentosService';
+import { uploadDoc } from './documentosService';
 
-/** Converte um DataURL (da DEMO antiga) num File */
-async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  return new File([blob], name, { type: blob.type || 'application/octet-stream' });
+type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
+
+type State = {
+  docsSocio: Partial<Record<string, UploadMeta>>;
+  docsAtleta: Record<string, Partial<Record<string, UploadMeta>>>;
+};
+
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const arr = dataUrl.split(',');
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8 = new Uint8Array(n);
+  while (n--) u8[n] = bstr.charCodeAt(n);
+  return new File([u8], filename || 'ficheiro', { type: mime });
 }
 
-/**
- * Migra documentos guardados no localStorage (DEMO antiga)
- *  - docsSocio: { [docNome]: { name, dataUrl, uploadedAt } }
- *  - docsAtleta: { [atletaId]: { [docNome]: { name, dataUrl, uploadedAt } } }
- *  - Ignora "pagamentos" (não tratado aqui)
- */
-export async function migrateLocalDocs(lsKey = 'bb_app_payments_v1') {
-  const raw = localStorage.getItem(lsKey);
-  if (!raw) return { migrated: 0, message: 'Sem dados antigos' };
+export async function migrateLocalDataUrls(args: {
+  state: State;
+  userId: string;
+  onProgress?: (msg: string) => void;
+}) {
+  const { state, userId, onProgress } = args;
 
-  const s = JSON.parse(raw);
-  let migrated = 0;
-
-  // 1) Documentos do SÓCIO
-  if (s.docsSocio && typeof s.docsSocio === 'object') {
-    for (const [docNome, meta] of Object.entries<any>(s.docsSocio)) {
-      if (meta?.dataUrl && meta?.name) {
-        const f = await dataUrlToFile(meta.dataUrl, meta.name);
-        // page=null (sem ordenação por páginas nesta migração)
-        await uploadDoc('socio', docNome as string, f, { page: null });
-        migrated++;
-      }
-    }
+  // Sócio
+  for (const [tipo, meta] of Object.entries(state.docsSocio || {})) {
+    if (!meta?.dataUrl) continue;
+    onProgress?.(`Sócio: ${tipo}`);
+    const file = dataUrlToFile(meta.dataUrl, meta.name);
+    await uploadDoc({
+      nivel: 'socio',
+      userId,
+      tipo,
+      file,
+      mode: 'new',
+      page: 0, // primeira página
+    });
   }
 
-  // 2) Documentos por ATLETA
-  if (s.docsAtleta && typeof s.docsAtleta === 'object') {
-    for (const [atletaId, docs] of Object.entries<any>(s.docsAtleta)) {
-      if (docs && typeof docs === 'object') {
-        for (const [docNome, meta] of Object.entries<any>(docs)) {
-          if (meta?.dataUrl && meta?.name) {
-            const f = await dataUrlToFile(meta.dataUrl, meta.name);
-            await uploadDoc('atleta', docNome as string, f, { atletaId, page: null });
-            migrated++;
-          }
-        }
-      }
+  // Atleta
+  for (const [atletaId, porTipo] of Object.entries(state.docsAtleta || {})) {
+    for (const [tipo, meta] of Object.entries(porTipo || {})) {
+      if (!meta?.dataUrl) continue;
+      onProgress?.(`Atleta ${atletaId}: ${tipo}`);
+      const file = dataUrlToFile(meta.dataUrl, meta.name);
+      await uploadDoc({
+        nivel: 'atleta',
+        userId,
+        atletaId,
+        tipo,
+        file,
+        mode: 'new',
+        page: 0,
+      });
     }
   }
-
-  return { migrated, message: 'Migração concluída' };
 }
