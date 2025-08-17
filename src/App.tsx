@@ -14,8 +14,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/u
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import TestFilePicker from "./components/TestFilePicker";
-
 
 import {
   AlertCircle,
@@ -39,6 +37,8 @@ import type { PessoaDados } from "./types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "./types/Atleta";
 import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
 import AtletaFormCompleto from "./components/AtletaFormCompleto";
+import UploadDocsSection from "./components/UploadDocsSection";
+import FilePickerButton from "./components/FilePickerButton";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -149,7 +149,6 @@ function loadState(): State {
     const conta: Conta | null =
       s?.conta && typeof s.conta.email === "string" ? { email: s.conta.email } : null;
 
-    // ⚠️ Sanear perfil que possa ter ficado guardado como {id: string}
     const perfil: PessoaDados | null = s?.perfil ? normalizePessoaDados(s.perfil, conta?.email) : null;
 
     return {
@@ -181,7 +180,7 @@ function saveState(s: State) {
   localStorage.setItem(LS_KEY, JSON.stringify(s));
 }
 
-// Função para recuperação de password (se tiveres um backend próprio além de Supabase)
+// Função para recuperação de password (se tiveres backend próprio)
 async function apiForgot(email: string): Promise<void> {
   if (!API_BASE) return;
   const r = await fetch(`${API_BASE}/auth/forgot`, {
@@ -586,10 +585,15 @@ function PagamentosSection({ state, setState }:{ state: State; setState: (s: Sta
                         <div className="font-medium">{getPagamentoLabel(a.planoPagamento, i)}</div>
                         <div className="text-xs text-gray-500">{"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}</div>
                       </div>
-                      <label className="inline-flex items-center gap-2 cursor-pointer">
-                        <input type="file" className="hidden" accept="image/*,application/pdf" onChange={e=> e.target.files && handleUpload(a.id, i, e.target.files[0])}/>
-                        <Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button>
-                      </label>
+
+                      <FilePickerButton
+                        variant={meta ? "secondary" : "outline"}
+                        accept="image/*,application/pdf"
+                        onFiles={(files) => handleUpload(a.id, i, files[0])}
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        {meta ? "Substituir" : "Carregar"}
+                      </FilePickerButton>
                     </div>
                   );
                 })}
@@ -621,7 +625,14 @@ function AtletasSection({ state, setState }:{ state: State; setState: (s: State)
   }
   return (
     <Card>
-      <CardHeader className="flex items-center justify-between"><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5"/> Inscrição de Atletas</CardTitle><Button onClick={()=>{setEditing(undefined); setOpen(true);}}><Plus className="h-4 w-4 mr-1"/> Novo atleta</Button></CardHeader>
+      <CardHeader className="flex items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5"/> Inscrição de Atletas
+        </CardTitle>
+        <Button onClick={()=>{setEditing(undefined); setOpen(true);}}>
+          <Plus className="h-4 w-4 mr-1"/> Novo atleta
+        </Button>
+      </CardHeader>
       <CardContent>
         {state.atletas.length===0 && <p className="text-sm text-gray-500">Sem atletas. Clique em “Novo atleta”.</p>}
         <div className="grid gap-3">
@@ -630,23 +641,39 @@ function AtletasSection({ state, setState }:{ state: State; setState: (s: State)
             return (
               <div key={a.id} className="border rounded-xl p-3 flex items-center justify-between">
                 <div>
-                  <div className="font-medium flex items-center gap-2">{a.nomeCompleto}{missing.length>0? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</span> : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Documentação completa</span>}</div>
+                  <div className="font-medium flex items-center gap-2">
+                    {a.nomeCompleto}
+                    {missing.length>0
+                      ? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</span>
+                      : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Documentação completa</span>
+                    }
+                  </div>
                   <div className="text-xs text-gray-500">{a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento: {a.planoPagamento}</div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={()=>{setEditing(a); setOpen(true);}}><PencilLine className="h-4 w-4 mr-1"/> Editar</Button>
-                  <Button variant="destructive" onClick={()=>remove(a.id)}><Trash2 className="h-4 w-4 mr-1"/> Remover</Button>
+                  <Button variant="outline" onClick={()=>{setEditing(a); setOpen(true);}}>
+                    <PencilLine className="h-4 w-4 mr-1"/> Editar
+                  </Button>
+                  <Button variant="destructive" onClick={()=>remove(a.id)}>
+                    <Trash2 className="h-4 w-4 mr-1"/> Remover
+                  </Button>
                 </div>
               </div>
             );
           })}
         </div>
+
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>{editing?"Editar atleta":"Novo atleta"}</DialogTitle></DialogHeader>
             <AtletaFormCompleto
               initial={editing}
-              dadosPessoais={{ morada: state.perfil?.morada, codigoPostal: state.perfil?.codigoPostal, telefone: state.perfil?.telefone, email: state.perfil?.email }}
+              dadosPessoais={{
+                morada: state.perfil?.morada,
+                codigoPostal: state.perfil?.codigoPostal,
+                telefone: state.perfil?.telefone,
+                email: state.perfil?.email
+              }}
               onCancel={()=>setOpen(false)}
               onSave={async (novo) => {
                 try {
@@ -685,15 +712,13 @@ export default function App(){
       if (!token) return;
       try {
         const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
-
-        // 🔧 Normaliza SEMPRE o perfil vindo do serviço (mesmo que seja {id: string})
         const perfilNormalizado: PessoaDados | null = perfilDb
           ? normalizePessoaDados(perfilDb, state.conta?.email)
           : null;
 
         const next: State = {
           ...state,
-          perfil: perfilNormalizado ?? state.perfil, // mantém o atual se o serviço não devolver nada
+          perfil: perfilNormalizado ?? state.perfil,
           atletas: atletasDb ?? state.atletas,
         };
 
@@ -728,8 +753,6 @@ export default function App(){
           </Button>
         ) : null}
       </header>
- {/* 🔧 BOTÃO DE TESTE DO FILE PICKER */}
-      <TestFilePicker />
 
       {!token ? (
         <ContaSection state={state} setState={setState} setToken={setToken} onLogged={()=>setActiveTab("home")} />
@@ -745,16 +768,19 @@ export default function App(){
           <TabsContent value="home">
             <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
           </TabsContent>
+
           {hasPerfil && (
             <TabsContent value="atletas">
               <AtletasSection state={state} setState={setState} />
             </TabsContent>
           )}
+
           {hasPerfil && (
             <TabsContent value="docs">
-              <UploadDocsSection state={state} setState={setState} />
+              <UploadDocsSection state={state} setState={setState} saveState={saveState}/>
             </TabsContent>
           )}
+
           {hasPerfil && hasAtletas && (
             <TabsContent value="pag">
               <PagamentosSection state={state} setState={setState} />
@@ -780,9 +806,6 @@ export default function App(){
         <a href="https://www.instagram.com/academicabasket/" target="_blank" rel="noreferrer" aria-label="Instagram AAC Basquetebol" className="opacity-80 hover:opacity-100">
           <Instagram className="h-6 w-6" />
         </a>
-        <a href="https://aacbasquetebol.clubeo.com/" target="_blank" rel="noreferrer" aria-label="Site AAC Basquetebol" className="opacity-80 hover:opacity-100">
-          <i className="fa-solid fa-globe" style={{ fontSize: 24 }}></i>
-        </a>
         <a href="mailto:basquetebol@academica.pt" aria-label="Email AAC Basquetebol" className="opacity-80 hover:opacity-100">
           <Mail className="h-6 w-6" />
         </a>
@@ -790,74 +813,5 @@ export default function App(){
 
       <footer className="text-xs text-gray-500 text-center">DEMO local — ficheiros em DataURL. Em produção, usa API + armazenamento seguro.</footer>
     </div>
-  );
-}
-
-/* --------------------------- UploadDocsSection ---------------------------- */
-
-function UploadDocsSection({ state, setState }:{ state: State; setState: (s: State)=>void }){
-  async function toMeta(file: File){
-    const dataUrl = await toDataUrl(file);
-    return { name: file.name, dataUrl, uploadedAt: new Date().toISOString() };
-  }
-  async function uploadSocio(doc: DocSocio, file: File){
-    const meta: UploadMeta = await toMeta(file) as any;
-    const next: State = { ...state, docsSocio: { ...state.docsSocio, [doc]: meta } };
-    setState(next); saveState(next);
-  }
-  async function uploadAtleta(athleteId: string, doc: DocAtleta, file: File){
-    const meta: UploadMeta = await toMeta(file) as any;
-    const current = state.docsAtleta[athleteId] || {};
-    const next: State = { ...state, docsAtleta: { ...state.docsAtleta, [athleteId]: { ...current, [doc]: meta } } };
-    setState(next); saveState(next);
-  }
-  const socioMissing = DOCS_SOCIO.filter(d=> !state.docsSocio[d]);
-  return (
-    <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2"><FileUp className="h-5 w-5"/> Upload de Documentos</CardTitle></CardHeader>
-      <CardContent className="space-y-6">
-        <div>
-          <div className="font-medium">Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})</div>
-          <div className="text-xs text-gray-500 mb-2">{socioMissing.length>0 ? (<span className="text-red-600 flex items-center gap-1"><AlertCircle className="h-3 w-3"/> {socioMissing.length} documento(s) em falta</span>) : (<span className="flex items-center gap-1"><CheckCircle2 className="h-3 w-3"/> Completo</span>)}</div>
-          <div className="grid md:grid-cols-2 gap-3">
-            {DOCS_SOCIO.map(doc=>{
-              const meta = state.docsSocio[doc];
-              return (
-                <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
-                  <div><div className="font-medium">{doc}{state.perfil?.tipoSocio && doc==="Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}</div><div className="text-xs text-gray-500">{"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}</div></div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" accept="image/*,application/pdf" onChange={e=> e.target.files && uploadSocio(doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="space-y-3">
-          <div className="font-medium">Documentos por Atleta</div>
-          {state.atletas.length===0 && <p className="text-sm text-gray-500">Sem atletas criados.</p>}
-          {state.atletas.map(a=>{
-            const missing = DOCS_ATLETA.filter(d=> !state.docsAtleta[a.id] || !state.docsAtleta[a.id][d]);
-            return (
-              <div key={a.id} className="border rounded-xl p-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium flex items-center gap-2">{a.nomeCompleto} {missing.length>0 ? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing.length} doc(s) em falta</span> : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Completo</span>}</div>
-                  <div className="text-xs text-gray-500">Escalão: {a.escalao}</div>
-                </div>
-                <div className="grid md:grid-cols-2 gap-3 mt-3">
-                  {DOCS_ATLETA.map(doc=>{
-                    const meta = state.docsAtleta[a.id]?.[doc];
-                    return (
-                      <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
-                        <div><div className="font-medium">{doc}</div><div className="text-xs text-gray-500">{"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}</div></div>
-                        <label className="inline-flex items-center gap-2 cursor-pointer"><input type="file" className="hidden" accept="image/*,application/pdf" onChange={e=> e.target.files && uploadAtleta(a.id, doc, e.target.files[0])}/><Button variant={meta?"secondary":"outline"}><Upload className="h-4 w-4 mr-1"/>{meta?"Substituir":"Carregar"}</Button></label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
   );
 }

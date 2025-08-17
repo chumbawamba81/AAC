@@ -1,328 +1,215 @@
-// src/components/UploadDocsSection.tsx
-import { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { Button } from './ui/button';
-import { Upload, Trash2, RefreshCw, File as FileIcon } from 'lucide-react';
+import React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Upload, FileUp, CheckCircle2, AlertCircle } from "lucide-react";
+import FilePickerButton from "./FilePickerButton";
 
-import {
-  Documento,
-  DocumentoFicheiro,
-  listDocumentos,
-  listFicheiros,
-  withSignedUrls,
-  uploadDocumento,
-  replaceDocumentoFile,
-  deleteDocumentoFile,
-} from '../services/documentosService';
+const DOCS_ATLETA = [
+  "Ficha de sócio de atleta",
+  "Ficha de jogador FPB",
+  "Ficha inscrição AAC",
+  "Exame médico",
+  "Comprovativo de pagamento de inscrição",
+] as const;
+type DocAtleta = (typeof DOCS_ATLETA)[number];
 
-type DocSocio = 'Ficha de Sócio' | 'Comprovativo de pagamento de sócio';
-const DOCS_SOCIO: DocSocio[] = ['Ficha de Sócio', 'Comprovativo de pagamento de sócio'];
+const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
+type DocSocio = (typeof DOCS_SOCIO)[number];
 
-type DocAtleta =
-  | 'Ficha de sócio de atleta'
-  | 'Ficha de jogador FPB'
-  | 'Ficha inscrição AAC'
-  | 'Exame médico'
-  | 'Comprovativo de pagamento de inscrição';
+type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
 
-const DOCS_ATLETA: DocAtleta[] = [
-  'Ficha de sócio de atleta',
-  'Ficha de jogador FPB',
-  'Ficha inscrição AAC',
-  'Exame médico',
-  'Comprovativo de pagamento de inscrição',
-];
+type PessoaDados = {
+  nomeCompleto: string;
+  tipoSocio: string;
+  dataNascimento: string;
+  morada: string;
+  codigoPostal: string;
+  tipoDocumento: string;
+  numeroDocumento: string;
+  nif: string;
+  telefone: string;
+  email: string;
+  profissao?: string;
+};
+
+type Atleta = {
+  id: string;
+  nomeCompleto: string;
+  dataNascimento: string;
+  genero?: "Masculino" | "Feminino";
+  escalao: string;
+  planoPagamento: "Mensal" | "Trimestral" | "Anual";
+  morada?: string;
+  codigoPostal?: string;
+  contactosUrgencia?: string;
+  emailsPreferenciais?: string;
+  alergias?: string;
+};
+
+type State = {
+  conta: { email: string } | null;
+  perfil: PessoaDados | null;
+  atletas: Atleta[];
+  docsSocio: Partial<Record<DocSocio, UploadMeta>>;
+  docsAtleta: Record<string, Partial<Record<DocAtleta, UploadMeta>>>;
+};
+
+function toDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function UploadDocsSection({
   state,
+  setState,
+  saveState,
 }: {
-  state: any; // precisa de state.perfil?.id e state.atletas (id,nomeCompleto,escalao)
+  state: State;
+  setState: (s: State) => void;
+  saveState: (s: State) => void;
 }) {
-  const pessoaId = state?.perfil?.id ?? null;
-
-  // Sócio
-  const [docsSocio, setDocsSocio] = useState<Record<DocSocio, (Documento & { ficheiros: DocumentoFicheiro[] }) | null>>({
-    'Ficha de Sócio': null,
-    'Comprovativo de pagamento de sócio': null,
-  });
-
-  // Atleta -> tipo -> documento
-  const [docsAtleta, setDocsAtleta] = useState<
-    Record<string, Record<DocAtleta, (Documento & { ficheiros: DocumentoFicheiro[] }) | null>>
-  >({});
-
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  async function reloadSocio() {
-    if (!pessoaId) return;
-    const all = await listDocumentos('socio', { pessoaId });
-    const out: typeof docsSocio = { 'Ficha de Sócio': null, 'Comprovativo de pagamento de sócio': null };
-    for (const tipo of DOCS_SOCIO) {
-      const doc = all.find((d) => d.nome === tipo) ?? null;
-      if (!doc) { out[tipo] = null; continue; }
-      const files = await withSignedUrls(await listFicheiros(doc.id));
-      out[tipo] = { ...doc, ficheiros: files };
-    }
-    setDocsSocio(out);
+  async function toMeta(file: File) {
+    const dataUrl = await toDataUrl(file);
+    return { name: file.name, dataUrl, uploadedAt: new Date().toISOString() };
   }
 
-  async function reloadAtletas() {
-    const base: typeof docsAtleta = {};
-    for (const a of state.atletas || []) {
-      const all = await listDocumentos('atleta', { atletaId: a.id });
-      const map: Record<DocAtleta, (Documento & { ficheiros: DocumentoFicheiro[] }) | null> = {
-        'Ficha de sócio de atleta': null,
-        'Ficha de jogador FPB': null,
-        'Ficha inscrição AAC': null,
-        'Exame médico': null,
-        'Comprovativo de pagamento de inscrição': null,
-      };
-      for (const tipo of DOCS_ATLETA) {
-        const doc = all.find((d) => d.nome === tipo) ?? null;
-        if (!doc) { map[tipo] = null; continue; }
-        const files = await withSignedUrls(await listFicheiros(doc.id));
-        map[tipo] = { ...doc, ficheiros: files };
-      }
-      base[a.id] = map;
-    }
-    setDocsAtleta(base);
+  async function uploadSocio(doc: DocSocio, file: File) {
+    const meta = (await toMeta(file)) as UploadMeta;
+    const next: State = { ...state, docsSocio: { ...state.docsSocio, [doc]: meta } };
+    setState(next);
+    saveState(next);
   }
 
-  async function refresh() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      await Promise.all([reloadSocio(), reloadAtletas()]);
-    } catch (e: any) {
-      setMsg(e?.message || String(e));
-    } finally {
-      setBusy(false);
-    }
+  async function uploadAtleta(athleteId: string, doc: DocAtleta, file: File) {
+    const meta = (await toMeta(file)) as UploadMeta;
+    const current = state.docsAtleta[athleteId] || {};
+    const next: State = {
+      ...state,
+      docsAtleta: { ...state.docsAtleta, [athleteId]: { ...current, [doc]: meta } },
+    };
+    setState(next);
+    saveState(next);
   }
 
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify((state.atletas || []).map((x: any) => x.id)), pessoaId]);
-
-  // --------- Ações ---------
-  async function doUploadSocio(tipo: DocSocio, files: FileList) {
-    if (!pessoaId || !files.length) return;
-    setBusy(true);
-    try {
-      for (const f of Array.from(files)) {
-        await uploadDocumento('socio', tipo, f, { pessoaId });
-      }
-      await reloadSocio();
-    } catch (e: any) {
-      setMsg(`Erro no upload (sócio): ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doUploadAtleta(atletaId: string, tipo: DocAtleta, files: FileList) {
-    if (!files.length) return;
-    setBusy(true);
-    try {
-      for (const f of Array.from(files)) {
-        await uploadDocumento('atleta', tipo, f, { atletaId });
-      }
-      await reloadAtletas();
-    } catch (e: any) {
-      setMsg(`Erro no upload (atleta): ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doReplace(fileId: string, file: File) {
-    setBusy(true);
-    try {
-      await replaceDocumentoFile(fileId, file);
-      await refresh();
-    } catch (e: any) {
-      setMsg(`Erro ao substituir: ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doDelete(fileId: string) {
-    if (!confirm('Apagar este ficheiro?')) return;
-    setBusy(true);
-    try {
-      await deleteDocumentoFile(fileId);
-      await refresh();
-    } catch (e: any) {
-      setMsg(`Erro ao apagar: ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const socioMissing = DOCS_SOCIO.filter((d) => !state.docsSocio[d]);
 
   return (
     <Card>
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle>Upload de Documentos</CardTitle>
-        <Button variant="secondary" onClick={refresh} disabled={busy}>
-          <RefreshCw className="h-4 w-4 mr-1" />
-          Recarregar
-        </Button>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FileUp className="h-5 w-5" /> Upload de Documentos
+        </CardTitle>
       </CardHeader>
-
-      <CardContent className="space-y-8">
-        {msg && <p className="text-sm text-red-600">{msg}</p>}
-
-        {/* Sócio */}
+      <CardContent className="space-y-6">
+        {/* Documentos do Sócio */}
         <section>
-          <div className="font-medium mb-2">Documentos do Sócio</div>
+          <div className="font-medium">
+            Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
+          </div>
+          <div className="text-xs text-gray-500 mb-2">
+            {socioMissing.length > 0 ? (
+              <span className="text-red-600 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> {socioMissing.length} documento(s) em falta
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> Completo
+              </span>
+            )}
+          </div>
           <div className="grid md:grid-cols-2 gap-3">
-            {DOCS_SOCIO.map((tipo) => {
-              const doc = docsSocio[tipo];
+            {DOCS_SOCIO.map((doc) => {
+              const meta = state.docsSocio[doc];
               return (
-                <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">{tipo}</div>
-                    <FileOverlayTrigger
-                      multiple
-                      disabled={busy || !pessoaId}
-                      label="Carregar"
-                      onPick={(files) => doUploadSocio(tipo, files)}
-                    />
+                <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">
+                      {doc}
+                      {state.perfil?.tipoSocio && doc === "Ficha de Sócio"
+                        ? ` (${state.perfil.tipoSocio})`
+                        : ""}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}
+                    </div>
                   </div>
-                  <DocList doc={doc} onReplace={doReplace} onDelete={doDelete} busy={busy} />
+
+                  <FilePickerButton
+                    variant={meta ? "secondary" : "outline"}
+                    accept="image/*,application/pdf"
+                    onFiles={(files) => uploadSocio(doc, files[0])}
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    {meta ? "Substituir" : "Carregar"}
+                  </FilePickerButton>
                 </div>
               );
             })}
           </div>
         </section>
 
-        {/* Atletas */}
-        <section className="space-y-4">
+        {/* Documentos por Atleta */}
+        <section className="space-y-3">
           <div className="font-medium">Documentos por Atleta</div>
-          {(state.atletas || []).length === 0 ? (
+          {state.atletas.length === 0 && (
             <p className="text-sm text-gray-500">Sem atletas criados.</p>
-          ) : (
-            (state.atletas || []).map((a: any) => (
+          )}
+
+          {state.atletas.map((a) => {
+            const missing = DOCS_ATLETA.filter(
+              (d) => !state.docsAtleta[a.id] || !state.docsAtleta[a.id][d]
+            );
+            return (
               <div key={a.id} className="border rounded-xl p-3">
-                <div className="mb-2 font-medium">
-                  {a.nomeCompleto} — Escalão: {a.escalao}
+                <div className="flex items-center justify-between">
+                  <div className="font-medium flex items-center gap-2">
+                    {a.nomeCompleto}{" "}
+                    {missing.length > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
+                        <AlertCircle className="h-3 w-3" /> {missing.length} doc(s) em falta
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
+                        <CheckCircle2 className="h-3 w-3" /> Completo
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">Escalão: {a.escalao}</div>
                 </div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {DOCS_ATLETA.map((tipo) => {
-                    const doc = docsAtleta[a.id]?.[tipo] ?? null;
+
+                <div className="grid md:grid-cols-2 gap-3 mt-3">
+                  {DOCS_ATLETA.map((doc) => {
+                    const meta = state.docsAtleta[a.id]?.[doc];
                     return (
-                      <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium">{tipo}</div>
-                          <FileOverlayTrigger
-                            multiple
-                            disabled={busy}
-                            label="Carregar"
-                            onPick={(files) => doUploadAtleta(a.id, tipo, files)}
-                          />
+                      <div key={doc} className="border rounded-lg p-3 flex items-center justify-between">
+                        <div>
+                          <div className="font-medium">{doc}</div>
+                          <div className="text-xs text-gray-500">
+                            {"Comprovativo " + (meta ? "carregado no sistema" : "em falta")}
+                          </div>
                         </div>
-                        <DocList doc={doc} onReplace={doReplace} onDelete={doDelete} busy={busy} />
+
+                        <FilePickerButton
+                          variant={meta ? "secondary" : "outline"}
+                          accept="image/*,application/pdf"
+                          onFiles={(files) => uploadAtleta(a.id, doc, files[0])}
+                        >
+                          <Upload className="h-4 w-4 mr-1" />
+                          {meta ? "Substituir" : "Carregar"}
+                        </FilePickerButton>
                       </div>
                     );
                   })}
                 </div>
               </div>
-            ))
-          )}
+            );
+          })}
         </section>
       </CardContent>
     </Card>
-  );
-}
-
-/* ---------- Lista de ficheiros por documento ---------- */
-
-function DocList({
-  doc,
-  onReplace,
-  onDelete,
-  busy,
-}: {
-  doc: (Documento & { ficheiros: DocumentoFicheiro[] }) | null;
-  onReplace: (fileId: string, file: File) => void;
-  onDelete: (fileId: string) => void;
-  busy: boolean;
-}) {
-  if (!doc || !doc.ficheiros?.length) {
-    return <p className="text-sm text-gray-500">Sem ficheiros.</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {doc.ficheiros.map((f) => (
-        <div key={f.id} className="flex items-center justify-between border rounded-md p-2">
-          <div className="text-sm">
-            <div className="font-medium flex items-center">
-              <FileIcon className="h-4 w-4 mr-2" />
-              {(f as any).file_name || f.path.split('/').pop()}
-            </div>
-            {f.signedUrl && (
-              <a href={f.signedUrl} target="_blank" rel="noreferrer" className="text-xs underline">
-                Abrir
-              </a>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <FileOverlayTrigger
-              label="Substituir"
-              disabled={busy}
-              onPick={(files) => {
-                const file = files?.[0];
-                if (file) onReplace(f.id, file);
-              }}
-            />
-            <Button variant="destructive" disabled={busy} onClick={() => onDelete(f.id)}>
-              <Trash2 className="h-4 w-4 mr-1" />
-              Apagar
-            </Button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ---------- Trigger de upload com INPUT a sobrepor o botão ---------- */
-
-function FileOverlayTrigger({
-  label,
-  multiple,
-  disabled,
-  onPick,
-}: {
-  label: string;
-  multiple?: boolean;
-  disabled?: boolean;
-  onPick: (files: FileList) => void;
-}) {
-  return (
-    <div className="relative inline-block">
-      <Button type="button" variant="outline" disabled={disabled} className="pr-4">
-        <Upload className="h-4 w-4 mr-1" />
-        {label}
-      </Button>
-      {/* Input cobre o botão todo, totalmente transparente */}
-      <input
-        type="file"
-        multiple={!!multiple}
-        disabled={!!disabled}
-        onChange={(e) => {
-          const fs = e.target.files;
-          if (fs && fs.length) onPick(fs);
-          e.currentTarget.value = '';
-        }}
-        className="absolute inset-0 z-10 opacity-0 cursor-pointer"
-        // Fallback para casos extremos (iOS muito restritivo): torna-o focável
-        aria-label={label}
-      />
-    </div>
   );
 }
