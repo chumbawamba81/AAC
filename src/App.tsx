@@ -728,6 +728,8 @@ export default function App(){
           </Button>
         ) : null}
       </header>
+ {/* 🔧 BOTÃO DE TESTE DO FILE PICKER */}
+      <TestFilePicker />
 
       {!token ? (
         <ContaSection state={state} setState={setState} setToken={setToken} onLogged={()=>setActiveTab("home")} />
@@ -752,8 +754,6 @@ export default function App(){
             <TabsContent value="docs">
               <UploadDocsSection state={state} setState={setState} />
             </TabsContent>
-			<TestFilePicker />
-
           )}
           {hasPerfil && hasAtletas && (
             <TabsContent value="pag">
