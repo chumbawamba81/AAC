@@ -502,11 +502,39 @@ function AtletasSection({ state, setState }:{ state: State; setState: (s: State)
               initial={editing}
               dadosPessoais={{ morada: state.perfil?.morada, codigoPostal: state.perfil?.codigoPostal, telefone: state.perfil?.telefone, email: state.perfil?.email }}
               onCancel={()=>setOpen(false)}
-              onSave={(novo)=>{
-                const exists = state.atletas.some(x=>x.id===novo.id);
-                const next = { ...state, atletas: exists? state.atletas.map(x=>x.id===novo.id?novo:x) : [novo, ...state.atletas] } as State;
-                setState(next); saveState(next); setOpen(false);
-              }}
+              onSave={async (novo) => {
+  const exists = state.atletas.some(x => x.id === novo.id);
+  const next = {
+    ...state,
+    atletas: exists
+      ? state.atletas.map(x => x.id === novo.id ? novo : x)
+      : [novo, ...state.atletas]
+  } as State;
+
+  setState(next);
+  saveState(next);
+  setOpen(false);
+
+  // 👇 Inserir ou atualizar no Supabase
+  const { data, error } = await supabase.from("atletas").upsert([
+    {
+      id: novo.id, // mantém id se já existir
+      nome: novo.nomeCompleto,
+      data_nascimento: novo.dataNascimento,
+      escalão: novo.escalao,
+      alergias: novo.alergias,
+      opcao_pagamento: novo.planoPagamento,
+    },
+  ]);
+
+  if (error) {
+    console.error("❌ Erro ao guardar atleta no Supabase:", error);
+    alert("Erro ao guardar no servidor");
+  } else {
+    console.log("✅ Atleta guardado no Supabase:", data);
+  }
+}}
+
             />
           </DialogContent>
         </Dialog>
@@ -542,10 +570,36 @@ useEffect(() => {
   const hasAtletas = state.atletas.length > 0;
   const mainTabLabel = hasPerfil ? "Página Inicial" : "Dados Pessoais";
 
-  function afterSavePerfil(){
-    setPostSavePrompt(true);
-    setActiveTab("home");
+async function afterSavePerfil(novo: DadosPessoais) {
+  // mantém a lógica atual
+  setPostSavePrompt(true);
+  setActiveTab("home");
+
+  // 👇 Inserir ou atualizar no Supabase
+  const { data, error } = await supabase.from("dados_pessoais").upsert([
+    {
+      id: novo.id,
+      user_id: user?.id,  // associa ao utilizador autenticado
+      nome_completo: novo.nomeCompleto,
+      data_nascimento: novo.dataNascimento,
+      genero: novo.genero,
+      morada: novo.morada,
+      codigo_postal: novo.codigoPostal,
+      telefone: novo.telefone,
+      email: novo.email,
+      situacao_tesouraria: novo.situacaoTesouraria,
+      noticias: novo.noticias,
+    },
+  ]);
+
+  if (error) {
+    console.error("❌ Erro ao guardar dados pessoais no Supabase:", error);
+    alert("Erro ao guardar no servidor");
+  } else {
+    console.log("✅ Dados pessoais guardados no Supabase:", data);
   }
+}
+
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
