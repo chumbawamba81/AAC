@@ -21,7 +21,7 @@ export function yearsAtSeasonStart(dobIso: string) {
   return age;
 }
 
-export function computeEscalao(dobIso: string, genero: 'Feminino'|'Masculino'|'Outro'): string {
+export function computeEscalao(dobIso: string, genero: 'Feminino'|'Masculino'): string {
   if (!dobIso) return 'Fora de escalões';
   const y = new Date(dobIso).getUTCFullYear();
   if (y === 2020 || y === 2021) return 'Baby Basket (2020-2021)';
@@ -39,10 +39,6 @@ export function computeEscalao(dobIso: string, genero: 'Feminino'|'Masculino'|'O
   }
   return 'Fora de escalões';
 }
-
-// Validação pedida para Datas ISO (usar nos formulários)
-export const isValidISODate = (s: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
 
 export function areEmailsValid(s: string): boolean {
   return s.split(';').map(p => p.trim()).filter(Boolean)
