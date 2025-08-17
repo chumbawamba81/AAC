@@ -1,7 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { Upload, Trash2, Link as LinkIcon, AlertCircle, CheckCircle2, Plus, FileUp, RefreshCw } from 'lucide-react';
+import {
+  Upload,
+  Trash2,
+  Link as LinkIcon,
+  AlertCircle,
+  CheckCircle2,
+  Plus,
+  FileUp,
+  RefreshCw,
+} from 'lucide-react';
 
 import { supabase } from '../supabaseClient';
 import type { Atleta } from '../types/Atleta';
@@ -42,6 +51,7 @@ function groupByTipo(rows: DocumentoRow[]) {
     arr.push(r);
     map.set(r.doc_tipo, arr);
   }
+  // ordenar por "page" ascend.
   for (const [k, arr] of map) {
     arr.sort((a, b) => (a.page ?? 0) - (b.page ?? 0));
     map.set(k, arr);
@@ -120,21 +130,72 @@ export default function UploadDocsSection({ state, setState }: Props) {
     return miss;
   }, [socioDocs]);
 
-  // -------------------- Handlers: Sócio --------------------
-  async function handleUploadSocio(tipo: DocSocio, file: File, mode: 'new' | 'replace' = 'new') {
-    if (!userId || !file) { alert('Sessão ou ficheiro em falta'); return; }
+  /* ======================= UPLOAD: múltiplos ficheiros ======================= */
+
+  async function handleUploadSocioMany(tipo: DocSocio, filesList: FileList | null) {
+    if (!userId || !filesList || filesList.length === 0) {
+      alert('Sessão ou ficheiros em falta');
+      return;
+    }
     setLoading(true);
     try {
-      await uploadDoc({ nivel: 'socio', userId, tipo, file, mode });
+      const current = socioDocs.get(tipo) || [];
+      const start = current.length + 1;
+      const files = Array.from(filesList);
+      // envia em série para manter ordem de page
+      for (let i = 0; i < files.length; i++) {
+        await uploadDoc({
+          nivel: 'socio',
+          userId,
+          tipo,
+          file: files[i],
+          mode: 'new',
+          page: start + i,
+        });
+      }
       await refreshAll();
-      alert('Documento do sócio carregado com sucesso.');
+      alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
-      console.error('[upload socio]', e);
+      console.error('[upload socio many]', e);
       alert(`Falha no upload (sócio): ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
   }
+
+  async function handleUploadAtletaMany(atletaId: string, tipo: DocAtleta, filesList: FileList | null) {
+    if (!userId || !filesList || filesList.length === 0) {
+      alert('Sessão ou ficheiros em falta');
+      return;
+    }
+    setLoading(true);
+    try {
+      const mapa = athDocs[atletaId] || new Map<string, DocumentoRow[]>();
+      const current = mapa.get(tipo) || [];
+      const start = current.length + 1;
+      const files = Array.from(filesList);
+      for (let i = 0; i < files.length; i++) {
+        await uploadDoc({
+          nivel: 'atleta',
+          userId,
+          atletaId,
+          tipo,
+          file: files[i],
+          mode: 'new',
+          page: start + i,
+        });
+      }
+      await refreshAll();
+      alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
+    } catch (e: any) {
+      console.error('[upload atleta many]', e);
+      alert(`Falha no upload (atleta): ${e?.message || e}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* ======================= Replace/Delete (1-a-1) ======================= */
 
   async function handleReplaceSocio(row: DocumentoRow, file: File) {
     if (!file) return;
@@ -161,22 +222,6 @@ export default function UploadDocsSection({ state, setState }: Props) {
     } catch (e: any) {
       console.error('[delete socio]', e);
       alert(`Falha a apagar: ${e?.message || e}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // -------------------- Handlers: Atleta --------------------
-  async function handleUploadAtleta(atletaId: string, tipo: DocAtleta, file: File, mode: 'new' | 'replace' = 'new') {
-    if (!userId || !file) { alert('Sessão ou ficheiro em falta'); return; }
-    setLoading(true);
-    try {
-      await uploadDoc({ nivel: 'atleta', userId, atletaId, tipo, file, mode });
-      await refreshAll();
-      alert('Documento do atleta carregado com sucesso.');
-    } catch (e: any) {
-      console.error('[upload atleta]', e);
-      alert(`Falha no upload (atleta): ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
@@ -212,7 +257,8 @@ export default function UploadDocsSection({ state, setState }: Props) {
     }
   }
 
-  // -------------------- Migração DataURLs locais --------------------
+  /* ======================= Migração DataURLs locais ======================= */
+
   async function migrateLocal() {
     if (!userId) {
       alert('Sessão não encontrada.');
@@ -225,9 +271,8 @@ export default function UploadDocsSection({ state, setState }: Props) {
         userId,
         onProgress: (msg) => console.log('[migrate]', msg),
       });
-      // Limpa os DataURLs locais (só depois de migrar sem erros)
-      setState(prev => ({ ...prev, docsSocio: {}, docsAtleta: {} }));
-      // Atualiza UI com o que foi para o Storage
+      // Limpa DataURLs locais
+      setState((prev) => ({ ...prev, docsSocio: {}, docsAtleta: {} }));
       await refreshAll();
       alert('Migração concluída.');
     } catch (e: any) {
@@ -238,7 +283,8 @@ export default function UploadDocsSection({ state, setState }: Props) {
     }
   }
 
-  // ------- UI helpers -------
+  /* ======================= UI helpers ======================= */
+
   function openSocioPicker(tipo: string) {
     const el = socioPickersRef.current[tipo];
     if (el) el.click();
@@ -253,7 +299,8 @@ export default function UploadDocsSection({ state, setState }: Props) {
     if (el) el.click();
   }
 
-  // --------- DIAGNÓSTICO ----------
+  /* ======================= Diagnóstico opcional ======================= */
+
   async function testStorage() {
     try {
       setDiagMsg('A testar Storage…');
@@ -303,6 +350,8 @@ export default function UploadDocsSection({ state, setState }: Props) {
       alert(`Tabela FAIL ❌: ${e?.message || e}`);
     }
   }
+
+  /* ======================= Render ======================= */
 
   return (
     <Card>
@@ -355,9 +404,9 @@ export default function UploadDocsSection({ state, setState }: Props) {
               Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || 'Conta'})
             </div>
             <div className="text-xs text-gray-500">
-              {Array.from(DOCS_SOCIO).filter(t => !(socioDocs.get(t) || []).length).length > 0 ? (
+              {socioMissingCount > 0 ? (
                 <span className="text-red-600 inline-flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> {Array.from(DOCS_SOCIO).filter(t => !(socioDocs.get(t) || []).length).length} documento(s) em falta
+                  <AlertCircle className="h-3 w-3" /> {socioMissingCount} documento(s) em falta
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1">
@@ -382,10 +431,11 @@ export default function UploadDocsSection({ state, setState }: Props) {
                         ref={(el) => (socioPickersRef.current[tipo] = el)}
                         type="file"
                         accept="image/*,application/pdf"
+                        multiple
                         className="hidden"
                         onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          if (f) await handleUploadSocio(tipo, f, 'new');
+                          const fs = e.target.files;
+                          await handleUploadSocioMany(tipo, fs);
                           e.currentTarget.value = '';
                         }}
                       />
@@ -399,11 +449,12 @@ export default function UploadDocsSection({ state, setState }: Props) {
                     <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
                   ) : (
                     <ul className="space-y-2">
-                      {files.map((row) => (
+                      {files.map((row, idx) => (
                         <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
                           <div className="text-sm flex items-center gap-2">
                             <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                              Página {row.page ?? 0}
+                              {/* Se quiseres apenas o número, troca por: {idx+1} */}
+                              Ficheiro {idx + 1}
                             </span>
                             <a
                               href={row.signedUrl}
@@ -454,8 +505,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
           )}
           {state.atletas.map((a) => {
             const mapa = athDocs[a.id] || new Map<string, DocumentoRow[]>();
-            const missing =
-              DOCS_ATLETA.filter((t) => !(mapa.get(t) || []).length).length;
+            const missing = DOCS_ATLETA.filter((t) => !(mapa.get(t) || []).length).length;
 
             return (
               <div key={a.id} className="border rounded-xl p-3 space-y-3">
@@ -488,10 +538,11 @@ export default function UploadDocsSection({ state, setState }: Props) {
                               ref={(el) => (atletaPickersRef.current[a.id][tipo] = el)}
                               type="file"
                               accept="image/*,application/pdf"
+                              multiple
                               className="hidden"
                               onChange={async (e) => {
-                                const f = e.target.files?.[0];
-                                if (f) await handleUploadAtleta(a.id, tipo, f, 'new');
+                                const fs = e.target.files;
+                                await handleUploadAtletaMany(a.id, tipo, fs);
                                 e.currentTarget.value = '';
                               }}
                             />
@@ -505,11 +556,11 @@ export default function UploadDocsSection({ state, setState }: Props) {
                           <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
                         ) : (
                           <ul className="space-y-2">
-                            {files.map((row) => (
+                            {files.map((row, idx) => (
                               <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
                                 <div className="text-sm flex items-center gap-2">
                                   <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                                    Página {row.page ?? 0}
+                                    Ficheiro {idx + 1}
                                   </span>
                                   <a
                                     href={row.signedUrl}
