@@ -1,79 +1,202 @@
-import React, { useEffect, useState } from 'react';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Textarea } from './ui/textarea';
-import { Button } from './ui/button';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { Atleta, Genero, Nacionalidade, TipoDocId, PlanoPagamento } from '../types/Atleta';
-import { computeEscalao, yearsAtSeasonStart, isValidPostalCode, isValidNIF, areEmailsValid } from '../utils/form-utils';
+import { computeEscalao, isValidNIF, isValidPostalCode, yearsAtSeasonStart, areEmailsValid } from '../utils/form-utils';
 
 type Props = {
   initial?: Partial<Atleta>;
-  dadosPessoais?: { morada?: string; codigoPostal?: string; telefone?: string; email?: string };
   onSave: (a: Atleta) => void;
-  onCancel: () => void;
+  onCancel?: () => void;
+  dadosPessoais?: {
+    morada?: string;
+    codigoPostal?: string;
+    telefone?: string; // contactos de urgência
+    email?: string;    // email preferencial
+  };
 };
 
-const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
-export default function AtletaFormCompleto({ initial, dadosPessoais, onSave, onCancel }: Props) {
+export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPessoais }: Props) {
+  function formatPostal(v: string){
+    const d = v.replace(/\D/g, '').slice(0,7);
+    if (d.length <= 4) return d;
+    return d.slice(0,4) + '-' + d.slice(4);
+  }
   const [a, setA] = useState<Atleta>({
     id: initial?.id || uid(),
     nomeCompleto: initial?.nomeCompleto || '',
     dataNascimento: initial?.dataNascimento || '',
     genero: (initial?.genero as Genero) || 'Feminino',
+    nacionalidade: (initial?.nacionalidade as Nacionalidade) || 'Portuguesa',
+    nacionalidadeOutra: initial?.nacionalidadeOutra || '',
+    tipoDoc: (initial?.tipoDoc as TipoDocId) || 'Cartão de cidadão',
+    numDoc: initial?.numDoc || '',
+    validadeDoc: initial?.validadeDoc || '',
+    nif: initial?.nif || '',
+    nomePai: initial?.nomePai || '',
+    nomeMae: initial?.nomeMae || '',
+    morada: initial?.morada || '',
+    codigoPostal: initial?.codigoPostal || '',
+    telefoneOpc: initial?.telefoneOpc || '',
+    emailOpc: initial?.emailOpc || '',
+    escola: initial?.escola || '',
+    anoEscolaridade: initial?.anoEscolaridade || '',
+    alergias: initial?.alergias || '',
+    encarregadoEducacao: initial?.encarregadoEducacao,
+    parentescoOutro: initial?.parentescoOutro || '',
+    contactosUrgencia: initial?.contactosUrgencia || '',
+    emailsPreferenciais: initial?.emailsPreferenciais || '',
     escalao: initial?.escalao || 'Fora de escalões',
     planoPagamento: (initial?.planoPagamento as PlanoPagamento) || 'Mensal',
-    // opcionais
-    morada: initial?.morada ?? dadosPessoais?.morada ?? '',
-    codigoPostal: initial?.codigoPostal ?? dadosPessoais?.codigoPostal ?? '',
-    contactosUrgencia: initial?.contactosUrgencia ?? dadosPessoais?.telefone ?? '',
-    emailsPreferenciais: initial?.emailsPreferenciais ?? (dadosPessoais?.email ?? ''),
-    alergias: initial?.alergias ?? '',
   });
 
-  useEffect(() => {
-    if (a.dataNascimento && a.genero) {
-      setA(prev => ({ ...prev, escalao: computeEscalao(a.dataNascimento, a.genero) }));
-    }
+  useEffect(()=>{
+    if (a.dataNascimento && a.genero) setA(prev => ({ ...prev, escalao: computeEscalao(a.dataNascimento, a.genero) }));
   }, [a.dataNascimento, a.genero]);
 
-  const isValidISODate = (s: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
+  const isMinor = useMemo(()=> a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false, [a.dataNascimento]);
+  const isMasters = a.escalao === 'Masters (<1995)';
+  const showEscola = !!a.dataNascimento && !isMasters;
 
   function save(ev: React.FormEvent) {
     ev.preventDefault();
     const errs: string[] = [];
     if (!a.nomeCompleto.trim()) errs.push('Nome do atleta é obrigatório');
-    if (!isValidISODate(a.dataNascimento)) errs.push('Data de nascimento inválida');
-    if (!isValidPostalCode(a.codigoPostal || '')) errs.push('Código‑postal inválido');
-    if (!areEmailsValid(a.emailsPreferenciais || '')) errs.push('Email(s) preferenciais inválido(s)');
-    if (!a.contactosUrgencia?.trim()) errs.push('Contactos de urgência são obrigatórios');
-    if (!a.alergias?.trim()) errs.push('Alergias/problemas de saúde é obrigatório');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.dataNascimento)) errs.push('Data de nascimento inválida');
+    if (!a.numDoc.trim()) errs.push('Número de documento obrigatório');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.validadeDoc)) errs.push('Validade de documento inválida');
+    if (!isValidNIF(a.nif)) errs.push('NIF inválido');
+    if (!isValidPostalCode(a.codigoPostal)) errs.push('Código‑postal inválido (####-###)');
+    if (!a.morada.trim()) errs.push('Morada é obrigatória');
+    if (showEscola && !a.escola.trim()) errs.push('Escola é obrigatória');
+    if (showEscola && !a.anoEscolaridade.trim()) errs.push('Ano de escolaridade é obrigatório');
+    if (!a.alergias.trim()) errs.push('Alergias / problemas de saúde é obrigatório');
+    if (!a.contactosUrgencia.trim()) errs.push('Contactos de urgência são obrigatórios');
+    if (!a.emailsPreferenciais.trim() || !areEmailsValid(a.emailsPreferenciais)) errs.push('Email(s) preferenciais inválidos');
+    if (a.nacionalidade === 'Outra' && !a.nacionalidadeOutra?.trim()) errs.push('Indicar a nacionalidade');
+    if (isMinor && !a.encarregadoEducacao) errs.push('Selecionar Encarregado de Educação');
+    if (a.encarregadoEducacao === 'Outro' && !a.parentescoOutro?.trim()) errs.push('Indicar parentesco (Outro)');
     if (errs.length) { alert(errs.join('\n')); return; }
     onSave(a);
   }
 
   return (
     <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
-      <div className="space-y-1 md:col-span-2"><Label>Nome Completo *</Label><Input value={a.nomeCompleto} onChange={e=>setA({...a,nomeCompleto:e.target.value})} required/></div>
-      <div className="space-y-1"><Label>Data de Nascimento *</Label><Input type="date" value={a.dataNascimento} onChange={e=>setA({...a,dataNascimento:e.target.value})} required/></div>
-      <div className="space-y-1"><Label>Género *</Label>
-        <Select value={a.genero} onValueChange={(v:any)=>setA({...a,genero:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{['Feminino','Masculino'].map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+      <Field className="md:col-span-2" label="Nome Completo *"><input className="input" value={a.nomeCompleto} onChange={e=>setA({...a, nomeCompleto:e.target.value})} required/></Field>
+      <Field label="Data de Nascimento *"><input type="date" className="input" value={a.dataNascimento} onChange={e=>setA({...a, dataNascimento:e.target.value})} required/></Field>
+
+      <Field label="Género *">
+        <select className="input" value={a.genero} onChange={e=>setA({...a, genero: e.target.value as Genero})}>
+          <option>Feminino</option>
+          <option>Masculino</option>
+        </select>
+      </Field>
+
+      <Field label="Nacionalidade *">
+        <select className="input" value={a.nacionalidade} onChange={e=>setA({...a, nacionalidade: e.target.value as Nacionalidade})}>
+          <option>Portuguesa</option>
+          <option>Outra</option>
+        </select>
+      </Field>
+      {a.nacionalidade === 'Outra' && <Field className="md:col-span-2" label="Indique a nacionalidade"><input className="input" value={a.nacionalidadeOutra||''} onChange={e=>setA({...a, nacionalidadeOutra:e.target.value})}/></Field>}
+
+      <Field label="Tipo de documento *">
+        <select className="input" value={a.tipoDoc} onChange={e=>setA({...a, tipoDoc: e.target.value as TipoDocId})}>
+          <option>Cartão de cidadão</option>
+          <option>Passaporte</option>
+          <option>Título de Residência</option>
+        </select>
+      </Field>
+      <Field label="Nº documento *"><input className="input" value={a.numDoc} onChange={e=>setA({...a, numDoc:e.target.value})} required/></Field>
+      <Field label="Validade do documento *"><input type="date" className="input" value={a.validadeDoc} onChange={e=>setA({...a, validadeDoc:e.target.value})} required/></Field>
+      <Field label="NIF *"><input className="input" value={a.nif} onChange={e=>setA({...a, nif:e.target.value})} required/></Field>
+
+      <Field className="md:col-span-2" label="Morada *"><input className="input" value={a.morada} onChange={e=>setA({...a, morada:e.target.value})} required/></Field>
+      <div className="md:col-span-2 grid grid-cols-[1fr_auto] gap-2">
+        <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:formatPostal(e.target.value)})} required/></Field>
+        <div className="flex items-end pb-1">
+          <button
+            type="button"
+            className="btn secondary h-10"
+            onClick={() => {
+              if (!dadosPessoais) return;
+              setA(prev => ({
+                ...prev,
+                morada: dadosPessoais.morada || prev.morada,
+                codigoPostal: dadosPessoais.codigoPostal || prev.codigoPostal,
+                contactosUrgencia: dadosPessoais.telefone || prev.contactosUrgencia,
+                emailsPreferenciais: dadosPessoais.email || prev.emailsPreferenciais,
+              }));
+            }}
+          >
+            Copiar dados pessoais
+          </button>
+        </div>
       </div>
-      <div className="space-y-1"><Label>Plano de Pagamento *</Label>
-        <Select value={a.planoPagamento} onValueChange={(v:any)=>setA({...a,planoPagamento:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{['Mensal','Trimestral','Anual'].map(s=> <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
-      </div>
-      <div className="space-y-1 md:col-span-2"><Label>Morada *</Label><Input value={a.morada || ''} onChange={e=>setA({...a,morada:e.target.value})} required/></div>
-      <div className="space-y-1"><Label>Código Postal *</Label><Input value={a.codigoPostal || ''} onChange={e=>setA({...a,codigoPostal:e.target.value})} placeholder="0000-000" required/></div>
-      <div className="space-y-1 md:col-span-2"><Label>Alergias / problemas de saúde *</Label><Textarea value={a.alergias || ''} onChange={e=>setA({...a,alergias:e.target.value})} required/></div>
-      <div className="space-y-1 md:col-span-2"><Label>Contactos de urgência *</Label><Input value={a.contactosUrgencia || ''} onChange={e=>setA({...a,contactosUrgencia:e.target.value})} required/></div>
-      <div className="space-y-1 md:col-span-2"><Label>Email(s) preferenciais *</Label><Input value={a.emailsPreferenciais || ''} onChange={e=>setA({...a,emailsPreferenciais:e.target.value})} required/></div>
-      <div className="space-y-1"><Label>Escalão</Label><Input value={a.escalao} readOnly className="bg-gray-100"/></div>
+
+<Field label="Email (opcional)"><input type="email" className="input" value={a.emailOpc||''} onChange={e=>setA({...a, emailOpc:e.target.value})}/></Field>
+<Field label="Telefone (opcional)"><input className="input" value={a.telefoneOpc||''} onChange={e=>setA({...a, telefoneOpc:e.target.value})}/></Field>
+{showEscola && (
+        <>
+          <Field className="md:col-span-2" label="Escola (2025/26) *"><input className="input" value={a.escola} onChange={e=>setA({...a, escola:e.target.value})} required/></Field>
+          <Field label="Ano de escolaridade (2025/26) *"><input className="input" value={a.anoEscolaridade} onChange={e=>setA({...a, anoEscolaridade:e.target.value})} required/></Field>
+        </>
+      )}
+
+      <Field className="md:col-span-2" label="Alergias / problemas de saúde *"><textarea className="input min-h-[100px]" value={a.alergias} onChange={e=>setA({...a, alergias:e.target.value})} required/></Field>
+
+      {isMinor && (
+        <>
+          <Field label="Encarregado de Educação *">
+            <select className="input" value={a.encarregadoEducacao||''} onChange={e=>setA({...a, encarregadoEducacao: e.target.value as any})}>
+              <option value="">—</option>
+              <option>Pai</option>
+              <option>Mãe</option>
+              <option>Outro</option>
+            </select>
+          </Field>
+          {a.encarregadoEducacao === 'Outro' && <Field label="Parentesco"><input className="input" value={a.parentescoOutro||''} onChange={e=>setA({...a, parentescoOutro:e.target.value})}/></Field>}
+        </>
+      )}
+
+      <Field className="md:col-span-2" label="Contactos telefónicos de urgência *">
+        <input className="input" placeholder="912...; 913..." value={a.contactosUrgencia} onChange={e=>setA({...a, contactosUrgencia:e.target.value})} required/>
+      </Field>
+      <Field className="md:col-span-2" label="Email(s) preferenciais *">
+        <input className="input" placeholder="a@x.pt; b@y.pt" value={a.emailsPreferenciais} onChange={e=>setA({...a, emailsPreferenciais:e.target.value})} required/>
+        <small className="text-gray-500">Se mais do que um, separar por ponto e vírgula (;)</small>
+      </Field>
+
+      <Field label="Escalão (sugestão automática)"><input className="input bg-gray-100" value={a.escalao} readOnly/></Field>
+      <Field label="Opção de Pagamentos *">
+        <select className="input" value={a.planoPagamento} onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}>
+          <option>Mensal</option>
+          <option>Trimestral</option>
+          <option>Anual</option>
+        </select>
+      </Field>
+
       <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-        <Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button>
-        <Button type="submit">Guardar atleta</Button>
+        {onCancel && <button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>}
+        <button type="submit" className="btn primary">Guardar atleta</button>
       </div>
+
+      <style>{`
+        .input { width: 100%; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.9rem; }
+        .btn { border-radius: 0.75rem; padding: 0.5rem 0.9rem; font-weight: 600; }
+        .btn.primary { background:#2563eb; color:#fff; }
+        .btn.primary:hover { background:#1d4ed8; }
+        .btn.secondary { background:#f3f4f6; }
+      `}</style>
     </form>
+  );
+}
+
+function Field({ label, children, className='' }:{ label:string; children:React.ReactNode; className?:string }){
+  return (
+    <div className={['space-y-1', className].join(' ')}>
+      <label className="text-sm font-medium">{label}</label>
+      {children}
+    </div>
   );
 }
