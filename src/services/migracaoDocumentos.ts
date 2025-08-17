@@ -1,61 +1,51 @@
 // src/services/migracaoDocumentos.ts
-import { uploadDoc } from './documentosService';
+import { uploadDoc } from "./documentosService";
+import type { State } from "../types/AppState";
 
-type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
-
-type State = {
-  docsSocio: Partial<Record<string, UploadMeta>>;
-  docsAtleta: Record<string, Partial<Record<string, UploadMeta>>>;
+type Args = {
+  state: State;
+  userId: string;
+  onProgress?: (msg: string) => void;
 };
 
 function dataUrlToFile(dataUrl: string, filename: string): File {
-  const arr = dataUrl.split(',');
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const arr = dataUrl.split(",");
+  if (arr.length < 2) {
+    const blob = new Blob([""], { type: "application/octet-stream" });
+    return new File([blob], filename || "ficheiro.bin");
+  }
+  const header = arr[0];
+  const mimeMatch = header.match(/data:(.*?);base64/);
+  const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
   const bstr = atob(arr[1]);
   let n = bstr.length;
   const u8 = new Uint8Array(n);
   while (n--) u8[n] = bstr.charCodeAt(n);
-  return new File([u8], filename || 'ficheiro', { type: mime });
+  const blob = new Blob([u8], { type: mime });
+  return new File([blob], filename || "ficheiro.bin", { type: mime });
 }
 
-export async function migrateLocalDataUrls(args: {
-  state: State;
-  userId: string;
-  onProgress?: (msg: string) => void;
-}) {
-  const { state, userId, onProgress } = args;
+export async function migrateLocalDataUrls({ state, userId, onProgress }: Args): Promise<void> {
+  const log = (m: string) => onProgress?.(m);
 
-  // Sócio
-  for (const [tipo, meta] of Object.entries(state.docsSocio || {})) {
+  // ---- Sócio ----
+  const socio = state.docsSocio || {};
+  for (const [tipo, meta] of Object.entries(socio)) {
     if (!meta?.dataUrl) continue;
-    onProgress?.(`Sócio: ${tipo}`);
-    const file = dataUrlToFile(meta.dataUrl, meta.name);
-    await uploadDoc({
-      nivel: 'socio',
-      userId,
-      tipo,
-      file,
-      mode: 'new',
-      page: 0, // primeira página
-    });
+    log(`Migrar sócio → ${tipo}`);
+    const file = dataUrlToFile(meta.dataUrl, meta.name || `${tipo}.pdf`);
+    await uploadDoc({ nivel: "socio", userId, tipo, file, mode: "new" });
   }
 
-  // Atleta
-  for (const [atletaId, porTipo] of Object.entries(state.docsAtleta || {})) {
-    for (const [tipo, meta] of Object.entries(porTipo || {})) {
+  // ---- Atletas ----
+  const atletas = state.docsAtleta || {};
+  for (const [atletaId, mapa] of Object.entries(atletas)) {
+    if (!mapa) continue;
+    for (const [tipo, meta] of Object.entries(mapa)) {
       if (!meta?.dataUrl) continue;
-      onProgress?.(`Atleta ${atletaId}: ${tipo}`);
-      const file = dataUrlToFile(meta.dataUrl, meta.name);
-      await uploadDoc({
-        nivel: 'atleta',
-        userId,
-        atletaId,
-        tipo,
-        file,
-        mode: 'new',
-        page: 0,
-      });
+      log(`Migrar atleta ${atletaId} → ${tipo}`);
+      const file = dataUrlToFile(meta.dataUrl, meta.name || `${tipo}.pdf`);
+      await uploadDoc({ nivel: "atleta", userId, atletaId, tipo, file, mode: "new" });
     }
   }
 }

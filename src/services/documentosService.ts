@@ -15,17 +15,18 @@ export type DocumentoRow = {
   page: number;                // normalmente 1 quando 1 ficheiro = 1 página
   file_path: string;           // path no Storage (igual a 'path')
   path: string;                // path no Storage
-  nome: string;                // nome "humano" do ficheiro (podemos manter o original)
+  nome: string;                // nome "humano" do ficheiro (original)
   mime_type: string | null;
   file_size: number | null;
   uploaded_at: string | null;
-  // Campo adicionado em runtime pelo serviço (não existe na DB):
+  // Campo só em runtime (não existe na DB)
   signedUrl?: string;
 };
 
+type UploadArgsBase = { tipo: string; file: File; mode?: "new" | "replace"; page?: number };
 type UploadArgs =
-  | { nivel: "socio"; userId: string; tipo: string; file: File; mode?: "new" | "replace" }
-  | { nivel: "atleta"; userId: string; atletaId: string; tipo: string; file: File; mode?: "new" | "replace" };
+  | ({ nivel: "socio"; userId: string } & UploadArgsBase)
+  | ({ nivel: "atleta"; userId: string; atletaId: string } & UploadArgsBase);
 
 type ReplaceArgs = { id: string; file: File };
 type DeleteArgs = { id: string };
@@ -40,33 +41,22 @@ const BUCKET = "documentos";
 /*                               Helpers (path)                               */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Remove diacríticos, espaços, símbolos estranhos e normaliza para um segmento “seguro”.
- * Mantém [a-z0-9._-] e converte para minúsculas.
- */
+/** Normaliza segmentos (remove acentos, espaços → '-', só [a-z0-9._-]) */
 function toSafeSegment(input: string, fallback = "item"): string {
   if (!input) return fallback;
-  // remover diacríticos
   let s = input.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-  // trocar espaços por '-'
   s = s.replace(/\s+/g, "-");
-  // permitir apenas [a-z0-9._-]
   s = s.replace(/[^a-zA-Z0-9._-]/g, "-");
-  // colapsar múltiplos '-' e '.'
   s = s.replace(/-+/g, "-").replace(/\.+/g, ".");
-  // minúsculas e trim de traços/pontos nas pontas
   s = s.toLowerCase().replace(/^[-.]+|[-.]+$/g, "");
   return s || fallback;
 }
 
-/**
- * Gera um nome de ficheiro seguro preservando a extensão (normalizada).
- */
+/** Gera nome de ficheiro seguro preservando extensão */
 function toSafeFilename(name: string, fallback = "ficheiro.bin"): string {
   if (!name) return fallback;
   const idx = name.lastIndexOf(".");
   if (idx <= 0 || idx === name.length - 1) {
-    // sem extensão clara → normaliza tudo e adiciona .bin se necessário
     const base = toSafeSegment(name);
     return base.includes(".") ? base : `${base}.bin`;
   }
@@ -75,9 +65,7 @@ function toSafeFilename(name: string, fallback = "ficheiro.bin"): string {
   return `${base}.${ext}`;
 }
 
-/**
- * Junta segmentos de forma segura (sem //) e sem barra inicial.
- */
+/** Junta segmentos sem // e sem / inicial/final */
 function joinPath(...parts: Array<string | undefined | null>): string {
   const cleaned = parts
     .filter(Boolean)
@@ -97,7 +85,6 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
 
   const tipoSafe = toSafeSegment(args.tipo || "tipo");
   const fileSafe = toSafeFilename(file.name);
-
   const ts = Date.now();
 
   // Paths:
@@ -111,7 +98,7 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
   // 1) Upload para Storage
   const up = await supabase.storage.from(BUCKET).upload(storagePath, file, {
     cacheControl: "3600",
-    upsert: false, // não substituir por omissão
+    upsert: false,
     contentType: file.type || undefined,
   });
   if (up.error) {
@@ -124,23 +111,23 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
     doc_nivel: nivel,
     atleta_id: nivel === "atleta" ? (args as any).atletaId : null,
     doc_tipo: args.tipo,
-    page: 1,
+    page: args.page ?? 1,
     file_path: storagePath,
     path: storagePath,
-    nome: file.name, // nome "humano" original
+    nome: file.name,
     mime_type: file.type || null,
     file_size: file.size ?? null,
     uploaded_at: new Date().toISOString(),
   };
 
-  const ins = await supabase.from<DocumentoRow>("documentos").insert(rowToInsert).select("*").single();
+  const ins = await supabase.from("documentos").insert(rowToInsert).select("*").single();
   if (ins.error) {
-    // rollback storage se a DB falhar (opcional mas recomendado)
+    // rollback storage se a DB falhar
     await supabase.storage.from(BUCKET).remove([storagePath]);
     throw new Error(`INSERT em public.documentos falhou: ${ins.error.message}`);
   }
 
-  return ins.data;
+  return ins.data as DocumentoRow;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -152,11 +139,11 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
   if (!file) throw new Error("replaceDoc: file em falta");
 
   // 1) Buscar row existente
-  const sel = await supabase.from<DocumentoRow>("documentos").select("*").eq("id", id).single();
+  const sel = await supabase.from("documentos").select("*").eq("id", id).single();
   if (sel.error || !sel.data) {
     throw new Error(`Não foi possível obter o registo (${id}): ${sel.error?.message || "not found"}`);
   }
-  const current = sel.data;
+  const current = sel.data as DocumentoRow;
 
   // 2) Substituir no mesmo path (upsert)
   const up = await supabase.storage.from(BUCKET).upload(current.path, file, {
@@ -168,9 +155,9 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
     throw new Error(`Storage replace falhou: ${up.error.message}`);
   }
 
-  // 3) Atualizar metadados na tabela
+  // 3) Atualizar metadados
   const upd = await supabase
-    .from<DocumentoRow>("documentos")
+    .from("documentos")
     .update({
       nome: file.name,
       mime_type: file.type || null,
@@ -185,7 +172,7 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
     throw new Error(`UPDATE em public.documentos falhou: ${upd.error?.message || "unknown"}`);
   }
 
-  return upd.data;
+  return upd.data as DocumentoRow;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -195,14 +182,15 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
 export async function deleteDoc(id: string): Promise<void> {
   if (!id) throw new Error("deleteDoc: id em falta");
 
-  // 1) Descobrir path para remover do Storage
-  const sel = await supabase.from<DocumentoRow>("documentos").select("path").eq("id", id).single();
+  // 1) Descobrir path
+  const sel = await supabase.from("documentos").select("path").eq("id", id).single();
   if (sel.error || !sel.data) {
     throw new Error(`Não foi possível obter o registo (${id}): ${sel.error?.message || "not found"}`);
   }
+  const { path } = sel.data as { path: string };
 
-  // 2) Remover Storage (ignora erro de "not found")
-  const rm = await supabase.storage.from(BUCKET).remove([sel.data.path]);
+  // 2) Remover Storage (ignora "not found")
+  const rm = await supabase.storage.from(BUCKET).remove([path]);
   if (rm.error && rm.error.message && !/Object not found/i.test(rm.error.message)) {
     throw new Error(`Storage remove falhou: ${rm.error.message}`);
   }
@@ -219,9 +207,7 @@ export async function deleteDoc(id: string): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
-  const q = supabase.from<DocumentoRow>("documentos").select("*");
-
-  let query = q.eq("user_id", (args as any).userId);
+  let query = supabase.from("documentos").select("*").eq("user_id", (args as any).userId);
 
   if (args.nivel === "socio") {
     query = query.eq("doc_nivel", "socio").is("atleta_id", null);
@@ -229,14 +215,13 @@ export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
     query = query.eq("doc_nivel", "atleta").eq("atleta_id", (args as any).atletaId);
   }
 
-  // Ordenação útil: por tipo e página
   query = query.order("doc_tipo", { ascending: true }).order("page", { ascending: true });
 
   const { data, error } = await query;
   if (error) {
     throw new Error(`SELECT public.documentos falhou: ${error.message}`);
   }
-  return data ?? [];
+  return (data || []) as DocumentoRow[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -249,13 +234,12 @@ export async function withSignedUrls(rows: DocumentoRow[], expiresInSeconds = 36
 
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(paths, expiresInSeconds);
   if (error) {
-    // mesmo que falhe, devolvemos as rows sem URL para a UI mostrar algo
     console.error("[withSignedUrls] createSignedUrls falhou:", error.message);
     return rows;
   }
 
   const byPath: Record<string, string | undefined> = {};
-  data?.forEach((d) => {
+  (data || []).forEach((d: any) => {
     if (d?.path) byPath[d.path] = d.signedUrl;
   });
 
