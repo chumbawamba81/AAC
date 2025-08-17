@@ -1,5 +1,5 @@
 // src/components/UploadDocsSection.tsx
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Upload, Trash2, RefreshCw, File as FileIcon } from 'lucide-react';
@@ -7,7 +7,6 @@ import { Upload, Trash2, RefreshCw, File as FileIcon } from 'lucide-react';
 import {
   Documento,
   DocumentoFicheiro,
-  DocumentoTipo,
   listDocumentos,
   listFicheiros,
   withSignedUrls,
@@ -37,12 +36,12 @@ const DOCS_ATLETA: DocAtleta[] = [
 export default function UploadDocsSection({
   state,
 }: {
-  state: any; // usa o state do teu App; precisa de state.perfil?.id e state.atletas (id,nomeCompleto,escalao)
+  state: any; // precisa de state.perfil?.id e state.atletas (id,nomeCompleto,escalao)
 }) {
   const pessoaId = state?.perfil?.id ?? null;
 
   // Sócio
-  const [docsSocio, setDocsSocio] = useState<Record<DocSocio, Documento & { ficheiros: DocumentoFicheiro[] } | null>>({
+  const [docsSocio, setDocsSocio] = useState<Record<DocSocio, (Documento & { ficheiros: DocumentoFicheiro[] }) | null>>({
     'Ficha de Sócio': null,
     'Comprovativo de pagamento de sócio': null,
   });
@@ -187,11 +186,10 @@ export default function UploadDocsSection({
                 <div key={tipo} className="border rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="font-medium">{tipo}</div>
-                    <FileTrigger
+                    <FileOverlayTrigger
                       multiple
                       disabled={busy || !pessoaId}
                       label="Carregar"
-                      leftIcon={<Upload className="h-4 w-4 mr-1" />}
                       onPick={(files) => doUploadSocio(tipo, files)}
                     />
                   </div>
@@ -220,11 +218,10 @@ export default function UploadDocsSection({
                       <div key={tipo} className="border rounded-lg p-3 space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="font-medium">{tipo}</div>
-                          <FileTrigger
+                          <FileOverlayTrigger
                             multiple
                             disabled={busy}
                             label="Carregar"
-                            leftIcon={<Upload className="h-4 w-4 mr-1" />}
                             onPick={(files) => doUploadAtleta(a.id, tipo, files)}
                           />
                         </div>
@@ -265,7 +262,7 @@ function DocList({
           <div className="text-sm">
             <div className="font-medium flex items-center">
               <FileIcon className="h-4 w-4 mr-2" />
-              {f.file_name || f.path.split('/').pop()}
+              {(f as any).file_name || f.path.split('/').pop()}
             </div>
             {f.signedUrl && (
               <a href={f.signedUrl} target="_blank" rel="noreferrer" className="text-xs underline">
@@ -274,11 +271,13 @@ function DocList({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <SingleFileTrigger
-              disabled={busy}
+            <FileOverlayTrigger
               label="Substituir"
-              leftIcon={<Upload className="h-4 w-4 mr-1" />}
-              onPickOne={(file) => onReplace(f.id, file)}
+              disabled={busy}
+              onPick={(files) => {
+                const file = files?.[0];
+                if (file) onReplace(f.id, file);
+              }}
             />
             <Button variant="destructive" disabled={busy} onClick={() => onDelete(f.id)}>
               <Trash2 className="h-4 w-4 mr-1" />
@@ -291,71 +290,39 @@ function DocList({
   );
 }
 
-/* ---------- Botões de upload com ref (sem display:none) ---------- */
+/* ---------- Trigger de upload com INPUT a sobrepor o botão ---------- */
 
-function FileTrigger({
+function FileOverlayTrigger({
+  label,
   multiple,
   disabled,
   onPick,
-  label,
-  leftIcon,
 }: {
+  label: string;
   multiple?: boolean;
   disabled?: boolean;
   onPick: (files: FileList) => void;
-  label: string;
-  leftIcon?: React.ReactNode;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
   return (
-    <>
+    <div className="relative inline-block">
+      <Button type="button" variant="outline" disabled={disabled} className="pr-4">
+        <Upload className="h-4 w-4 mr-1" />
+        {label}
+      </Button>
+      {/* Input cobre o botão todo, totalmente transparente */}
       <input
-        ref={ref}
         type="file"
-        className="sr-only"
         multiple={!!multiple}
+        disabled={!!disabled}
         onChange={(e) => {
           const fs = e.target.files;
           if (fs && fs.length) onPick(fs);
           e.currentTarget.value = '';
         }}
+        className="absolute inset-0 z-10 opacity-0 cursor-pointer"
+        // Fallback para casos extremos (iOS muito restritivo): torna-o focável
+        aria-label={label}
       />
-      <Button type="button" variant="outline" disabled={disabled} onClick={() => ref.current?.click()}>
-        {leftIcon}
-        {label}
-      </Button>
-    </>
-  );
-}
-
-function SingleFileTrigger({
-  disabled,
-  onPickOne,
-  label,
-  leftIcon,
-}: {
-  disabled?: boolean;
-  onPickOne: (file: File) => void;
-  label: string;
-  leftIcon?: React.ReactNode;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <input
-        ref={ref}
-        type="file"
-        className="sr-only"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onPickOne(f);
-          e.currentTarget.value = '';
-        }}
-      />
-      <Button type="button" variant="secondary" disabled={disabled} onClick={() => ref.current?.click()}>
-        {leftIcon}
-        {label}
-      </Button>
-    </>
+    </div>
   );
 }
