@@ -13,6 +13,7 @@ import { AlertCircle, CheckCircle2, FileUp, LogIn, LogOut, Shield, UserPlus, Use
 import type { PessoaDados } from "./types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "./types/Atleta";
 import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
+import DadosPessoaisSection from "./components/DadosPessoaisSection";
 import AtletaFormCompleto from "./components/AtletaFormCompleto";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
@@ -570,35 +571,36 @@ useEffect(() => {
   const hasAtletas = state.atletas.length > 0;
   const mainTabLabel = hasPerfil ? "Página Inicial" : "Dados Pessoais";
 
-async function afterSavePerfil() {
-  if (!state.dadosPessoais) return;
+async function afterSavePerfil(novo: DadosPessoais) {
+  try {
+    const { data, error } = await supabase.from("dados_pessoais").upsert([{
+      id: novo.id,
+      user_id: user?.id,   // id do utilizador autenticado
+      nome_completo: novo.nomeCompleto,
+      data_nascimento: novo.dataNascimento,
+      genero: novo.genero,
+      morada: novo.morada,
+      codigo_postal: novo.codigoPostal,
+      telefone: novo.telefone,
+      email: novo.email,
+      situacao_tesouraria: novo.situacaoTesouraria,
+      noticias: novo.noticias,
+    }]);
 
-  const { data, error } = await supabase.from("dados_pessoais").upsert([
-    {
-      id: state.dadosPessoais.id,
-      user_id: user?.id,
-      nome_completo: state.dadosPessoais.nomeCompleto,
-      data_nascimento: state.dadosPessoais.dataNascimento,
-      genero: state.dadosPessoais.genero,
-      morada: state.dadosPessoais.morada,
-      codigo_postal: state.dadosPessoais.codigoPostal,
-      telefone: state.dadosPessoais.telefone,
-      email: state.dadosPessoais.email,
-      situacao_tesouraria: state.dadosPessoais.situacaoTesouraria,
-      noticias: state.dadosPessoais.noticias,
-    },
-  ]);
-
-  if (error) {
-    console.error("❌ Erro ao guardar dados pessoais:", error);
-    alert("Erro ao guardar no servidor");
-  } else {
-    console.log("✅ Dados pessoais guardados no Supabase:", data);
+    if (error) {
+      console.error("❌ Erro ao guardar dados pessoais:", error);
+      alert("Erro ao guardar no servidor");
+    } else {
+      console.log("✅ Dados pessoais guardados no Supabase:", data);
+    }
+  } catch (err) {
+    console.error("Erro inesperado:", err);
   }
 
   setPostSavePrompt(true);
   setActiveTab("home");
 }
+
 
 
 
@@ -621,7 +623,7 @@ async function afterSavePerfil() {
           </TabsList>
 
           <TabsContent value="home">
-            <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil} />
+            <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
           </TabsContent>
           {hasPerfil && (
             <TabsContent value="atletas">
