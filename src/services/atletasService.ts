@@ -1,129 +1,161 @@
 // src/services/atletasService.ts
-import { supabase } from '../supabaseClient';
-import type { Atleta, PlanoPagamento } from '../types/Atleta';
-import { getMyProfile } from './profileService';
+import { supabase } from "../supabaseClient";
+import type { Atleta } from "../types/Atleta";
 
-const TBL = 'atletas';
+/**
+ * Assumido schema da tabela public.atletas (snake_case):
+ *  id (uuid, pk), user_id (uuid, fk auth.users), nome_completo (text),
+ *  genero (text), data_nascimento (date/text YYYY-MM-DD), escalao (text),
+ *  plano_pagamento (text: 'Mensal' | 'Trimestral' | 'Anual'),
+ *  morada (text, opcional), codigo_postal (text, opcional),
+ *  telefone (text, opcional), email (text, opcional), created_at (timestamptz)
+ *
+ * Políticas RLS recomendadas (executa no SQL editor):
+ *
+ * alter table public.atletas enable row level security;
+ * drop policy if exists "atletas_select" on public.atletas;
+ * drop policy if exists "atletas_ins" on public.atletas;
+ * drop policy if exists "atletas_upd" on public.atletas;
+ * drop policy if exists "atletas_del" on public.atletas;
+ * create policy "atletas_select" on public.atletas
+ *   for select using (auth.uid() = user_id);
+ * create policy "atletas_ins" on public.atletas
+ *   for insert with check (auth.uid() = user_id);
+ * create policy "atletas_upd" on public.atletas
+ *   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+ * create policy "atletas_del" on public.atletas
+ *   for delete using (auth.uid() = user_id);
+ */
 
-type DbAtleta = {
+type DbRow = {
   id: string;
-  dados_pessoais_id: string | null;
-  nome: string;
-  data_nascimento: string;        // YYYY-MM-DD
-  genero: string | null;          // 'Masculino' | 'Feminino' | null
-  escalao?: string | null;        // sem acento
-  alergias: string;
-  opcao_pagamento: string | null; // 'Mensal' | 'Trimestral' | 'Anual' | null
-  morada: string | null;
-  codigo_postal: string | null;
-  contactos_urgencia: string | null;
-  emails_preferenciais: string | null;
+  user_id: string | null;
+  nome_completo: string;
+  genero: string | null;
+  data_nascimento: string; // YYYY-MM-DD
+  escalao: string | null;
+  plano_pagamento: string | null;
+  morada?: string | null;
+  codigo_postal?: string | null;
+  telefone?: string | null;
+  email?: string | null;
   created_at?: string | null;
 };
 
-async function getPerfilId(): Promise<string> {
-  const p = await getMyProfile();
-  if (!p?.id) throw new Error('Crie/guarde primeiro os Dados Pessoais.');
-  return p.id;
-}
+const TABLE = "atletas";
 
-// Validador de UUID v4 (aceita 1–5 no variant como no Postgres)
-function isUuid(v: unknown): v is string {
-  return (
-    typeof v === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
-  );
-}
-
-function coerceGenero(x: string | null | undefined): Atleta['genero'] {
-  return x === 'Masculino' || x === 'Feminino' ? (x as Atleta['genero']) : undefined;
-}
-
-function coercePlano(x: string | null | undefined): PlanoPagamento {
-  return x === 'Trimestral' || x === 'Anual' ? x : 'Mensal';
-}
-
-/** BD → Domínio */
-function mapDbToDomain(r: DbAtleta): Atleta {
-  return {
+/** Conversão DB -> Tipo de app */
+function dbToAtleta(r: DbRow): Atleta {
+  // Apenas campos certamente existentes no teu tipo Atleta (evita erros TS)
+  const a: any = {
     id: r.id,
-    nomeCompleto: r.nome,
-    dataNascimento: r.data_nascimento,
-    genero: coerceGenero(r.genero),
-    escalao: r.escalao ?? undefined,
-    alergias: r.alergias ?? '',
-    planoPagamento: coercePlano(r.opcao_pagamento),
-    morada: r.morada ?? '',
-    codigoPostal: r.codigo_postal ?? '',
-    contactosUrgencia: r.contactos_urgencia ?? '',
-    emailsPreferenciais: r.emails_preferenciais ?? '',
+    nomeCompleto: r.nome_completo ?? "",
+    genero: r.genero ?? "",
+    dataNascimento: r.data_nascimento ?? "",
+    escalao: r.escalao ?? "",
+    planoPagamento: (r.plano_pagamento as Atleta["planoPagamento"]) ?? "Anual",
   };
+
+  // Campos extra (se existirem no tipo real do projeto, ficam preenchidos)
+  a.morada = r.morada ?? a.morada;
+  a.codigoPostal = r.codigo_postal ?? a.codigoPostal;
+  a.telefone = r.telefone ?? a.telefone;
+  a.email = r.email ?? a.email;
+
+  return a as Atleta;
 }
 
-/** Domínio → BD */
-function mapDomainToDb(perfilId: string, a: Atleta): Partial<DbAtleta> {
-  return {
-    // id incluído condicionalmente no upsert
-    dados_pessoais_id: perfilId,
-    nome: a.nomeCompleto,
-    data_nascimento: a.dataNascimento,
-    genero: a.genero ?? null,
-    escalao: a.escalao ?? null,
-    alergias: a.alergias ?? '',
-    opcao_pagamento: a.planoPagamento,
-    morada: a.morada ?? null,
-    codigo_postal: a.codigoPostal ?? null,
-    contactos_urgencia: a.contactosUrgencia ?? null,
-    emails_preferenciais: a.emailsPreferenciais ?? null,
+/** Conversão App -> DB (garante user_id = auth.uid()) */
+function atletaToDb(a: Atleta, userId: string): Partial<DbRow> & { user_id: string } {
+  const out: any = {
+    user_id: userId,
+    nome_completo: (a as any).nomeCompleto ?? "",
+    genero: (a as any).genero ?? null,
+    data_nascimento: (a as any).dataNascimento ?? "",
+    escalao: (a as any).escalao ?? null,
+    plano_pagamento: (a as any).planoPagamento ?? "Anual",
   };
+  // Copiar opcionais se existirem no objeto Atleta do teu projeto
+  if ((a as any).morada !== undefined) out.morada = (a as any).morada;
+  if ((a as any).codigoPostal !== undefined) out.codigo_postal = (a as any).codigoPostal;
+  if ((a as any).telefone !== undefined) out.telefone = (a as any).telefone;
+  if ((a as any).email !== undefined) out.email = (a as any).email;
+
+  return out as Partial<DbRow> & { user_id: string };
 }
 
+/** Lista todos os atletas do utilizador autenticado */
 export async function listAtletas(): Promise<Atleta[]> {
-  const perfilId = await getPerfilId();
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) return [];
 
   const { data, error } = await supabase
-    .from(TBL)
-    .select(
-      'id, dados_pessoais_id, nome, data_nascimento, genero, escalao, alergias, opcao_pagamento, morada, codigo_postal, contactos_urgencia, emails_preferenciais, created_at'
-    )
-    .eq('dados_pessoais_id', perfilId)
-    .order('created_at', { ascending: false })
-    .returns<DbAtleta[]>();
+    .from<DbRow>(TABLE)
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
 
-  if (error) throw error;
-  return (data ?? []).map(mapDbToDomain);
-}
-
-export async function upsertAtleta(a: Atleta): Promise<Atleta> {
-  const perfilId = await getPerfilId();
-  const row = mapDomainToDb(perfilId, a) as Partial<DbAtleta> & { id?: string };
-
-  // Se o id for UUID válido, mantém (update); caso contrário, não envies (insert → BD gera)
-  if (isUuid(a.id)) {
-    row.id = a.id;
-  } else {
-    delete row.id;
+  if (error) {
+    console.error("[atletasService] listAtletas:", error.message);
+    throw error;
   }
-
-  const query = supabase
-    .from(TBL)
-    .upsert(row, { onConflict: 'id' })
-    .select(
-      'id, dados_pessoais_id, nome, data_nascimento, genero, escalao, alergias, opcao_pagamento, morada, codigo_postal, contactos_urgencia, emails_preferenciais, created_at'
-    )
-    .single();
-
-  const { data, error } = await query.returns<DbAtleta>();
-  if (error) throw error;
-  return mapDbToDomain(data);
+  return (data ?? []).map(dbToAtleta);
 }
 
-export async function deleteAtleta(id: string) {
-  const perfilId = await getPerfilId();
+/** Cria/atualiza um atleta do utilizador autenticado */
+export async function upsertAtleta(a: Atleta): Promise<Atleta> {
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) throw new Error("Sessão não encontrada.");
+
+  const row = atletaToDb(a, user.id);
+
+  // Se veio com id -> update; caso contrário -> insert
+  const hasId = !!(a as any).id;
+
+  if (hasId) {
+    const { data, error } = await supabase
+      .from<DbRow>(TABLE)
+      .update(row)
+      .eq("id", (a as any).id)
+      .select("*")
+      .single();
+
+    if (error) {
+      console.error("[atletasService] update:", error.message);
+      throw error;
+    }
+    return dbToAtleta(data as DbRow);
+  } else {
+    const { data, error } = await supabase
+      .from<DbRow>(TABLE)
+      .insert(row)
+      .select("*")
+      .single();
+
+    if (error) {
+      console.error("[atletasService] insert:", error.message);
+      throw error;
+    }
+    return dbToAtleta(data as DbRow);
+  }
+}
+
+/** Remove um atleta do utilizador autenticado */
+export async function deleteAtleta(id: string): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) throw new Error("Sessão não encontrada.");
+
   const { error } = await supabase
-    .from(TBL)
+    .from<DbRow>(TABLE)
     .delete()
-    .eq('id', id)
-    .eq('dados_pessoais_id', perfilId);
-  if (error) throw error;
+    .eq("id", id)
+    .eq("user_id", user.id); // segurança adicional (além da RLS)
+
+  if (error) {
+    console.error("[atletasService] delete:", error.message);
+    throw error;
+  }
 }
