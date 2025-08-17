@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-// Import Supabase auth and data services
+// Serviços (Supabase) de autenticação e dados
 import { signIn, signUp, signOut } from "./services/authService";
 import { getMyProfile, upsertMyProfile } from "./services/profileService";
 import {
@@ -143,7 +143,7 @@ function saveState(s: State) {
   localStorage.setItem(LS_KEY, JSON.stringify(s));
 }
 
-// As funções de autenticação via Supabase são fornecidas por authService.ts
+// Função para recuperação de password (se tiveres um backend próprio além de Supabase)
 async function apiForgot(email: string): Promise<void> {
   if (!API_BASE) return;
   const r = await fetch(`${API_BASE}/auth/forgot`, {
@@ -201,7 +201,7 @@ function ContaSection({
     const savedEmail = localStorage.getItem("authEmail");
     if (savedToken && savedEmail) {
       setToken(savedToken);
-      const next = { ...state, conta: { email: savedEmail } } as State;
+      const next: State = { ...state, conta: { email: savedEmail } };
       setState(next);
       saveState(next);
       onLogged();
@@ -221,9 +221,8 @@ function ContaSection({
       }
       try {
         setLoading(true);
-        // Registo via Supabase: envia email de verificação
         await signUp(email, password);
-        const next = { ...state, verificationPendingEmail: email, conta: { email } } as State;
+        const next: State = { ...state, verificationPendingEmail: email, conta: { email } };
         setState(next);
         saveState(next);
         setInfo("Registo efetuado. Verifique o seu email para validar a conta.");
@@ -238,10 +237,9 @@ function ContaSection({
     try {
       setLoading(true);
       const data = await signIn(email, password);
-      // Usa o access token da sessão Supabase ou uma string de fallback
       const supaToken = data?.session?.access_token || `supabase-${uid()}`;
       setToken(supaToken);
-      const next = { ...state, conta: { email }, verificationPendingEmail: null } as State;
+      const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
       setState(next);
       saveState(next);
       if (remember) {
@@ -414,7 +412,7 @@ function DadosPessoaisSection({
     try {
       // Persiste o perfil no Supabase e atualiza o estado
       const savedPerfil = await upsertMyProfile(form);
-      const next = { ...state, perfil: savedPerfil } as State;
+      const next: State = { ...state, perfil: savedPerfil };
       setState(next);
       saveState(next);
       setEditMode(false);
@@ -605,7 +603,7 @@ function PagamentosSection({ state, setState }: { state: State; setState: (s: St
   }
 
   useEffect(() => {
-    const next = { ...state, pagamentos: { ...state.pagamentos } } as State;
+    const next: State = { ...state, pagamentos: { ...state.pagamentos } };
     let changed = false;
     for (const a of state.atletas) {
       const need = getSlotsForPlano(a.planoPagamento);
@@ -632,7 +630,7 @@ function PagamentosSection({ state, setState }: { state: State; setState: (s: St
   async function handleUpload(athleteId: string, idx: number, file: File) {
     const dataUrl = await toDataUrl(file);
     const meta: UploadMeta = { name: file.name, dataUrl, uploadedAt: new Date().toISOString() };
-    const next = { ...state, pagamentos: { ...state.pagamentos } } as State;
+    const next: State = { ...state, pagamentos: { ...state.pagamentos } };
     const arr = next.pagamentos[athleteId] ? [...next.pagamentos[athleteId]] : [];
     arr[idx] = meta;
     next.pagamentos[athleteId] = arr;
@@ -685,6 +683,7 @@ function PagamentosSection({ state, setState }: { state: State; setState: (s: St
                         <input
                           type="file"
                           className="hidden"
+                          accept="image/*,application/pdf"
                           onChange={(e) => e.target.files && handleUpload(a.id, i, e.target.files[0])}
                         />
                         <Button variant={meta ? "secondary" : "outline"}>
@@ -714,7 +713,7 @@ function AtletasSection({ state, setState }: { state: State; setState: (s: State
     if (!confirm("Remover o atleta?")) return;
     try {
       await removeAtleta(id);
-      const next = { ...state, atletas: state.atletas.filter((x) => x.id !== id) } as State;
+      const next: State = { ...state, atletas: state.atletas.filter((x) => x.id !== id) };
       delete next.docsAtleta[id];
       delete next.pagamentos[id];
       setState(next);
@@ -799,10 +798,10 @@ function AtletasSection({ state, setState }: { state: State; setState: (s: State
                 try {
                   await saveAtleta(novo);
                   const exists = state.atletas.some((x) => x.id === novo.id);
-                  const next = {
+                  const next: State = {
                     ...state,
                     atletas: exists ? state.atletas.map((x) => (x.id === novo.id ? novo : x)) : [novo, ...state.atletas],
-                  } as State;
+                  };
                   setState(next);
                   saveState(next);
                   setOpen(false);
@@ -829,25 +828,41 @@ export default function App() {
   // Sincroniza dados do Supabase (perfil e atletas) quando o utilizador inicia sessão
   useEffect(() => {
     async function syncFromSupabase() {
-      // Só tenta sincronizar se existir um token (utilizador autenticado)
       if (!token) return;
+
       try {
         const [perfilDb, atletasDb] = await Promise.all([getMyProfile(), listAtletas()]);
-        const next: State = { ...state };
-        // Se existir perfil no Supabase, usa-o
-        if (perfilDb) {
-          next.perfil = perfilDb;
-        }
-        // Se existirem atletas no Supabase, usa-os
-        if (atletasDb) {
-          next.atletas = atletasDb;
-        }
+
+        // 🔧 Normaliza perfil para cumprir PessoaDados (evita cast errado)
+        const perfilNormalizado: PessoaDados | null = perfilDb
+          ? {
+              nomeCompleto: perfilDb.nomeCompleto ?? "",
+              tipoSocio: perfilDb.tipoSocio ?? "Não pretendo ser sócio",
+              dataNascimento: perfilDb.dataNascimento ?? "",
+              morada: perfilDb.morada ?? "",
+              codigoPostal: perfilDb.codigoPostal ?? "",
+              tipoDocumento: perfilDb.tipoDocumento ?? "Cartão de cidadão",
+              numeroDocumento: perfilDb.numeroDocumento ?? "",
+              nif: perfilDb.nif ?? "",
+              telefone: perfilDb.telefone ?? "",
+              email: perfilDb.email ?? state.conta?.email ?? "",
+              profissao: perfilDb.profissao ?? "",
+            }
+          : null;
+
+        const next: State = {
+          ...state,
+          perfil: perfilNormalizado ?? state.perfil,
+          atletas: atletasDb ?? state.atletas,
+        };
+
         setState(next);
         saveState(next);
       } catch (e) {
         console.error("Falha a sincronizar do Supabase:", e);
       }
     }
+
     syncFromSupabase();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -876,7 +891,6 @@ export default function App() {
           <Button
             variant="outline"
             onClick={() => {
-              // encerra sessão na tua camada de auth (se aplicável) e limpa tokens locais
               try {
                 signOut();
               } catch {}
@@ -893,7 +907,7 @@ export default function App() {
       {!token ? (
         <ContaSection state={state} setState={setState} setToken={setToken} onLogged={() => setActiveTab("home")} />
       ) : (
-        // Tabs não-controladas (o wrapper não expõe onValueChange)
+        // Tabs não-controladas (wrapper não expõe onValueChange/value)
         <Tabs key={activeTab} defaultValue={activeTab}>
           <TabsList>
             <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
@@ -993,17 +1007,14 @@ function UploadDocsSection({ state, setState }: { state: State; setState: (s: St
   }
   async function uploadSocio(doc: DocSocio, file: File) {
     const meta: UploadMeta = (await toMeta(file)) as any;
-    const next = { ...state, docsSocio: { ...state.docsSocio, [doc]: meta } } as State;
+    const next: State = { ...state, docsSocio: { ...state.docsSocio, [doc]: meta } };
     setState(next);
     saveState(next);
   }
   async function uploadAtleta(athleteId: string, doc: DocAtleta, file: File) {
     const meta: UploadMeta = (await toMeta(file)) as any;
     const current = state.docsAtleta[athleteId] || {};
-    const next = {
-      ...state,
-      docsAtleta: { ...state.docsAtleta, [athleteId]: { ...current, [doc]: meta } },
-    } as State;
+    const next: State = { ...state, docsAtleta: { ...state.docsAtleta, [athleteId]: { ...current, [doc]: meta } } };
     setState(next);
     saveState(next);
   }
@@ -1049,6 +1060,7 @@ function UploadDocsSection({ state, setState }: { state: State; setState: (s: St
                     <input
                       type="file"
                       className="hidden"
+                      accept="image/*,application/pdf"
                       onChange={(e) => e.target.files && uploadSocio(doc, e.target.files[0])}
                     />
                     <Button variant={meta ? "secondary" : "outline"}>
@@ -1098,6 +1110,7 @@ function UploadDocsSection({ state, setState }: { state: State; setState: (s: St
                           <input
                             type="file"
                             className="hidden"
+                            accept="image/*,application/pdf"
                             onChange={(e) => e.target.files && uploadAtleta(a.id, doc, e.target.files[0])}
                           />
                           <Button variant={meta ? "secondary" : "outline"}>
