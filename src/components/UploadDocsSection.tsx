@@ -1,49 +1,221 @@
 // src/components/UploadDocsSection.tsx
-import { useEffect, useRef, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { Button } from './ui/button';
-import { Upload, Trash2, RefreshCw } from 'lucide-react';
+import React, { useState, useRef, useEffect } from "react";
+import { supabase } from "../supabaseClient";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Upload, File as FileIcon, Trash2 } from "lucide-react";
 
-import {
-  listDocumentos,
-  uploadDocumento,
-  replaceDocumento,
-  deleteDocumento,
-  withSignedUrls,
-  type Documento,
-} from '../services/documentosService';
+type DocumentoTipo = "socio" | "atleta";
 
-import {
-  migrarDocumentosLocais,
-  jaMigrado,
-} from '../services/migracaoDocumentos';
-
-// --- Tipos/constantes locais ---
-type DocSocio = 'Ficha de Sócio' | 'Comprovativo de pagamento de sócio';
-const DOCS_SOCIO: DocSocio[] = ['Ficha de Sócio', 'Comprovativo de pagamento de sócio'];
-
-type DocAtleta =
-  | 'Ficha de sócio de atleta'
-  | 'Ficha de jogador FPB'
-  | 'Ficha inscrição AAC'
-  | 'Exame médico'
-  | 'Comprovativo de pagamento de inscrição';
-
-const DOCS_ATLETA: DocAtleta[] = [
-  'Ficha de sócio de atleta',
-  'Ficha de jogador FPB',
-  'Ficha inscrição AAC',
-  'Exame médico',
-  'Comprovativo de pagamento de inscrição',
-];
-
-// Limpeza do estado local antigo após migração
-function limparDataUrlsAntigos(nextState: any) {
-  nextState.docsSocio = {};
-  nextState.docsAtleta = {};
+interface Documento {
+  id: string;
+  tipo: DocumentoTipo;
+  nome: string;
+  ficheiros: DocumentoFicheiro[];
 }
 
-// ---------- Pequenos componentes utilitários ----------
+interface DocumentoFicheiro {
+  id: string;
+  documento_id: string;
+  path: string;
+  url: string;
+  created_at: string;
+}
+
+export default function UploadDocsSection({
+  pessoaId,
+  atletaId,
+}: {
+  pessoaId?: string;
+  atletaId?: string;
+}) {
+  const [docs, setDocs] = useState<Documento[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  // Carregar documentos já existentes
+  useEffect(() => {
+    async function fetchDocs() {
+      if (!pessoaId && !atletaId) return;
+      const { data, error } = await supabase
+        .from("documentos")
+        .select("id, tipo, nome, ficheiros:documentos_ficheiros(*)")
+        .or(
+          `${pessoaId ? `pessoa_id.eq.${pessoaId}` : ""}${
+            pessoaId && atletaId ? "," : ""
+          }${atletaId ? `atleta_id.eq.${atletaId}` : ""}`
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+      setDocs(
+        (data ?? []).map((d: any) => ({
+          id: d.id,
+          tipo: d.tipo,
+          nome: d.nome,
+          ficheiros: d.ficheiros.map((f: any) => ({
+            id: f.id,
+            documento_id: f.documento_id,
+            path: f.path,
+            url: supabase.storage.from("documentos").getPublicUrl(f.path).data
+              .publicUrl,
+            created_at: f.created_at,
+          })),
+        }))
+      );
+    }
+    fetchDocs();
+  }, [pessoaId, atletaId]);
+
+  async function handleUpload(
+    tipo: DocumentoTipo,
+    files: FileList | File[]
+  ): Promise<void> {
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      // Cria ou encontra documento
+      const { data: doc, error: docError } = await supabase
+        .from("documentos")
+        .upsert(
+          {
+            pessoa_id: pessoaId ?? null,
+            atleta_id: atletaId ?? null,
+            tipo,
+            nome: tipo === "socio" ? "Documentos do Sócio" : "Documentos do Atleta",
+          },
+          { onConflict: "pessoa_id,atleta_id,tipo" }
+        )
+        .select()
+        .single();
+      if (docError || !doc) throw docError;
+
+      for (const file of Array.from(files)) {
+        const path = `${doc.id}/${Date.now()}_${file.name}`;
+        const { error: upErr } = await supabase.storage
+          .from("documentos")
+          .upload(path, file, { upsert: true });
+        if (upErr) throw upErr;
+
+        await supabase.from("documentos_ficheiros").insert({
+          documento_id: doc.id,
+          path,
+        });
+      }
+
+      // refresh
+      const { data: d } = await supabase
+        .from("documentos")
+        .select("id, tipo, nome, ficheiros:documentos_ficheiros(*)")
+        .eq("id", doc.id)
+        .single();
+
+      if (d) {
+        setDocs((prev) => {
+          const idx = prev.findIndex((x) => x.id === d.id);
+          const mapped: Documento = {
+            id: d.id,
+            tipo: d.tipo,
+            nome: d.nome,
+            ficheiros: d.ficheiros.map((f: any) => ({
+              id: f.id,
+              documento_id: f.documento_id,
+              path: f.path,
+              url: supabase.storage.from("documentos").getPublicUrl(f.path).data
+                .publicUrl,
+              created_at: f.created_at,
+            })),
+          };
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = mapped;
+            return copy;
+          }
+          return [mapped, ...prev];
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteFile(f: DocumentoFicheiro) {
+    setBusy(true);
+    try {
+      await supabase.from("documentos_ficheiros").delete().eq("id", f.id);
+      await supabase.storage.from("documentos").remove([f.path]);
+      setDocs((prev) =>
+        prev.map((d) =>
+          d.id === f.documento_id
+            ? { ...d, ficheiros: d.ficheiros.filter((x) => x.id !== f.id) }
+            : d
+        )
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-6">
+      <h2 className="text-lg font-semibold">Documentos</h2>
+      <div className="flex gap-4">
+        <FileTrigger
+          multiple
+          disabled={busy}
+          onPick={(files) => handleUpload("socio", files)}
+          label="Carregar Documentos do Sócio"
+          leftIcon={<Upload className="w-4 h-4 mr-2" />}
+        />
+        <FileTrigger
+          multiple
+          disabled={busy}
+          onPick={(files) => handleUpload("atleta", files)}
+          label="Carregar Documentos do Atleta"
+          leftIcon={<Upload className="w-4 h-4 mr-2" />}
+        />
+      </div>
+      <div className="grid gap-4">
+        {docs.map((doc) => (
+          <Card key={doc.id}>
+            <CardContent>
+              <h3 className="font-medium">{doc.nome}</h3>
+              <ul className="mt-2 space-y-2">
+                {doc.ficheiros.map((f) => (
+                  <li key={f.id} className="flex items-center justify-between">
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center text-blue-600 hover:underline"
+                    >
+                      <FileIcon className="w-4 h-4 mr-2" /> {f.path.split("/").pop()}
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy}
+                      onClick={() => handleDeleteFile(f)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* --------------- BOTÕES DE UPLOAD --------------- */
+
 function FileTrigger({
   multiple,
   disabled,
@@ -63,16 +235,16 @@ function FileTrigger({
       <input
         ref={ref}
         type="file"
-        className="hidden"
+        className="sr-only"
         multiple={!!multiple}
         onChange={(e) => {
           const fs = e.target.files;
           if (fs && fs.length) onPick(fs);
-          // permitir re-escolher o mesmo ficheiro
-          e.currentTarget.value = '';
+          e.currentTarget.value = "";
         }}
       />
       <Button
+        type="button"
         variant="outline"
         disabled={disabled}
         onClick={() => ref.current?.click()}
@@ -81,320 +253,5 @@ function FileTrigger({
         {label}
       </Button>
     </>
-  );
-}
-
-function SingleFileTrigger({
-  disabled,
-  onPickOne,
-  label,
-  leftIcon,
-}: {
-  disabled?: boolean;
-  onPickOne: (file: File) => void;
-  label: string;
-  leftIcon?: React.ReactNode;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <input
-        ref={ref}
-        type="file"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onPickOne(f);
-          e.currentTarget.value = '';
-        }}
-      />
-      <Button
-        variant="secondary"
-        disabled={disabled}
-        onClick={() => ref.current?.click()}
-      >
-        {leftIcon}
-        {label}
-      </Button>
-    </>
-  );
-}
-// ------------------------------------------------------
-
-export default function UploadDocsSection({
-  state,
-  setState,
-}: {
-  state: any;
-  setState: (s: any) => void;
-}) {
-  const [docsSocio, setDocsSocio] = useState<Record<DocSocio, Documento[]>>({
-    'Ficha de Sócio': [],
-    'Comprovativo de pagamento de sócio': [],
-  });
-
-  // Por atleta: { [atletaId]: { [docTipo]: Documento[] } }
-  const [docsAtleta, setDocsAtleta] = useState<Record<string, Record<DocAtleta, Documento[]>>>(
-    {},
-  );
-
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  async function refresh() {
-    setBusy(true);
-    try {
-      // Sócio
-      const socioEntries = await Promise.all(
-        DOCS_SOCIO.map(async (t) => {
-          const rows = await listDocumentos('socio', t);
-          const withUrls = await withSignedUrls(rows);
-          return [t, withUrls] as const;
-        }),
-      );
-      setDocsSocio(Object.fromEntries(socioEntries) as Record<DocSocio, Documento[]>);
-
-      // Atletas
-      const atl: Record<string, Record<DocAtleta, Documento[]>> = {};
-      for (const a of state.atletas || []) {
-        atl[a.id] = {} as Record<DocAtleta, Documento[]>;
-        for (const t of DOCS_ATLETA) {
-          const rows = await listDocumentos('atleta', t, a.id);
-          atl[a.id][t] = await withSignedUrls(rows);
-        }
-      }
-      setDocsAtleta(atl);
-    } catch (e: any) {
-      setMsg(`Erro ao carregar documentos: ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify((state.atletas || []).map((x: any) => x.id))]);
-
-  // --- Handlers Sócio / Atleta ---
-  async function uploadSocio(tipo: DocSocio, files: FileList) {
-    setBusy(true);
-    try {
-      for (const f of Array.from(files)) {
-        await uploadDocumento('socio', tipo, f);
-      }
-      await refresh();
-    } catch (e: any) {
-      setMsg(`Erro no upload (sócio): ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function uploadAtleta(atletaId: string, tipo: DocAtleta, files: FileList) {
-    setBusy(true);
-    try {
-      for (const f of Array.from(files)) {
-        await uploadDocumento('atleta', tipo, f, { atletaId });
-      }
-      await refresh();
-    } catch (e: any) {
-      setMsg(`Erro no upload (atleta): ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function replaceOne(id: string, file: File) {
-    setBusy(true);
-    try {
-      await replaceDocumento(id, file);
-      await refresh();
-    } catch (e: any) {
-      setMsg(`Erro ao substituir: ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeOne(id: string) {
-    if (!confirm('Apagar este ficheiro?')) return;
-    setBusy(true);
-    try {
-      await deleteDocumento(id);
-      await refresh();
-    } catch (e: any) {
-      setMsg(`Erro ao apagar: ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // --- Migração DataURLs → Storage/BD ---
-  async function handleMigracao() {
-    if (jaMigrado()) {
-      setMsg('Migração já executada anteriormente. (Podes limpar os DataURLs locais com segurança.)');
-      return;
-    }
-    setBusy(true);
-    setMsg(null);
-    try {
-      const rel = await migrarDocumentosLocais({
-        docsSocio: state.docsSocio || {},
-        docsAtleta: state.docsAtleta || {},
-        atletas: state.atletas || [],
-      });
-      // Limpa DataURLs locais se não houve falhas
-      if (rel.falhas === 0) {
-        const next = { ...state };
-        limparDataUrlsAntigos(next);
-        setState(next); // o teu App já persiste no localStorage ao mudar o state
-      }
-      setMsg(`Migração: ${rel.sucesso}/${rel.total} OK, ${rel.falhas} falha(s).`);
-      await refresh();
-    } catch (e: any) {
-      setMsg(`Erro na migração: ${e?.message || e}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle>Upload de Documentos</CardTitle>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={refresh} disabled={busy}>
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Recarregar
-          </Button>
-          <Button variant="outline" onClick={handleMigracao} disabled={busy}>
-            <Upload className="h-4 w-4 mr-1" />
-            Migrar ficheiros locais
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-8">
-        {msg && <p className="text-sm">{msg}</p>}
-
-        {/* Documentos do Sócio */}
-        <section>
-          <div className="font-medium mb-2">Documentos do Sócio</div>
-          <div className="grid md:grid-cols-2 gap-3">
-            {DOCS_SOCIO.map((tipo) => (
-              <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">{tipo}</div>
-                  <FileTrigger
-                    multiple
-                    disabled={busy}
-                    label="Carregar"
-                    leftIcon={<Upload className="h-4 w-4 mr-1" />}
-                    onPick={(files) => uploadSocio(tipo, files)}
-                  />
-                </div>
-                <DocList
-                  items={docsSocio[tipo] || []}
-                  onReplace={replaceOne}
-                  onDelete={removeOne}
-                  busy={busy}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Documentos por Atleta */}
-        <section className="space-y-4">
-          <div className="font-medium">Documentos por Atleta</div>
-          {(state.atletas || []).length === 0 ? (
-            <p className="text-sm text-gray-500">Sem atletas criados.</p>
-          ) : (
-            (state.atletas || []).map((a: any) => (
-              <div key={a.id} className="border rounded-xl p-3">
-                <div className="mb-2 font-medium">
-                  {a.nomeCompleto} — Escalão: {a.escalao}
-                </div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {DOCS_ATLETA.map((tipo) => (
-                    <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium">{tipo}</div>
-                        <FileTrigger
-                          multiple
-                          disabled={busy}
-                          label="Carregar"
-                          leftIcon={<Upload className="h-4 w-4 mr-1" />}
-                          onPick={(files) => uploadAtleta(a.id, tipo, files)}
-                        />
-                      </div>
-                      <DocList
-                        items={(docsAtleta[a.id]?.[tipo] || []) as Documento[]}
-                        onReplace={replaceOne}
-                        onDelete={removeOne}
-                        busy={busy}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-        </section>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DocList({
-  items,
-  onReplace,
-  onDelete,
-  busy,
-}: {
-  items: Documento[];
-  onReplace: (id: string, f: File) => void;
-  onDelete: (id: string) => void;
-  busy: boolean;
-}) {
-  if (!items || items.length === 0) {
-    return <p className="text-sm text-gray-500">Sem ficheiros.</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {items.map((it) => (
-        <div key={it.id} className="flex items-center justify-between border rounded-md p-2">
-          <div className="text-sm">
-            <div className="font-medium">
-              Página {it.page} — {it.file_name}
-            </div>
-            {it.signedUrl ? (
-              <a
-                href={it.signedUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs underline"
-              >
-                Abrir
-              </a>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            <SingleFileTrigger
-              disabled={busy}
-              label="Substituir"
-              leftIcon={<Upload className="h-4 w-4 mr-1" />}
-              onPickOne={(file) => onReplace(it.id, file)}
-            />
-            <Button variant="destructive" onClick={() => onDelete(it.id)} disabled={busy}>
-              <Trash2 className="h-4 w-4 mr-1" />
-              Apagar
-            </Button>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
