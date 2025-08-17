@@ -1,12 +1,19 @@
-import { supabase } from '../supabaseClient';
-import type { PessoaDados } from '../types/PessoaDados';
+// src/services/profileService.ts
+import { supabase } from "../supabaseClient";
+import type { PessoaDados } from "../types/PessoaDados";
 
-// Se no teu domínio existir o tipo Genero, usa-o aqui; caso contrário, define-o:
-type Genero = "Masculino" | "Feminino";
+/**
+ * Tabela no Supabase (schema public): dados_pessoais
+ * Colunas (atuais): id, user_id, nome_completo, data_nascimento, genero, morada,
+ * codigo_postal, telefone, email, situacao_tesouraria, noticias, created_at
+ *
+ * NOTA: O teu modelo PessoaDados tem mais campos (nif, tipoDocumento, numeroDocumento,
+ * profissao, tipoSocio, etc.). Como a tabela ainda não os tem, estes campos são
+ * mantidos apenas em memória na app e NÃO são persistidos aqui.
+ * Quando quiseres persistir, adiciona as colunas à tabela e mapeia-as abaixo.
+ */
 
-const TBL = 'dados_pessoais';
-
-type DbDadosPessoaisRow = {
+type DbRow = {
   id: string;
   user_id: string | null;
   nome_completo: string;
@@ -16,77 +23,121 @@ type DbDadosPessoaisRow = {
   codigo_postal: string | null;
   telefone: string | null;
   email: string;
-  situacao_tesouraria: string | null;
+  situacao_tesouraria: string;
   noticias: string | null;
-  created_at?: string | null;
+  created_at: string | null;
 };
 
-async function getUserId() {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  if (!data.user) throw new Error('Sem sessão activa');
-  return data.user.id;
-}
-
-function coerceGenero(x: string | null | undefined): Genero | undefined {
-  return x === "Masculino" || x === "Feminino" ? x : undefined;
-}
-
-function mapDbToDomain(row: DbDadosPessoaisRow): (PessoaDados & { id: string }) {
+function dbToPessoa(r: DbRow, fallbackEmail?: string): PessoaDados {
   return {
-    id: row.id,
-    nomeCompleto: row.nome_completo,
-    dataNascimento: row.data_nascimento,
-    genero: coerceGenero(row.genero),
-    morada: row.morada ?? '',
-    codigoPostal: row.codigo_postal ?? '',
-    telefone: row.telefone ?? '',
-    email: row.email,
-    situacaoTesouraria: row.situacao_tesouraria ?? 'Campo em atualização',
-    noticias: row.noticias ?? '',
+    nomeCompleto: r?.nome_completo ?? "",
+    // Estes campos não existem na tabela; devolvemos defaults seguros
+    tipoSocio: "Não pretendo ser sócio",
+    dataNascimento: r?.data_nascimento ?? "",
+    morada: r?.morada ?? "",
+    codigoPostal: r?.codigo_postal ?? "",
+    tipoDocumento: "Cartão de cidadão",
+    numeroDocumento: "",
+    nif: "",
+    telefone: r?.telefone ?? "",
+    email: r?.email ?? fallbackEmail ?? "",
+    profissao: "",
   };
 }
 
-function mapDomainToDb(uid: string, payload: PessoaDados): Omit<DbDadosPessoaisRow, 'id'> {
+function pessoaToDb(p: PessoaDados, userId: string): Partial<DbRow> & { user_id: string } {
   return {
-    user_id: uid,
-    nome_completo: payload.nomeCompleto,
-    data_nascimento: payload.dataNascimento,
-    genero: payload.genero ?? null,
-    morada: payload.morada ?? null,
-    codigo_postal: payload.codigoPostal ?? null,
-    telefone: payload.telefone ?? null,
-    email: payload.email,
-    situacao_tesouraria: payload.situacaoTesouraria ?? 'Campo em atualização',
-    noticias: payload.noticias ?? null,
+    user_id: userId,
+    nome_completo: p.nomeCompleto ?? "",
+    data_nascimento: p.dataNascimento ?? "",
+    morada: p.morada ?? null,
+    codigo_postal: p.codigoPostal ?? null,
+    telefone: p.telefone ?? null,
+    email: p.email ?? "",
+    // campos não existentes ficam de fora
   };
 }
 
-export async function getMyProfile(): Promise<(PessoaDados & { id: string }) | null> {
-  const uid = await getUserId();
+/**
+ * Lê o perfil do utilizador autenticado (por user_id).
+ * Devolve `null` se não existir.
+ */
+export async function getMyProfile(): Promise<PessoaDados | null> {
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) return null;
+
   const { data, error } = await supabase
-    .from(TBL)
-    .select('id, user_id, nome_completo, data_nascimento, genero, morada, codigo_postal, telefone, email, situacao_tesouraria, noticias, created_at')
-    .eq('user_id', uid)
-    .maybeSingle()
-    .returns<DbDadosPessoaisRow | null>(); // <- aqui
+    .from("dados_pessoais")
+    .select(
+      "id,user_id,nome_completo,data_nascimento,genero,morada,codigo_postal,telefone,email,situacao_tesouraria,noticias,created_at"
+    )
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    // Se a política RLS estiver mal, verás erro aqui
+    console.error("[profileService] getMyProfile error:", error.message);
+    throw error;
+  }
+
   if (!data) return null;
-  return mapDbToDomain(data);
+  return dbToPessoa(data as DbRow, user.email ?? undefined);
 }
 
-export async function upsertMyProfile(payload: PessoaDados): Promise<PessoaDados & { id: string }> {
-  const uid = await getUserId();
-  const row = mapDomainToDb(uid, payload);
+/**
+ * Cria/atualiza o perfil do utilizador autenticado.
+ * Usa upsert por `user_id` (precisa do índice único ou constraint).
+ */
+export async function upsertMyProfile(p: PessoaDados): Promise<PessoaDados> {
+  const { data: auth } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (!user) throw new Error("Sessão não encontrada.");
 
-  const { data, error } = await supabase
-    .from(TBL)
-    .upsert(row, { onConflict: 'user_id' })
-    .select('id, user_id, nome_completo, data_nascimento, genero, morada, codigo_postal, telefone, email, situacao_tesouraria, noticias, created_at')
-    .single()
-    .returns<DbDadosPessoaisRow>(); // <- aqui
+  // Obter o registo atual (se existir)
+  const { data: existing, error: getErr } = await supabase
+    .from("dados_pessoais")
+    .select("id")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  if (error) throw error;
-  return mapDbToDomain(data);
+  if (getErr) {
+    console.error("[profileService] read-before-upsert error:", getErr.message);
+    throw getErr;
+  }
+
+  const row = pessoaToDb(p, user.id);
+
+  if (existing?.id) {
+    // UPDATE
+    const { data, error } = await supabase
+      .from("dados_pessoais")
+      .update(row)
+      .eq("id", existing.id)
+      .select(
+        "id,user_id,nome_completo,data_nascimento,genero,morada,codigo_postal,telefone,email,situacao_tesouraria,noticias,created_at"
+      )
+      .single();
+
+    if (error) {
+      console.error("[profileService] update error:", error.message);
+      throw error;
+    }
+    return dbToPessoa(data as DbRow, user.email ?? undefined);
+  } else {
+    // INSERT
+    const { data, error } = await supabase
+      .from("dados_pessoais")
+      .insert(row)
+      .select(
+        "id,user_id,nome_completo,data_nascimento,genero,morada,codigo_postal,telefone,email,situacao_tesouraria,noticias,created_at"
+      )
+      .single();
+
+    if (error) {
+      console.error("[profileService] insert error:", error.message);
+      throw error;
+    }
+    return dbToPessoa(data as DbRow, user.email ?? undefined);
+  }
 }
