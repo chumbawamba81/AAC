@@ -44,6 +44,9 @@ import FilePickerButton from "./components/FilePickerButton";
 import type { State, UploadMeta } from "./types/AppState";
 import { DOCS_SOCIO } from "./types/AppState";
 
+// Supabase
+import { supabase } from "./supabaseClient";
+
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
 /* -------------------- Constantes locais (App) -------------------- */
@@ -59,10 +62,6 @@ type DocAtleta = (typeof DOCS_ATLETA)[number];
 const LS_KEY = "bb_app_payments_v1";
 
 /* -------------------- Utils -------------------- */
-function uid() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
 function toDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -169,17 +168,6 @@ function saveState(s: State) {
   localStorage.setItem(LS_KEY, JSON.stringify(s));
 }
 
-// Função para recuperação de password (se tiveres backend próprio)
-async function apiForgot(email: string): Promise<void> {
-  if (!API_BASE) return;
-  const r = await fetch(`${API_BASE}/auth/forgot`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-  if (!r.ok) throw new Error("Não foi possível enviar o email de recuperação");
-}
-
 /* ------------------------------ ContaSection ------------------------------ */
 
 function PasswordChecklist({ pass }: { pass: string }) {
@@ -201,17 +189,13 @@ function PasswordChecklist({ pass }: { pass: string }) {
   );
 }
 
-type Conta = { email: string };
-
 function ContaSection({
   state,
   setState,
-  setToken,
   onLogged,
 }: {
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
-  setToken: (t: string | null) => void;
   onLogged: () => void;
 }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -225,15 +209,19 @@ function ContaSection({
   const [forgotEmail, setForgotEmail] = useState("");
 
   useEffect(() => {
-    const savedToken = localStorage.getItem("authToken");
-    const savedEmail = localStorage.getItem("authEmail");
-    if (savedToken && savedEmail) {
-      setToken(savedToken);
-      const next: State = { ...state, conta: { email: savedEmail } };
-      setState(next);
-      saveState(next);
-      onLogged();
-    }
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (data.session) {
+        const { data: u } = await supabase.auth.getUser();
+        const next: State = { ...state, conta: u?.user?.email ? { email: u.user.email } : state.conta };
+        setState(next);
+        saveState(next);
+        onLogged();
+      }
+    })();
+    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -241,6 +229,7 @@ function ContaSection({
     ev.preventDefault();
     setError(undefined);
     setInfo(undefined);
+
     if (mode === "register") {
       const chk = isPasswordStrong(password);
       if (!chk.ok) {
@@ -265,14 +254,15 @@ function ContaSection({
     try {
       setLoading(true);
       const data = await signIn(email, password);
-      const supaToken = data?.session?.access_token || `supabase-${uid()}`;
-      setToken(supaToken);
+      const access = data?.session?.access_token;
+      if (!access) {
+        throw new Error("Sessão inválida. Verifique o email de confirmação.");
+      }
       const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
       setState(next);
       saveState(next);
-      if (remember) {
-        localStorage.setItem("authToken", supaToken);
-        localStorage.setItem("authEmail", email);
+      if (!remember) {
+        // opcional: encerrar sessão ao sair
       }
       onLogged();
     } catch (e: any) {
@@ -287,7 +277,8 @@ function ContaSection({
     setError(undefined);
     setInfo(undefined);
     try {
-      await apiForgot(forgotEmail || email);
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail || email);
+      if (error) throw error;
       setInfo("Se o email existir, foi enviado um link de recuperação.");
       setForgotOpen(false);
     } catch (e: any) {
@@ -390,6 +381,73 @@ function DadosPessoaisSection({
     }
   );
 
+  // ===== NOVO: contadores reais do Supabase =====
+  const [userId, setUserId] = useState<string | null>(null);
+  const [socioMissingCount, setSocioMissingCount] = useState<number>(DOCS_SOCIO.length);
+  const [athMissingCount, setAthMissingCount] = useState<number>(state.atletas.length * DOCS_ATLETA.length);
+
+  useEffect(() => {
+    let mounted = true;
+    const sub = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!mounted) return;
+      setUserId(session?.user?.id ?? null);
+    });
+    supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return;
+      setUserId(data?.user?.id ?? null);
+    });
+    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    async function fetchDocCounters() {
+      if (!userId) {
+        setSocioMissingCount(DOCS_SOCIO.length);
+        setAthMissingCount(state.atletas.length * DOCS_ATLETA.length);
+        return;
+      }
+      // -- Sócio
+      const socioSel = await supabase
+        .from("documentos")
+        .select("doc_tipo")
+        .eq("user_id", userId)
+        .eq("doc_nivel", "socio")
+        .is("atleta_id", null);
+
+      const socioSet = new Set<string>((socioSel.data || []).map((r: any) => r.doc_tipo));
+      const socioMiss = DOCS_SOCIO.filter(t => !socioSet.has(t)).length;
+      setSocioMissingCount(socioMiss);
+
+      // -- Atletas
+      const athSel = await supabase
+        .from("documentos")
+        .select("atleta_id, doc_tipo")
+        .eq("user_id", userId)
+        .eq("doc_nivel", "atleta");
+
+      const byAth: Map<string, Set<string>> = new Map();
+      for (const r of (athSel.data || []) as any[]) {
+        if (!r.atleta_id) continue;
+        const set = byAth.get(r.atleta_id) || new Set<string>();
+        set.add(r.doc_tipo);
+        byAth.set(r.atleta_id, set);
+      }
+      let totalMissing = 0;
+      for (const a of state.atletas) {
+        const have = byAth.get(a.id) || new Set<string>();
+        for (const t of DOCS_ATLETA) {
+          if (!have.has(t)) totalMissing++;
+        }
+      }
+      setAthMissingCount(totalMissing);
+    }
+
+    fetchDocCounters().catch((e) => {
+      console.error("[fetchDocCounters]", e);
+    });
+  // re-calcula quando muda user, lista de atletas ou número de atletas
+  }, [userId, state.atletas.map(a => a.id).join(",")]);
+
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
     const errs: string[] = [];
@@ -416,10 +474,9 @@ function DadosPessoaisSection({
   }
 
   if (!editMode && basePerfil) {
-    const socioMissing = DOCS_SOCIO.filter(d=> !state.docsSocio[d]).length;
-    const totalAthDocs = state.atletas.length * 5;
-    const uploadedAthDocs = state.atletas.reduce((acc,a)=> acc + (state.docsAtleta[a.id] ? Object.keys(state.docsAtleta[a.id]!).length : 0), 0);
-    const missingAthDocs = Math.max(0, totalAthDocs - uploadedAthDocs);
+    // usar os contadores reais calculados acima
+    const socioMissing = socioMissingCount;
+    const missingAthDocs = athMissingCount;
 
     return (
       <div className="space-y-4">
@@ -692,15 +749,17 @@ function AtletasSection({ state, setState }:{ state: State; setState: React.Disp
 /* ----------------------------------- App ---------------------------------- */
 
 export default function App(){
-  const [token, setToken] = useState<string|null>(null);
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
 
-  // Sincroniza dados do Supabase (perfil e atletas) quando o utilizador inicia sessão
+  // Sincroniza dados do Supabase (perfil e atletas) quando existe sessão válida
   useEffect(() => {
-    async function syncFromSupabase() {
-      if (!token) return;
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (!data.session) return;
       try {
         const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
         const perfilNormalizado: PessoaDados | null = perfilDb
@@ -718,12 +777,10 @@ export default function App(){
       } catch (e) {
         console.error('Falha a sincronizar do Supabase:', e);
       }
-    }
-    syncFromSupabase();
+    })();
+    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
-  useEffect(()=>{ saveState(state); }, [state]);
+  }, []);
 
   const hasPerfil = !!state.perfil;
   const hasAtletas = state.atletas.length > 0;
@@ -738,16 +795,12 @@ export default function App(){
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">AAC-SB</h1></div>
-        {token ? (
-          <Button variant="outline" onClick={()=>{ try{ signOut(); }catch{} setToken(null); localStorage.removeItem('authToken'); localStorage.removeItem('authEmail'); }}>
-            <LogOut className="h-4 w-4 mr-1"/> Sair
-          </Button>
-        ) : null}
+        <AuthButton />
       </header>
 
-      {!token ? (
-        <ContaSection state={state} setState={setState} setToken={setToken} onLogged={()=>setActiveTab("home")} />
-      ) : (
+      <AuthGate
+        fallback={<ContaSection state={state} setState={setState} onLogged={()=>setActiveTab("home")} />}
+      >
         <Tabs key={activeTab} defaultValue={activeTab}>
           <TabsList>
             <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
@@ -778,7 +831,7 @@ export default function App(){
             </TabsContent>
           )}
         </Tabs>
-      )}
+      </AuthGate>
 
       <Dialog open={postSavePrompt} onOpenChange={setPostSavePrompt}>
         <DialogContent>
@@ -805,4 +858,42 @@ export default function App(){
       <footer className="text-xs text-gray-500 text-center">DEMO local — ficheiros em DataURL. Em produção, usa API + armazenamento seguro.</footer>
     </div>
   );
+}
+
+/** Botão de autenticação (mostrar “Sair” quando autenticado) */
+function AuthButton() {
+  const [logged, setLogged] = useState<boolean>(false);
+  useEffect(() => {
+    let mounted = true;
+    const sub = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!mounted) return;
+      setLogged(!!session);
+    });
+    supabase.auth.getSession().then(({ data }) => setLogged(!!data.session));
+    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+  }, []);
+
+  if (!logged) return null;
+  return (
+    <Button variant="outline" onClick={()=>{ signOut().catch(()=>{}); }}>
+      <LogOut className="h-4 w-4 mr-1"/> Sair
+    </Button>
+  );
+}
+
+/** “Gate” que só renderiza children quando há sessão Supabase */
+function AuthGate({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
+  const [ready, setReady] = useState<"checking" | "in" | "out">("checking");
+  useEffect(() => {
+    let mounted = true;
+    const sub = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!mounted) return;
+      setReady(session ? "in" : "out");
+    });
+    supabase.auth.getSession().then(({ data }) => setReady(data.session ? "in" : "out"));
+    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+  }, []);
+  if (ready === "checking") return <div className="text-sm text-gray-500">A verificar sessão…</div>;
+  if (ready === "out") return <>{fallback}</>;
+  return <>{children}</>;
 }
