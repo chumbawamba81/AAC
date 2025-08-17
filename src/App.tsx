@@ -40,8 +40,13 @@ import AtletaFormCompleto from "./components/AtletaFormCompleto";
 import UploadDocsSection from "./components/UploadDocsSection";
 import FilePickerButton from "./components/FilePickerButton";
 
+// 👉 Tipos partilhados
+import type { State, UploadMeta } from "./types/AppState";
+import { DOCS_SOCIO } from "./types/AppState";
+
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+/* -------------------- Constantes locais (App) -------------------- */
 const DOCS_ATLETA = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
@@ -51,11 +56,9 @@ const DOCS_ATLETA = [
 ] as const;
 type DocAtleta = (typeof DOCS_ATLETA)[number];
 
-const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
-type DocSocio = (typeof DOCS_SOCIO)[number];
-
 const LS_KEY = "bb_app_payments_v1";
 
+/* -------------------- Utils -------------------- */
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -114,21 +117,7 @@ function normalizePessoaDados(x: any, fallbackEmail?: string): PessoaDados {
   };
 }
 
-type Conta = { email: string };
-type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
-
-type State = {
-  conta: Conta | null;
-  perfil: PessoaDados | null;
-  atletas: Atleta[];
-  docsSocio: Partial<Record<DocSocio, UploadMeta>>;
-  docsAtleta: Record<string, Partial<Record<DocAtleta, UploadMeta>>>;
-  pagamentos: Record<string, Array<UploadMeta | null>>; // athleteId -> slots
-  tesouraria?: string;
-  noticias?: string;
-  verificationPendingEmail?: string | null;
-};
-
+/* -------------------- Persistência local -------------------- */
 function loadState(): State {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -146,15 +135,15 @@ function loadState(): State {
       };
     }
     const s = JSON.parse(raw);
-    const conta: Conta | null =
-      s?.conta && typeof s.conta.email === "string" ? { email: s.conta.email } : null;
+    const conta =
+      s?.conta && typeof s.conta.email === "string" ? { email: s.conta.email as string } : null;
 
     const perfil: PessoaDados | null = s?.perfil ? normalizePessoaDados(s.perfil, conta?.email) : null;
 
     return {
       conta,
       perfil,
-      atletas: Array.isArray(s.atletas) ? s.atletas : [],
+      atletas: Array.isArray(s.atletas) ? (s.atletas as Atleta[]) : [],
       docsSocio: s.docsSocio ?? {},
       docsAtleta: s.docsAtleta ?? {},
       pagamentos: s.pagamentos ?? {},
@@ -212,6 +201,8 @@ function PasswordChecklist({ pass }: { pass: string }) {
   );
 }
 
+type Conta = { email: string };
+
 function ContaSection({
   state,
   setState,
@@ -219,7 +210,7 @@ function ContaSection({
   onLogged,
 }: {
   state: State;
-  setState: (s: State) => void;
+  setState: React.Dispatch<React.SetStateAction<State>>;
   setToken: (t: string | null) => void;
   onLogged: () => void;
 }) {
@@ -371,7 +362,7 @@ function DadosPessoaisSection({
   onAfterSave,
 }: {
   state: State;
-  setState: (s: State) => void;
+  setState: React.Dispatch<React.SetStateAction<State>>;
   onAfterSave: () => void;
 }) {
   function formatPostal(v: string){
@@ -521,7 +512,7 @@ function getSlotsForPlano(p: PlanoPagamento) {
   return 1;
 }
 
-function PagamentosSection({ state, setState }:{ state: State; setState: (s: State)=>void }) {
+function PagamentosSection({ state, setState }:{ state: State; setState: React.Dispatch<React.SetStateAction<State>> }) {
   function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
     if (plano === 'Anual') return 'Pagamento da anuidade';
     if (plano === 'Trimestral') return `Pagamento - ${idx+1}º Trimestre`;
@@ -608,7 +599,7 @@ function PagamentosSection({ state, setState }:{ state: State; setState: (s: Sta
 
 /* ----------------------------- AtletasSection ----------------------------- */
 
-function AtletasSection({ state, setState }:{ state: State; setState: (s: State)=>void }){
+function AtletasSection({ state, setState }:{ state: State; setState: React.Dispatch<React.SetStateAction<State>> }){
   const [open,setOpen]=useState(false);
   const [editing,setEditing]=useState<Atleta|undefined>();
   async function remove(id: string){

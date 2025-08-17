@@ -1,7 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { Upload, Trash2, Link as LinkIcon, AlertCircle, CheckCircle2, Plus, FileUp, RefreshCw } from 'lucide-react';
+import {
+  Upload,
+  Trash2,
+  Link as LinkIcon,
+  AlertCircle,
+  CheckCircle2,
+  Plus,
+  FileUp,
+  RefreshCw,
+} from 'lucide-react';
 
 import { supabase } from '../supabaseClient';
 import type { Atleta } from '../types/Atleta';
@@ -20,20 +29,12 @@ import {
 // (para migração de DataURLs locais)
 import { migrateLocalDataUrls } from '../services/migracaoDocumentos';
 
-// Tipos do estado legado (para ler docs locais)
-type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
-
-type State = {
-  conta: { email: string } | null;
-  perfil: { nomeCompleto: string; tipoSocio?: string } | null;
-  atletas: Atleta[];
-  docsSocio: Partial<Record<string, UploadMeta>>;
-  docsAtleta: Record<string, Partial<Record<string, UploadMeta>>>;
-};
+// 👉 Tipos partilhados de estado
+import type { State } from '../types/AppState';
 
 type Props = {
   state: State;
-  setState: (s: State) => void;
+  setState: React.Dispatch<React.SetStateAction<State>>;
 };
 
 const DOCS_SOCIO = ['Ficha de Sócio', 'Comprovativo de pagamento de sócio'] as const;
@@ -182,8 +183,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
         onProgress: (msg) => console.log('[migrate]', msg),
       });
       // Limpa os DataURLs locais (só depois de migrar sem erros)
-      const next = { ...state, docsSocio: {}, docsAtleta: {} };
-      setState(next);
+      setState(prev => ({ ...prev, docsSocio: {}, docsAtleta: {} }));
       // Atualiza UI com o que foi para o Storage
       await refreshAll();
       alert('Migração concluída.');
