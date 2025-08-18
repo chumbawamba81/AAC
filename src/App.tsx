@@ -1024,7 +1024,8 @@ export default function App(){
             <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
           </div>
         ) : (
-          <Tabs key={activeTab} defaultValue={activeTab}>
+          // 👇 Tabs controladas + conteúdos com forceMount
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
               <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
               {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
@@ -1032,24 +1033,24 @@ export default function App(){
               {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="home">
+            <TabsContent value="home" forceMount>
               <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
             </TabsContent>
 
             {hasPerfil && (
-              <TabsContent value="atletas">
+              <TabsContent value="atletas" forceMount>
                 <AtletasSection state={state} setState={setState} />
               </TabsContent>
             )}
 
             {hasPerfil && (
-              <TabsContent value="docs">
+              <TabsContent value="docs" forceMount>
                 <UploadDocsSection state={state} setState={setStatePlain} />
               </TabsContent>
             )}
 
             {hasPerfil && hasAtletas && (
-              <TabsContent value="pag">
+              <TabsContent value="pag" forceMount>
                 <PagamentosSection state={state} />
               </TabsContent>
             )}
