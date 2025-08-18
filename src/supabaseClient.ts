@@ -102,3 +102,10 @@ export async function getCurrentUserId() {
   const u = await getCurrentUser();
   return u?.id ?? null;
 }
+
+// ... export const supabase = createClient(....)
+
+if (typeof window !== "undefined") {
+  // ⚠️ DEBUG TEMPORÁRIO – remove depois
+  (window as any).supabase = supabase;
+}
