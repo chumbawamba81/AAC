@@ -1,204 +1,153 @@
-// src/services/atletasService.ts
-import { supabase } from '../supabaseClient';
-import type {
-  Atleta, Genero, PlanoPagamento, Escalao, Nacionalidade, TipoDocId
-} from '../types/Atleta';
+import { supabase } from "../supabaseClient";
+import type { Atleta } from "../types/Atleta";
 
-type DBAtletaRow = {
+// ---- helpers ----
+function isUuid(v?: string) {
+  return !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+type Row = {
   id: string;
-  dados_pessoais_id: string | null;
   user_id: string | null;
-
+  dados_pessoais_id: string | null;
   nome: string;
   data_nascimento: string; // date
   escalao: string | null;
   alergias: string;
-
-  opcao_pagamento: string | null; // 'Mensal'|'Trimestral'|'Anual'
+  opcao_pagamento: string | null;
   created_at: string | null;
-
   morada: string | null;
   codigo_postal: string | null;
   contactos_urgencia: string | null;
   emails_preferenciais: string | null;
-  genero: string | null; // 'Feminino'|'Masculino'
+  genero: string | null;
 
-  nacionalidade: string | null;
-  nacionalidade_outra: string | null;
-  tipo_doc: string | null;
-  num_doc: string | null;
-  validade_doc: string | null; // date
-  nif: string | null;
-  nome_pai: string | null;
-  nome_mae: string | null;
-  telefone_opc: string | null;
-  email_opc: string | null;
-  escola: string | null;
-  ano_escolaridade: string | null;
-  encarregado_educacao: string | null; // 'Pai'|'Mãe'|'Outro'
-  parentesco_outro: string | null;
-  observacoes: string | null;
+  nacionalidade?: string | null;
+  nacionalidade_outra?: string | null;
+  tipo_doc?: string | null;
+  num_doc?: string | null;
+  validade_doc?: string | null;
+  nif?: string | null;
+  nome_pai?: string | null;
+  nome_mae?: string | null;
+  telefone_opc?: string | null;
+  email_opc?: string | null;
+  escola?: string | null;
+  ano_escolaridade?: string | null;
+  encarregado_educacao?: string | null;
+  parentesco_outro?: string | null;
+  observacoes?: string | null;
 };
 
-/* ---------------- Helpers ---------------- */
-function toGenero(v: string | null | undefined): Genero {
-  return v === 'Masculino' ? 'Masculino' : 'Feminino';
-}
-function toPlano(v: string | null | undefined): PlanoPagamento {
-  return v === 'Trimestral' || v === 'Anual' ? v : 'Mensal';
-}
-function toEscalao(v: string | null | undefined): Escalao {
-  return (v as Escalao) ?? 'Fora de escalões';
-}
-function nonEmpty(s: string | null | undefined): string {
-  return s ?? '';
-}
-
-async function requireSessionUserId(): Promise<string> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  const uid = data?.user?.id;
-  if (!uid) throw new Error('Sessão inválida. Inicie sessão novamente.');
-  return uid;
-}
-
-/* --------------- Conversores DB ↔ UI ---------------- */
-function fromRow(r: DBAtletaRow): Atleta {
+function fromRow(r: Row): Atleta {
   return {
     id: r.id,
     nomeCompleto: r.nome,
     dataNascimento: r.data_nascimento,
-    genero: toGenero(r.genero),
-    escalao: toEscalao(r.escalao),
-    planoPagamento: toPlano(r.opcao_pagamento),
-
-    alergias: nonEmpty(r.alergias),
-    morada: nonEmpty(r.morada),
-    codigoPostal: nonEmpty(r.codigo_postal),
-    contactosUrgencia: nonEmpty(r.contactos_urgencia),
-    emailsPreferenciais: nonEmpty(r.emails_preferenciais),
-
-    nacionalidade: (r.nacionalidade as Nacionalidade) ?? 'Portuguesa',
-    nacionalidadeOutra: r.nacionalidade_outra ?? undefined,
-    tipoDoc: (r.tipo_doc as TipoDocId) ?? 'Cartão de cidadão',
-    numDoc: nonEmpty(r.num_doc),
-    validadeDoc: r.validade_doc ?? '',
-    nif: nonEmpty(r.nif),
-    nomePai: nonEmpty(r.nome_pai),
-    nomeMae: nonEmpty(r.nome_mae),
-    telefoneOpc: r.telefone_opc ?? undefined,
-    emailOpc: r.email_opc ?? undefined,
-    escola: nonEmpty(r.escola),
-    anoEscolaridade: nonEmpty(r.ano_escolaridade),
-    encarregadoEducacao: (r.encarregado_educacao as Atleta['encarregadoEducacao']) ?? undefined,
-    parentescoOutro: r.parentesco_outro ?? undefined,
-    observacoes: r.observacoes ?? undefined,
+    genero: (r.genero as Atleta["genero"]) || "Feminino",
+    nacionalidade: (r.nacionalidade as any) || "Portuguesa",
+    nacionalidadeOutra: r.nacionalidade_outra || undefined,
+    tipoDoc: (r.tipo_doc as any) || "Cartão de cidadão",
+    numDoc: r.num_doc || "",
+    validadeDoc: r.validade_doc || "",
+    nif: r.nif || "",
+    nomePai: r.nome_pai || "",
+    nomeMae: r.nome_mae || "",
+    morada: r.morada || "",
+    codigoPostal: r.codigo_postal || "",
+    telefoneOpc: r.telefone_opc || undefined,
+    emailOpc: r.email_opc || undefined,
+    escola: r.escola || "",
+    anoEscolaridade: r.ano_escolaridade || "",
+    alergias: r.alergias || "",
+    encarregadoEducacao: (r.encarregado_educacao as any) || undefined,
+    parentescoOutro: r.parentesco_outro || undefined,
+    contactosUrgencia: r.contactos_urgencia || "",
+    emailsPreferenciais: r.emails_preferenciais || "",
+    escalao: (r.escalao as any) || "Fora de escalões",
+    planoPagamento: (r.opcao_pagamento as any) || "Mensal",
+    observacoes: r.observacoes || undefined,
   };
 }
 
-async function toRow(a: Atleta): Promise<Partial<DBAtletaRow>> {
-  const uid = await requireSessionUserId();
-
-  // Força plano 'Anual' para Masters/Sub23
-  const forceAnnual =
-    a.escalao === 'Masters (<1995)' ||
-    a.escalao === 'Seniores masculinos Sub23 (2002-2007)';
-
-  return {
-    id: a.id,
-    user_id: uid,
-
-    nome: a.nomeCompleto.trim(),
+function toInsertUpdate(a: Atleta, userId: string) {
+  // Não incluímos 'id' — no update filtramos por .eq('id', ...)
+  const payload: Partial<Row> = {
+    user_id: userId,
+    nome: a.nomeCompleto,
     data_nascimento: a.dataNascimento,
-    genero: a.genero,
     escalao: a.escalao,
-    opcao_pagamento: forceAnnual ? 'Anual' : a.planoPagamento,
-
-    alergias: a.alergias ?? '',
-    morada: a.morada ?? null,
-    codigo_postal: a.codigoPostal ?? null,
-    contactos_urgencia: a.contactosUrgencia ?? null,
-    emails_preferenciais: a.emailsPreferenciais ?? null,
+    alergias: a.alergias,
+    opcao_pagamento: a.planoPagamento,
+    morada: a.morada,
+    codigo_postal: a.codigoPostal,
+    contactos_urgencia: a.contactosUrgencia,
+    emails_preferenciais: a.emailsPreferenciais,
+    genero: a.genero,
 
     nacionalidade: a.nacionalidade,
-    nacionalidade_outra: a.nacionalidade === 'Outra' ? (a.nacionalidadeOutra ?? null) : null,
+    nacionalidade_outra: a.nacionalidadeOutra ?? null,
     tipo_doc: a.tipoDoc,
     num_doc: a.numDoc,
-    validade_doc: a.validadeDoc || null,
-    nif: a.nif || null,
-    nome_pai: a.nomePai || null,
-    nome_mae: a.nomeMae || null,
-    telefone_opc: a.telefoneOpc || null,
-    email_opc: a.emailOpc || null,
-    escola: a.escola || null,
-    ano_escolaridade: a.anoEscolaridade || null,
-    encarregado_educacao: a.encarregadoEducacao || null,
-    parentesco_outro: a.parentescoOutro || null,
-    observacoes: a.observacoes || null,
+    validade_doc: a.validadeDoc,
+    nif: a.nif,
+    nome_pai: a.nomePai,
+    nome_mae: a.nomeMae,
+    telefone_opc: a.telefoneOpc ?? null,
+    email_opc: a.emailOpc ?? null,
+    escola: a.escola,
+    ano_escolaridade: a.anoEscolaridade,
+    encarregado_educacao: a.encarregadoEducacao ?? null,
+    parentesco_outro: a.parentescoOutro ?? null,
+    observacoes: a.observacoes ?? null,
   };
+  return payload;
 }
 
-/* --------------------------- API --------------------------- */
+// ---- API ----
+
 export async function listAtletas(): Promise<Atleta[]> {
   const { data, error } = await supabase
-    .from('atletas')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data as DBAtletaRow[] | null)?.map(fromRow) ?? [];
-}
+    .from<Row>("atletas")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-export async function getAtleta(id: string): Promise<Atleta | null> {
-  const { data, error } = await supabase
-    .from('atletas')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) throw error;
-  return data ? fromRow(data as DBAtletaRow) : null;
+  if (error) throw new Error(error.message);
+  return (data || []).map(fromRow);
 }
 
 export async function upsertAtleta(a: Atleta): Promise<Atleta> {
-  const payload = await toRow(a);
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id;
+  if (!userId) throw new Error("Sessão em falta");
 
-  // Verifica se existe (e evita "upsert" a linha de outro user)
-  const { data: existing, error: exErr } = await supabase
-    .from('atletas')
-    .select('id, user_id')
-    .eq('id', a.id)
-    .maybeSingle();
-  if (exErr) throw exErr;
+  const payload = toInsertUpdate(a, userId);
 
-  if (!existing) {
-    // INSERT (cumpre INSERT policy; trigger ainda preenche user_id se faltar)
+  if (isUuid(a.id)) {
+    // UPDATE
     const { data, error } = await supabase
-      .from('atletas')
-      .insert(payload)
-      .select('*')
+      .from<Row>("atletas")
+      .update(payload)
+      .eq("id", a.id)
+      .select("*")
       .single();
-    if (error) throw error;
-    return fromRow(data as DBAtletaRow);
-  }
 
-  // UPDATE (só se a linha for do próprio utilizador)
-  const { data, error } = await supabase
-    .from('atletas')
-    .update(payload)
-    .eq('id', a.id)
-    .select('*')
-    .single();
+    if (error) throw new Error(error.message);
+    return fromRow(data as Row);
+  } else {
+    // INSERT (não enviar 'id' — deixa o default uuid_generate_v4())
+    const { data, error } = await supabase
+      .from<Row>("atletas")
+      .insert(payload)
+      .select("*")
+      .single();
 
-  if (error) {
-    // Ajuda de diagnóstico para RLS
-    if ((error as any).code === '42501') {
-      throw new Error('Sem permissão para alterar este atleta (RLS). A linha não pertence ao utilizador atual.');
-    }
-    throw error;
+    if (error) throw new Error(error.message);
+    return fromRow(data as Row);
   }
-  return fromRow(data as DBAtletaRow);
 }
 
 export async function deleteAtleta(id: string): Promise<void> {
-  const { error } = await supabase.from('atletas').delete().eq('id', id);
-  if (error) throw error;
+  const { error } = await supabase.from("atletas").delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }

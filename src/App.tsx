@@ -997,19 +997,24 @@ export default function App(){
   // Guardar do formulário (modal global)
   const handleAthSave = async (novo: Atleta) => {
     try {
-      await saveAtleta(novo);
-      const exists = state.atletas.some(x => x.id === novo.id);
-      const next: State = {
-        ...state,
-        atletas: exists ? state.atletas.map(x => x.id === novo.id ? novo : x) : [novo, ...state.atletas],
-      };
-      setState(next);
-      saveState(next);
+      // grava e usa SEMPRE o objeto devolvido (com id UUID)
+      const saved = await saveAtleta(novo);
+
+      const wasEditingId = athEditing?.id; // id antigo (pode ser local)
+      const nextAtletas = wasEditingId
+        ? state.atletas.map(x => x.id === wasEditingId ? saved : x)
+        : [saved, ...state.atletas];
+
+      setState(prev => ({ ...prev, atletas: nextAtletas }));
+      saveState({ ...state, atletas: nextAtletas });
+
       setAthModalOpen(false);
+      setAthEditing(undefined);
     } catch (e: any) {
       alert(e.message || "Falha ao guardar o atleta");
     }
   };
+
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
