@@ -25,6 +25,10 @@ type Props = {
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
+// caminhos das imagens (em public/precos/)
+const IMG_PRECOS_MENS = '/precos/pagamentos-2025.png';
+const IMG_PRECOS_SOCIOS = '/precos/socios-2025.png';
+
 export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPessoais, tipoSocio, numAtletasAgregado }: Props) {
   function formatPostal(v: string){
     const d = v.replace(/\D/g, '').slice(0,7);
@@ -92,7 +96,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
     if (!a.nomeCompleto.trim()) errs.push('Nome do atleta é obrigatório');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(a.dataNascimento)) errs.push('Data de nascimento inválida');
     if (!a.numDoc.trim()) errs.push('Número de documento obrigatório');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.validadeDoc)) errs.push('Validade de documento inválida');
+    if (!/^\d{4}-\d{2}-\d2$/.test(a.validadeDoc) && !/^\d{4}-\d{2}-\d{2}$/.test(a.validadeDoc)) errs.push('Validade de documento inválida'); // tolerância
     if (!isValidNIF(a.nif)) errs.push('NIF inválido');
     if (!isValidPostalCode(a.codigoPostal)) errs.push('Código-postal inválido (####-###)');
     if (!a.morada.trim()) errs.push('Morada é obrigatória');
@@ -105,6 +109,15 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
     if (errs.length) { alert(errs.join('\n')); return; }
     onSave(a);
   }
+
+  // ---- Lightbox simples para ver as tabelas ----
+  const [lightbox, setLightbox] = useState<null | {src:string; alt:string}>(null);
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox]);
 
   return (
     <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
@@ -123,15 +136,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
 
       {/* Plano (continua visível, mas SENIORS/Sub23/Masters forçam Anual no backend) */}
       <Field label="Opção de Pagamentos *">
-        <ImagesDialog
-            title="Tabela de Preços"
-            triggerText="Tabela de Preços"
-            images={[
-              { src: "pagamentos-2025.png", alt: "Tabela de Pagamentos 2025/26" },
-            ]}
-            pathPrefix="/precos"
-          />
-		<select
+        <select
           className="input"
           value={a.planoPagamento}
           onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}
@@ -144,9 +149,20 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
         </select>
       </Field>
 
-      {/* --- Estimativa de custos (actualiza com escalão e tipo de sócio) --- */}
+      {/* --- Estimativa + botões para ver as tabelas --- */}
       <div className="md:col-span-2 rounded-xl border p-3 bg-gray-50">
-        <div className="font-medium mb-1">Estimativa de custos</div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-medium">Estimativa de custos</div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={()=>setLightbox({src:IMG_PRECOS_MENS, alt:'Tabela de preços (mensalidades)'})}>
+              Ver tabela: Mensalidades
+            </Button>
+            <Button type="button" variant="outline" onClick={()=>setLightbox({src:IMG_PRECOS_SOCIOS, alt:'Tabela de quotas de sócio'})}>
+              Ver tabela: Sócios
+            </Button>
+          </div>
+        </div>
+
         {est ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
@@ -285,12 +301,43 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
         <button type="submit" className="btn primary">Guardar atleta</button>
       </div>
 
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="lightbox-backdrop"
+          onClick={(e)=>{ if (e.target === e.currentTarget) setLightbox(null); }}
+        >
+          <div className="lightbox-card">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-medium text-sm">{lightbox.alt}</div>
+              <button className="btn secondary" onClick={()=>setLightbox(null)}>Fechar</button>
+            </div>
+            <div className="lightbox-body">
+              <img src={lightbox.src} alt={lightbox.alt} className="lightbox-img" />
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .input { width: 100%; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.9rem; }
         .btn { border-radius: 0.75rem; padding: 0.5rem 0.9rem; font-weight: 600; }
         .btn.primary { background:#2563eb; color:#fff; }
         .btn.primary:hover { background:#1d4ed8; }
         .btn.secondary { background:#f3f4f6; }
+
+        .lightbox-backdrop {
+          position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+          display:flex; align-items:center; justify-content:center; z-index:50; padding: 1rem;
+        }
+        .lightbox-card {
+          background:#fff; border-radius: 0.75rem; padding: 0.75rem; width: min(100%, 980px);
+          max-height: 90vh; display:flex; flex-direction:column;
+        }
+        .lightbox-body { overflow:auto; }
+        .lightbox-img { width:100%; height:auto; display:block; border-radius:0.5rem; }
       `}</style>
     </form>
   );
