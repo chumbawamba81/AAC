@@ -4,9 +4,9 @@ import type { Atleta } from "../types/Atleta";
 
 /**
  * Tabela public.atletas (snake_case):
- * id (uuid), user_id (uuid), nome_completo (text), genero (text),
+ * id (uuid), user_id (uuid), nome (text), genero (text),
  * data_nascimento (date/text YYYY-MM-DD), escalao (text),
- * plano_pagamento (text: 'Mensal' | 'Trimestral' | 'Anual'),
+ * opcao_pagamento (text: 'Mensal' | 'Trimestral' | 'Anual'),
  * morada (text), codigo_postal (text), telefone (text), email (text),
  * created_at (timestamptz)
  *
@@ -21,11 +21,11 @@ import type { Atleta } from "../types/Atleta";
 type DbRow = {
   id: string;
   user_id: string | null;
-  nome_completo: string;
+  nome: string;
   genero: string | null;
   data_nascimento: string; // YYYY-MM-DD
   escalao: string | null;
-  plano_pagamento: string | null;
+  opcao_pagamento: string | null;
   morada?: string | null;
   codigo_postal?: string | null;
   telefone?: string | null;
@@ -39,11 +39,11 @@ const TABLE = "atletas";
 function dbToAtleta(r: DbRow): Atleta {
   const a: any = {
     id: r.id,
-    nomeCompleto: r.nome_completo ?? "",
+    nomeCompleto: r.nome ?? "",
     genero: r.genero ?? "",
     dataNascimento: r.data_nascimento ?? "",
     escalao: r.escalao ?? "",
-    planoPagamento: (r.plano_pagamento as Atleta["planoPagamento"]) ?? "Anual",
+    planoPagamento: (r.opcao_pagamento as Atleta["planoPagamento"]) ?? "Anual",
   };
   a.morada = r.morada ?? a.morada;
   a.codigoPostal = r.codigo_postal ?? a.codigoPostal;
@@ -56,11 +56,11 @@ function dbToAtleta(r: DbRow): Atleta {
 function atletaToDb(a: Atleta, userId: string): Partial<DbRow> & { user_id: string } {
   const out: any = {
     user_id: userId,
-    nome_completo: (a as any).nomeCompleto ?? "",
+    nome: (a as any).nomeCompleto ?? "",
     genero: (a as any).genero ?? null,
     data_nascimento: (a as any).dataNascimento ?? "",
     escalao: (a as any).escalao ?? null,
-    plano_pagamento: (a as any).planoPagamento ?? "Anual",
+    opcao_pagamento: (a as any).planoPagamento ?? "Anual",
   };
   if ((a as any).morada !== undefined) out.morada = (a as any).morada;
   if ((a as any).codigoPostal !== undefined) out.codigo_postal = (a as any).codigoPostal;
