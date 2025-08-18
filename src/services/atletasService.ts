@@ -7,6 +7,18 @@ function isUuid(v?: string) {
   return !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+async function waitForJwt(maxMs = 2000) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.access_token) return data.session;
+    await new Promise(r => setTimeout(r, 120));
+  }
+  // Mesmo que o SDK não “veja” a sessão, confirma no Postgres:
+  const { data: who, error: rpcErr } = await supabase.rpc("whoami");
+  return who ? { user: { id: who } } as any : null;
+}
+
 // Espelha exatamente as colunas da tabela `atletas`
 type Row = {
   id: string;
@@ -117,9 +129,8 @@ export async function listAtletas(): Promise<Atleta[]> {
 }
 
 export async function upsertAtleta(a: Atleta): Promise<Atleta> {
-  // Garante sessão (útil para UX, mas o trigger cobre user_id)
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) throw new Error("Sessão em falta");
+  const sess = await waitForJwt();
+  if (!sess) throw new Error("Sessão em falta (aguarde 1–2s após login e tente novamente).");
 
   const payload = toInsertUpdate(a);
 
@@ -131,7 +142,10 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
       .select("*")
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("[atletasService.update] RLS/DB error:", error);
+      throw new Error(error.message);
+    }
     return fromRow(data as Row);
   } else {
     const { data, error } = await supabase
@@ -140,7 +154,11 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
       .select("*")
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("[atletasService.insert] payload:", payload);
+      console.error("[atletasService.insert] RLS/DB error:", error);
+      throw new Error(error.message);
+    }
     return fromRow(data as Row);
   }
 }
