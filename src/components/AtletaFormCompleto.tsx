@@ -123,7 +123,15 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
 
       {/* Plano (continua visível, mas SENIORS/Sub23/Masters forçam Anual no backend) */}
       <Field label="Opção de Pagamentos *">
-        <select
+        <ImagesDialog
+            title="Tabela de Preços"
+            triggerText="Tabela de Preços"
+            images={[
+              { src: "pagamentos-2025.png", alt: "Tabela de Pagamentos 2025/26" },
+            ]}
+            pathPrefix="/precos"
+          />
+		<select
           className="input"
           value={a.planoPagamento}
           onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}
