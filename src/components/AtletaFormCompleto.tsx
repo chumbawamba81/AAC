@@ -245,10 +245,12 @@ export default function AtletaFormCompleto({
         <div className="flex items-center justify-between">
           <Label>Opção de Pagamentos *</Label>
           <ImagesDialog
-            buttonLabel="Tabela de Preços"
+            title="Tabela de Preços"
+            triggerText="Tabela de Preços"
             images={[
-              { src: "/precos/pagamentos-2025.png", alt: "Tabela de Pagamentos 2025/26" },
+              { src: "pagamentos-2025.png", alt: "Tabela de Pagamentos 2025/26" },
             ]}
+            pathPrefix="/precos"
           />
         </div>
         <select
