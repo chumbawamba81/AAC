@@ -221,6 +221,7 @@ function ContaSection({
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState(state.conta?.email || "");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState(""); // confirmação
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -250,6 +251,7 @@ function ContaSection({
     setInfo(undefined);
 
     if (mode === "register") {
+      if (password !== confirmPassword) { setError("As palavras-passe não coincidem."); return; }
       const chk = isPasswordStrong(password);
       if (!chk.ok) { setError("A palavra-passe não cumpre os requisitos."); return; }
       try {
@@ -268,8 +270,7 @@ function ContaSection({
     try {
       setLoading(true);
       const data = await signIn(email, password);
-      // “espera” curta para garantir que a sessão fica disponível
-      await supabase.auth.getSession();
+      await supabase.auth.getSession(); // pequena “espera” para a sessão ficar disponível
       if (!data?.session?.access_token) throw new Error("Sessão inválida. Verifique o email de confirmação.");
       const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
       setState(next); saveState(next);
@@ -314,6 +315,14 @@ function ContaSection({
             <Input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required/>
             {mode==="register"&&<PasswordChecklist pass={password}/>}
           </div>
+
+          {mode === "register" && (
+            <div className="space-y-1">
+              <Label>Repetir palavra-passe *</Label>
+              <Input type="password" value={confirmPassword} onChange={(e)=>setConfirmPassword(e.target.value)} required/>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={remember} onChange={(e)=>setRemember(e.target.checked)} />
@@ -327,7 +336,16 @@ function ContaSection({
           {info && <p className="text-sm text-green-700">{info}</p>}
           <div className="flex items-center justify-between">
             <Button type="submit" disabled={loading}>{loading?"Aguarde...":(mode==="register"?"Registar":"Entrar")}</Button>
-            <Button type="button" variant="secondary" onClick={()=>setMode(m=>m==="register"?"login":"register")}>{mode==="register"?"Já tenho conta":"Criar conta"}</Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={()=>{
+                setMode(m=>m==="register"?"login":"register");
+                setConfirmPassword("");
+              }}
+            >
+              {mode==="register"?"Já tenho conta":"Criar conta"}
+            </Button>
           </div>
           <div className="mt-2 text-xs text-gray-500 flex items-start gap-2"><Shield className="h-4 w-4 mt-[2px]"/><p>Produção: hash Argon2id, cookies httpOnly, sessão, rate limiting, MFA.</p></div>
         </form>
@@ -784,13 +802,12 @@ function PagamentosSection({ state }: { state: State }) {
 function AtletasSection({
   state,
   setState,
+  onOpenForm,
 }:{
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
+  onOpenForm: (a?: Atleta) => void;
 }){
-  const [open,setOpen]=useState(false);
-  const [editing,setEditing]=useState<Atleta|undefined>();
-
   // missing por atleta calculado do Supabase + Realtime
   const [userId, setUserId] = useState<string | null>(null);
   const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
@@ -859,14 +876,6 @@ function AtletasSection({
     return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
   }
 
-  // Forçar plano Anual para masters/sub-23 no momento da gravação
-  function forcePlanoIfNeeded(a: Atleta): Atleta {
-    if (isAnuidadeObrigatoria(a.escalao) && a.planoPagamento !== "Anual") {
-      return { ...a, planoPagamento: "Anual" };
-    }
-    return a;
-  }
-
   async function remove(id: string){
     if (!confirm("Remover o atleta?")) return;
     try {
@@ -879,13 +888,14 @@ function AtletasSection({
       alert(e.message || "Falha ao remover o atleta");
     }
   }
+
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5"/> Inscrição de Atletas
         </CardTitle>
-        <Button onClick={()=>{setEditing(undefined); setOpen(true);}}>
+        <Button onClick={()=>onOpenForm(undefined)}>
           <Plus className="h-4 w-4 mr-1"/> Novo atleta
         </Button>
       </CardHeader>
@@ -907,7 +917,7 @@ function AtletasSection({
                   <div className="text-xs text-gray-500">{a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento: {isAnuidadeObrigatoria(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}</div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={()=>{setEditing(a); setOpen(true);}}>
+                  <Button variant="outline" onClick={()=>onOpenForm(a)}>
                     <PencilLine className="h-4 w-4 mr-1"/> Editar
                   </Button>
                   <Button variant="destructive" onClick={()=>remove(a.id)}>
@@ -918,38 +928,6 @@ function AtletasSection({
             );
           })}
         </div>
-
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>{editing?"Editar atleta":"Novo atleta"}</DialogTitle></DialogHeader>
-            <AtletaFormCompleto
-              initial={editing}
-              dadosPessoais={{
-                morada: state.perfil?.morada,
-                codigoPostal: state.perfil?.codigoPostal,
-                telefone: state.perfil?.telefone,
-                email: state.perfil?.email
-              }}
-              onCancel={()=>setOpen(false)}
-              onSave={async (novo) => {
-                try {
-                  const enforced = forcePlanoIfNeeded(novo);
-                  await saveAtleta(enforced);
-                  const exists = state.atletas.some(x => x.id === enforced.id);
-                  const next: State = {
-                    ...state,
-                    atletas: exists ? state.atletas.map(x => x.id === enforced.id ? enforced : x) : [enforced, ...state.atletas]
-                  };
-                  setState(next);
-                  saveState(next);
-                  setOpen(false);
-                } catch (e: any) {
-                  alert(e.message || "Falha ao guardar o atleta");
-                }
-              }}
-            />
-          </DialogContent>
-        </Dialog>
       </CardContent>
     </Card>
   );
@@ -961,7 +939,11 @@ export default function App(){
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
-  const [syncing, setSyncing] = useState<boolean>(true); // 👈 gating até sincronizar
+  const [syncing, setSyncing] = useState<boolean>(true);
+
+  // Modal global de atleta
+  const [athModalOpen, setAthModalOpen] = useState(false);
+  const [athEditing, setAthEditing] = useState<Atleta | undefined>(undefined);
 
   // --- SYNC: no carregamento (se já houver sessão) e sempre que acontecer SIGNED_IN ---
   const doSync = useCallback(async () => {
@@ -989,7 +971,7 @@ export default function App(){
       if (data.session) doSync(); else setSyncing(false);
     });
     const sub = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) void doSync(); // fire-and-forget (estado 'syncing' cobre o UI)
+      if (event === "SIGNED_IN" && session) void doSync();
     });
     return () => { sub.data.subscription.unsubscribe(); };
   }, [doSync]);
@@ -1006,8 +988,28 @@ export default function App(){
     setActiveTab("home");
   }
 
-  // setter compatível com prop do UploadDocsSection (setState: (s: State) => void)
-  const setStatePlain = useCallback((s: State) => setState(s), []);
+  // Abertura do modal a partir da lista
+  const openAthForm = (a?: Atleta) => {
+    setAthEditing(a);
+    setAthModalOpen(true);
+  };
+
+  // Guardar do formulário (modal global)
+  const handleAthSave = async (novo: Atleta) => {
+    try {
+      await saveAtleta(novo);
+      const exists = state.atletas.some(x => x.id === novo.id);
+      const next: State = {
+        ...state,
+        atletas: exists ? state.atletas.map(x => x.id === novo.id ? novo : x) : [novo, ...state.atletas],
+      };
+      setState(next);
+      saveState(next);
+      setAthModalOpen(false);
+    } catch (e: any) {
+      alert(e.message || "Falha ao guardar o atleta");
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
@@ -1024,8 +1026,8 @@ export default function App(){
             <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
           </div>
         ) : (
-          // 👇 Tabs controladas + conteúdos com forceMount
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          // Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab
+          <Tabs key={activeTab} defaultValue={activeTab}>
             <TabsList>
               <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
               {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
@@ -1033,30 +1035,49 @@ export default function App(){
               {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="home" forceMount>
+            <TabsContent value="home">
               <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
             </TabsContent>
 
             {hasPerfil && (
-              <TabsContent value="atletas" forceMount>
-                <AtletasSection state={state} setState={setState} />
+              <TabsContent value="atletas">
+                <AtletasSection state={state} setState={setState} onOpenForm={openAthForm} />
               </TabsContent>
             )}
 
             {hasPerfil && (
-              <TabsContent value="docs" forceMount>
-                <UploadDocsSection state={state} setState={setStatePlain} />
+              <TabsContent value="docs">
+                {/* prop setState como função simples */}
+                <UploadDocsSection state={state} setState={(s: State)=>setState(s)} />
               </TabsContent>
             )}
 
             {hasPerfil && hasAtletas && (
-              <TabsContent value="pag" forceMount>
+              <TabsContent value="pag">
                 <PagamentosSection state={state} />
               </TabsContent>
             )}
           </Tabs>
         )}
       </AuthGate>
+
+      {/* Modal global do Atleta — fica fora das Tabs, não desmonta ao trocar separador */}
+      <Dialog open={athModalOpen} onOpenChange={setAthModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{athEditing ? "Editar atleta" : "Novo atleta"}</DialogTitle></DialogHeader>
+          <AtletaFormCompleto
+            initial={athEditing}
+            dadosPessoais={{
+              morada: state.perfil?.morada,
+              codigoPostal: state.perfil?.codigoPostal,
+              telefone: state.perfil?.telefone,
+              email: state.perfil?.email
+            }}
+            onCancel={()=>setAthModalOpen(false)}
+            onSave={handleAthSave}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={postSavePrompt} onOpenChange={setPostSavePrompt}>
         <DialogContent>
