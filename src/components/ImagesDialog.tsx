@@ -1,22 +1,47 @@
 import * as React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { Image as ImageIcon, X } from "lucide-react";
+import { Image as ImageIcon, X, AlertTriangle } from "lucide-react";
 
 type Img = { src: string; alt?: string };
+type ImgInput = string | Img;
+
+function resolveSrc(i: ImgInput, pathPrefix: string) {
+  const raw = typeof i === "string" ? i : i.src;
+  // http(s):// ou caminho absoluto -> usa como está; senão prefixa com pathPrefix
+  if (/^https?:\/\//i.test(raw) || raw.startsWith("/")) return raw;
+  return `${pathPrefix.replace(/\/$/, "")}/${raw.replace(/^\//, "")}`;
+}
 
 export default function ImagesDialog({
   title,
   images,
   triggerText = "Tabela de Preços",
   triggerClassName = "h-7 px-2",
+  pathPrefix = "/precos", // <- imagens em public/precos
 }: {
   title: string;
-  images: Img[];
+  images: ImgInput[];
   triggerText?: string;
   triggerClassName?: string;
+  pathPrefix?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [errs, setErrs] = React.useState<Record<number, string>>({});
+
+  // Fallback global para ESC (caso a lib não dispare onEscapeKeyDown)
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  function handleError(idx: number, src: string) {
+    setErrs((e) => ({ ...e, [idx]: `Falha a carregar: ${src}` }));
+  }
 
   return (
     <>
@@ -31,7 +56,13 @@ export default function ImagesDialog({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent
+          className="max-w-3xl"
+          // Fechar ao clicar fora
+          onPointerDownOutside={() => setOpen(false)}
+          // Fechar por ESC (se a lib propagar)
+          onEscapeKeyDown={() => setOpen(false)}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>{title}</span>
@@ -48,15 +79,45 @@ export default function ImagesDialog({
           </DialogHeader>
 
           <div className="grid gap-3">
-            {images.map((img, i) => (
-              <div key={i} className="border rounded-lg overflow-hidden">
-                <img
-                  src={img.src}
-                  alt={img.alt || `imagem ${i + 1}`}
-                  className="w-full h-auto block"
-                />
-              </div>
-            ))}
+            {images.map((img, i) => {
+              const src = resolveSrc(img, pathPrefix);
+              const alt =
+                typeof img === "string"
+                  ? `imagem ${i + 1}`
+                  : img.alt || `imagem ${i + 1}`;
+              const error = errs[i];
+
+              return (
+                <div key={i} className="border rounded-lg overflow-hidden p-2">
+                  {error ? (
+                    <div className="flex items-start gap-2 text-red-700 text-sm">
+                      <AlertTriangle className="h-4 w-4 mt-0.5" />
+                      <div>
+                        <div className="font-medium">Não foi possível carregar a imagem.</div>
+                        <div className="break-all">{error}</div>
+                        <div className="text-gray-500 mt-1">
+                          Verifica se o ficheiro existe em <code>/public{src}</code> e se o nome (maiúsculas/minúsculas) está correto.
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <img
+                      src={src}
+                      alt={alt}
+                      className="w-full h-auto block"
+                      onError={() => handleError(i, src)}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                </div>
+              );
+            })}
+            <p className="text-xs text-gray-500">
+              Coloca os ficheiros em <code>/public/precos/</code>. Ex.:{" "}
+              <code>public/precos/pagamentos-2025.png</code> → URL{" "}
+              <code>/precos/pagamentos-2025.png</code>.
+            </p>
           </div>
         </DialogContent>
       </Dialog>
