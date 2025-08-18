@@ -57,9 +57,6 @@ export default function ImagesDialog({
                 />
               </div>
             ))}
-            <p className="text-xs text-gray-500">
-              Coloca as imagens em <code>/public/precos</code> e ajusta os caminhos se necessário.
-            </p>
           </div>
         </DialogContent>
       </Dialog>
