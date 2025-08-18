@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/u
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import ImagesDialog from "./components/ImagesDialog";
 
 import {
   AlertCircle,
@@ -565,15 +566,27 @@ function DadosPessoaisSection({
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
           <div className="space-y-1"><Label>Nome Completo *</Label><Input value={form.nomeCompleto} onChange={e=>setForm({...form,nomeCompleto:e.target.value})} required/></div>
           <div className="space-y-1">
-            <Label>Tipo de sócio *</Label>
-            <select className="w-full rounded-xl border px-3 py-2 text-sm" value={form.tipoSocio} onChange={e=>setForm({...form, tipoSocio: e.target.value as PessoaDados["tipoSocio"]})}>
-              <option>Sócio Pro</option>
-              <option>Sócio Família</option>
-              <option>Sócio Geral Renovação</option>
-              <option>Sócio Geral Novo</option>
-              <option>Não pretendo ser sócio</option>
-            </select>
-          </div>
+  <Label className="flex items-center gap-2">
+    Tipo de sócio *
+    <ImagesDialog
+      title="Tabela de Preços — Sócios"
+      images={[{ src: "/precos/socios-2025.png", alt: "Tabela de preços de sócios" }]}
+      triggerText="Tabela de Preços"
+    />
+  </Label>
+  <select
+    className="w-full rounded-xl border px-3 py-2 text-sm"
+    value={form.tipoSocio}
+    onChange={(e)=>setForm({...form, tipoSocio: e.target.value as PessoaDados["tipoSocio"]})}
+  >
+    <option>Sócio Pro</option>
+    <option>Sócio Família</option>
+    <option>Sócio Geral Renovação</option>
+    <option>Sócio Geral Novo</option>
+    <option>Não pretendo ser sócio</option>
+  </select>
+</div>
+
           <div className="space-y-1"><Label>Data de Nascimento *</Label><Input type="date" value={form.dataNascimento} onChange={e=>setForm({...form,dataNascimento:e.target.value})} required/></div>
           <div className="space-y-1 md:col-span-2"><Label>Morada *</Label><Input value={form.morada} onChange={e=>setForm({...form,morada:e.target.value})} required/></div>
           <div className="space-y-1"><Label>Código Postal *</Label><Input value={form.codigoPostal} onChange={e=>setForm({...form,codigoPostal:formatPostal(e.target.value)})} placeholder="0000-000" required/></div>

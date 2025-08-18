@@ -165,19 +165,29 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
       <Field label="Escalão (sugestão automática)">
         <input className="input bg-gray-100" value={a.escalao} readOnly/>
       </Field>
-      <Field label="Opção de Pagamentos *">
-        <select
-          className="input"
-          value={a.planoPagamento}
-          onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}
-          disabled={lockedAnnual}
-          title={lockedAnnual ? 'Para Seniores e Masters, a opção é obrigatoriamente Anual' : undefined}
-        >
-          <option>Mensal</option>
-          <option>Trimestral</option>
-          <option>Anual</option>
-        </select>
-      </Field>
+<Field
+  label={
+    <div className="flex items-center gap-2">
+      Opção de Pagamentos *
+      <ImagesDialog
+        title="Tabela de Pagamentos — Atletas"
+        images={[{ src: "/precos/pagamentos-2025.png", alt: "Opções de pagamento por escalão" }]}
+        triggerText="Tabela de Preços"
+      />
+    </div>
+  }
+>
+  <select
+    className="input"
+    value={a.planoPagamento}
+    onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}
+  >
+    <option>Mensal</option>
+    <option>Trimestral</option>
+    <option>Anual</option>
+  </select>
+</Field>
+
 
       {/* Nacionalidade / Documento */}
       <Field label="Nacionalidade *">
