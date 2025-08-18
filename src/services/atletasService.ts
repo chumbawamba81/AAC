@@ -1,145 +1,176 @@
-// src/services/atletasService.ts
-import { supabase } from "../supabaseClient";
-import type { Atleta } from "../types/Atleta";
+import { supabase } from '../supabaseClient';
+import type { Atleta, Genero, PlanoPagamento, Escalao, Nacionalidade, TipoDocId } from '../types/Atleta';
 
-/**
- * Tabela public.atletas (snake_case):
- * id (uuid), user_id (uuid), nome (text), genero (text),
- * data_nascimento (date/text YYYY-MM-DD), escalao (text),
- * opcao_pagamento (text: 'Mensal' | 'Trimestral' | 'Anual'),
- * morada (text), codigo_postal (text), telefone (text), email (text),
- * created_at (timestamptz)
- *
- * RLS (exemplo):
- * alter table public.atletas enable row level security;
- * create policy "atletas_select" on public.atletas for select using (auth.uid() = user_id);
- * create policy "atletas_ins"    on public.atletas for insert with check (auth.uid() = user_id);
- * create policy "atletas_upd"    on public.atletas for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
- * create policy "atletas_del"    on public.atletas for delete using (auth.uid() = user_id);
- */
-
-type DbRow = {
+/** Linha tal como existe na BD (snake_case). */
+type DBAtletaRow = {
   id: string;
+  dados_pessoais_id: string | null;
   user_id: string | null;
+
   nome: string;
-  genero: string | null;
-  data_nascimento: string; // YYYY-MM-DD
+  data_nascimento: string; // date (YYYY-MM-DD)
   escalao: string | null;
-  opcao_pagamento: string | null;
-  morada?: string | null;
-  codigo_postal?: string | null;
-  telefone?: string | null;
-  email?: string | null;
-  created_at?: string | null;
+  alergias: string;
+
+  opcao_pagamento: string | null; // 'Mensal'|'Trimestral'|'Anual'
+  created_at: string | null;
+
+  morada: string | null;
+  codigo_postal: string | null;
+  contactos_urgencia: string | null;
+  emails_preferenciais: string | null;
+  genero: string | null; // 'Feminino'|'Masculino'
+
+  /* Novos campos que adicionaste na tabela */
+  nacionalidade?: string | null;
+  nacionalidade_outra?: string | null;
+  tipo_doc?: string | null;
+  num_doc?: string | null;
+  validade_doc?: string | null; // date
+  nif?: string | null;
+  nome_pai?: string | null;
+  nome_mae?: string | null;
+  telefone_opc?: string | null;
+  email_opc?: string | null;
+  escola?: string | null;
+  ano_escolaridade?: string | null;
+  encarregado_educacao?: string | null; // 'Pai'|'Mãe'|'Outro'
+  parentesco_outro?: string | null;
+  observacoes?: string | null;
 };
 
-const TABLE = "atletas";
+/* ------------------------ Helpers de normalização ------------------------ */
 
-/** DB -> App */
-function dbToAtleta(r: DbRow): Atleta {
-  const a: any = {
+function toGenero(v: string | null | undefined): Genero {
+  return v === 'Masculino' ? 'Masculino' : 'Feminino';
+}
+function toPlano(v: string | null | undefined): PlanoPagamento {
+  return v === 'Trimestral' || v === 'Anual' ? v : 'Mensal';
+}
+function toEscalao(v: string | null | undefined): Escalao {
+  return (v as Escalao) ?? 'Fora de escalões';
+}
+function nonEmpty(s: string | null | undefined): string {
+  return s ?? '';
+}
+
+/** DB -> UI */
+function fromRow(r: DBAtletaRow): Atleta {
+  return {
     id: r.id,
-    nomeCompleto: r.nome ?? "",
-    genero: r.genero ?? "",
-    dataNascimento: r.data_nascimento ?? "",
-    escalao: r.escalao ?? "",
-    planoPagamento: (r.opcao_pagamento as Atleta["planoPagamento"]) ?? "Anual",
+    nomeCompleto: r.nome,
+    dataNascimento: r.data_nascimento,
+    genero: toGenero(r.genero),
+    escalao: toEscalao(r.escalao),
+    planoPagamento: toPlano(r.opcao_pagamento),
+
+    alergias: nonEmpty(r.alergias),
+    morada: nonEmpty(r.morada),
+    codigoPostal: nonEmpty(r.codigo_postal),
+    contactosUrgencia: nonEmpty(r.contactos_urgencia),
+    emailsPreferenciais: nonEmpty(r.emails_preferenciais),
+
+    // Novos campos
+    nacionalidade: (r.nacionalidade as Nacionalidade) ?? 'Portuguesa',
+    nacionalidadeOutra: r.nacionalidade_outra ?? undefined,
+    tipoDoc: (r.tipo_doc as TipoDocId) ?? 'Cartão de cidadão',
+    numDoc: nonEmpty(r.num_doc),
+    validadeDoc: r.validade_doc ?? '',
+    nif: nonEmpty(r.nif),
+    nomePai: nonEmpty(r.nome_pai),
+    nomeMae: nonEmpty(r.nome_mae),
+    telefoneOpc: r.telefone_opc ?? undefined,
+    emailOpc: r.email_opc ?? undefined,
+    escola: nonEmpty(r.escola),
+    anoEscolaridade: nonEmpty(r.ano_escolaridade),
+    encarregadoEducacao: (r.encarregado_educacao as Atleta['encarregadoEducacao']) ?? undefined,
+    parentescoOutro: r.parentesco_outro ?? undefined,
+    observacoes: r.observacoes ?? undefined,
   };
-  a.morada = r.morada ?? a.morada;
-  a.codigoPostal = r.codigo_postal ?? a.codigoPostal;
-  a.telefone = r.telefone ?? a.telefone;
-  a.email = r.email ?? a.email;
-  return a as Atleta;
 }
 
-/** App -> DB (sempre com user_id = auth.uid()) */
-function atletaToDb(a: Atleta, userId: string): Partial<DbRow> & { user_id: string } {
-  const out: any = {
-    user_id: userId,
-    nome: (a as any).nomeCompleto ?? "",
-    genero: (a as any).genero ?? null,
-    data_nascimento: (a as any).dataNascimento ?? "",
-    escalao: (a as any).escalao ?? null,
-    opcao_pagamento: (a as any).planoPagamento ?? "Anual",
+/** UI -> DB (payload) */
+async function toRow(a: Atleta): Promise<Partial<DBAtletaRow>> {
+  const { data } = await supabase.auth.getUser();
+  const user_id = data?.user?.id ?? null;
+
+  // Masters e Seniores Sub23: plano forçado a 'Anual'
+  const forceAnnual =
+    a.escalao === 'Masters (<1995)' ||
+    a.escalao === 'Seniores masculinos Sub23 (2002-2007)';
+
+  return {
+    id: a.id,
+    user_id,
+
+    nome: a.nomeCompleto.trim(),
+    data_nascimento: a.dataNascimento,
+    genero: a.genero,
+    escalao: a.escalao,
+    opcao_pagamento: forceAnnual ? 'Anual' : a.planoPagamento,
+
+    alergias: a.alergias ?? '',
+    morada: a.morada ?? null,
+    codigo_postal: a.codigoPostal ?? null,
+    contactos_urgencia: a.contactosUrgencia ?? null,
+    emails_preferenciais: a.emailsPreferenciais ?? null,
+
+    // Novos campos
+    nacionalidade: a.nacionalidade,
+    nacionalidade_outra: a.nacionalidade === 'Outra' ? (a.nacionalidadeOutra ?? null) : null,
+    tipo_doc: a.tipoDoc,
+    num_doc: a.numDoc,
+    validade_doc: a.validadeDoc || null,
+    nif: a.nif || null,
+    nome_pai: a.nomePai || null,
+    nome_mae: a.nomeMae || null,
+    telefone_opc: a.telefoneOpc || null,
+    email_opc: a.emailOpc || null,
+    escola: a.escola || null,
+    ano_escolaridade: a.anoEscolaridade || null,
+    encarregado_educacao: a.encarregadoEducacao || null,
+    parentesco_outro: a.parentescoOutro || null,
+    observacoes: a.observacoes || null,
   };
-  if ((a as any).morada !== undefined) out.morada = (a as any).morada;
-  if ((a as any).codigoPostal !== undefined) out.codigo_postal = (a as any).codigoPostal;
-  if ((a as any).telefone !== undefined) out.telefone = (a as any).telefone;
-  if ((a as any).email !== undefined) out.email = (a as any).email;
-  return out as Partial<DbRow> & { user_id: string };
 }
 
-/** Lista atletas do utilizador autenticado */
+/* --------------------------------- CRUD ---------------------------------- */
+
 export async function listAtletas(): Promise<Atleta[]> {
-  const { data: auth } = await supabase.auth.getUser();
-  const user = auth?.user;
-  if (!user) return [];
+  const { data, error } = await supabase
+    .from('atletas')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data as DBAtletaRow[] | null)?.map(fromRow) ?? [];
+}
+
+export async function getAtleta(id: string): Promise<Atleta | null> {
+  const { data, error } = await supabase
+    .from('atletas')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? fromRow(data as DBAtletaRow) : null;
+}
+
+export async function upsertAtleta(a: Atleta): Promise<Atleta> {
+  const payload = await toRow(a);
 
   const { data, error } = await supabase
-    .from(TABLE)
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .from('atletas')
+    .upsert(payload, { onConflict: 'id' })
+    .select('*')
+    .single();
 
-  if (error) {
-    console.error("[atletasService] listAtletas:", error.message);
-    throw error;
-  }
-  const rows = (data as DbRow[]) ?? [];
-  return rows.map(dbToAtleta);
+  if (error) throw error;
+  return fromRow(data as DBAtletaRow);
 }
 
-/** Cria/atualiza um atleta do utilizador autenticado */
-export async function upsertAtleta(a: Atleta): Promise<Atleta> {
-  const { data: auth } = await supabase.auth.getUser();
-  const user = auth?.user;
-  if (!user) throw new Error("Sessão não encontrada.");
-
-  const row = atletaToDb(a, user.id);
-  const hasId = !!(a as any).id;
-
-  if (hasId) {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .update(row)
-      .eq("id", (a as any).id)
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error("[atletasService] update:", error.message);
-      throw error;
-    }
-    return dbToAtleta(data as DbRow);
-  } else {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .insert(row)
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error("[atletasService] insert:", error.message);
-      throw error;
-    }
-    return dbToAtleta(data as DbRow);
-  }
-}
-
-/** Remove um atleta do utilizador autenticado */
 export async function deleteAtleta(id: string): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const user = auth?.user;
-  if (!user) throw new Error("Sessão não encontrada.");
-
-  const { error } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
-
-  if (error) {
-    console.error("[atletasService] delete:", error.message);
-    throw error;
-  }
+  const { error } = await supabase.from('atletas').delete().eq('id', id);
+  if (error) throw error;
 }

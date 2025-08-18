@@ -79,7 +79,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
 
   useEffect(()=>{
     if (a.dataNascimento && a.genero) {
-      const sug = computeEscalao(a.dataNascimento, a.genero) as Escalao; // <- cast para Escalao
+      const sug = computeEscalao(a.dataNascimento, a.genero) as Escalao;
       setA(prev => ({ ...prev, escalao: sug }));
     }
   }, [a.dataNascimento, a.genero]);
