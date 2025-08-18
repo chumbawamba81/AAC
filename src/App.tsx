@@ -1091,7 +1091,7 @@ export default function App(){
               telefone: state.perfil?.telefone,
               email: state.perfil?.email
             }}
-		    tipoSocio={state.perfil?.tipoSocio || "Não pretendo ser sócio"}   {/* <- NOVO */}
+		    tipoSocio={state.perfil?.tipoSocio || "Não pretendo ser sócio"} /* novo */
             onCancel={()=>setAthModalOpen(false)}
             onSave={handleAthSave}
           />
