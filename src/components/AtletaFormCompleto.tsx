@@ -90,13 +90,11 @@ export default function AtletaFormCompleto({
     observacoes: initial?.observacoes || "",
   });
 
-  // Recomputa Escalão quando mudam data/género
+  // Recomputa Escalão quando mudam data/género (cast para o union Escalao)
   useEffect(() => {
     if (a.dataNascimento && a.genero) {
-      setA((prev) => ({
-        ...prev,
-        escalao: computeEscalao(a.dataNascimento, a.genero),
-      }));
+      const novo = computeEscalao(a.dataNascimento, a.genero) as Atleta["escalao"];
+      setA((prev) => ({ ...prev, escalao: novo }));
     }
   }, [a.dataNascimento, a.genero]);
 
@@ -112,7 +110,7 @@ export default function AtletaFormCompleto({
     [a.dataNascimento]
   );
 
-  // Estimativa de custos (usa tipo de sócio e nº de atletas do agregado)
+  // Estimativa de custos
   const estimativa = useMemo(
     () =>
       estimarCusto({
@@ -202,7 +200,7 @@ export default function AtletaFormCompleto({
         </select>
       </Field>
 
-      {/* Escalão e Plano: o plano surge logo abaixo do género; quando Sub23/Masters fica bloqueado em Anual */}
+      {/* Escalão e Plano */}
       <Field label="Escalão (sugestão automática)">
         <input className="input bg-gray-100" value={a.escalao} readOnly />
       </Field>
@@ -234,7 +232,7 @@ export default function AtletaFormCompleto({
         )}
       </div>
 
-      {/* Estimativa de custos (lado direito do Plano) */}
+      {/* Estimativa de custos */}
       <div className="rounded-xl border p-3 bg-white">
         <div className="font-medium mb-1">Estimativa de custos</div>
         <div className="text-sm space-y-1">
@@ -269,7 +267,7 @@ export default function AtletaFormCompleto({
           className="input"
           value={a.nacionalidade}
           onChange={(e) =>
-          setA({ ...a, nacionalidade: e.target.value as Nacionalidade })
+            setA({ ...a, nacionalidade: e.target.value as Nacionalidade })
           }
         >
           <option>Portuguesa</option>
@@ -325,7 +323,7 @@ export default function AtletaFormCompleto({
         />
       </Field>
 
-      {/* Filiação — APENAS quando é menor (e colocada abaixo do NIF) */}
+      {/* Filiação — APENAS quando é menor (abaixo do NIF) */}
       {isMinor && (
         <>
           <Field label="Nome do pai *">
@@ -405,7 +403,6 @@ export default function AtletaFormCompleto({
         />
       </Field>
 
-      {/* Escola/Ano só quando não Masters */}
       {a.escalao !== "Masters (<1995)" && (
         <>
           <Field className="md:col-span-2" label="Escola (2025/26) *">
@@ -482,7 +479,6 @@ export default function AtletaFormCompleto({
           required
         />
       </Field>
-
       <Field className="md:col-span-2" label="Email(s) preferenciais *">
         <input
           className="input"
