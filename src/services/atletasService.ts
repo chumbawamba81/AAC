@@ -1,14 +1,15 @@
+// src/services/atletasService.ts
 import { supabase } from "../supabaseClient";
 import type { Atleta } from "../types/Atleta";
 
-// ---- helpers ----
+// ----------------- helpers -----------------
 function isUuid(v?: string) {
   return !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+// Espelha exatamente as colunas da tabela `atletas`
 type Row = {
   id: string;
-  user_id: string | null;
   dados_pessoais_id: string | null;
   nome: string;
   data_nascimento: string; // date
@@ -21,22 +22,23 @@ type Row = {
   contactos_urgencia: string | null;
   emails_preferenciais: string | null;
   genero: string | null;
+  user_id: string | null;
 
-  nacionalidade?: string | null;
-  nacionalidade_outra?: string | null;
-  tipo_doc?: string | null;
-  num_doc?: string | null;
-  validade_doc?: string | null;
-  nif?: string | null;
-  nome_pai?: string | null;
-  nome_mae?: string | null;
-  telefone_opc?: string | null;
-  email_opc?: string | null;
-  escola?: string | null;
-  ano_escolaridade?: string | null;
-  encarregado_educacao?: string | null;
-  parentesco_outro?: string | null;
-  observacoes?: string | null;
+  nacionalidade: string | null;
+  nacionalidade_outra: string | null;
+  tipo_doc: string | null;
+  num_doc: string | null;
+  validade_doc: string | null;
+  nif: string | null;
+  nome_pai: string | null;
+  nome_mae: string | null;
+  telefone_opc: string | null;
+  email_opc: string | null;
+  escola: string | null;
+  ano_escolaridade: string | null;
+  encarregado_educacao: string | null;
+  parentesco_outro: string | null;
+  observacoes: string | null;
 };
 
 function fromRow(r: Row): Atleta {
@@ -70,10 +72,10 @@ function fromRow(r: Row): Atleta {
   };
 }
 
-function toInsertUpdate(a: Atleta, userId: string) {
-  // Não incluímos 'id' — no update filtramos por .eq('id', ...)
-  const payload: Partial<Row> = {
+function toInsertUpdate(a: Atleta, userId: string): Partial<Row> {
+  return {
     user_id: userId,
+    // dados_pessoais_id: (preenche se tiveres esse vínculo)
     nome: a.nomeCompleto,
     data_nascimento: a.dataNascimento,
     escalao: a.escalao,
@@ -101,19 +103,18 @@ function toInsertUpdate(a: Atleta, userId: string) {
     parentesco_outro: a.parentescoOutro ?? null,
     observacoes: a.observacoes ?? null,
   };
-  return payload;
 }
 
-// ---- API ----
+// ----------------- API -----------------
 
 export async function listAtletas(): Promise<Atleta[]> {
   const { data, error } = await supabase
-    .from<Row>("atletas")
+    .from("atletas")
     .select("*")
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return (data || []).map(fromRow);
+  return (data as Row[] | null)?.map(fromRow) ?? [];
 }
 
 export async function upsertAtleta(a: Atleta): Promise<Atleta> {
@@ -124,9 +125,9 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
   const payload = toInsertUpdate(a, userId);
 
   if (isUuid(a.id)) {
-    // UPDATE
+    // UPDATE por id já UUID
     const { data, error } = await supabase
-      .from<Row>("atletas")
+      .from("atletas")
       .update(payload)
       .eq("id", a.id)
       .select("*")
@@ -135,9 +136,9 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
     if (error) throw new Error(error.message);
     return fromRow(data as Row);
   } else {
-    // INSERT (não enviar 'id' — deixa o default uuid_generate_v4())
+    // INSERT — não enviar id (deixa a BD gerar uuid)
     const { data, error } = await supabase
-      .from<Row>("atletas")
+      .from("atletas")
       .insert(payload)
       .select("*")
       .single();
