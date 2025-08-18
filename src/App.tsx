@@ -268,11 +268,11 @@ function ContaSection({
     try {
       setLoading(true);
       const data = await signIn(email, password);
-      const access = data?.session?.access_token;
-      if (!access) throw new Error("Sessão inválida. Verifique o email de confirmação.");
+      // “espera” curta para garantir que a sessão fica disponível
+      await supabase.auth.getSession();
+      if (!data?.session?.access_token) throw new Error("Sessão inválida. Verifique o email de confirmação.");
       const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
       setState(next); saveState(next);
-      if (!remember) { /* opcional: limpezas */ }
       onLogged();
     } catch (e: any) {
       setError(e.message || "Erro de autenticação");
@@ -391,6 +391,14 @@ function DadosPessoaisSection({
       dataValidadeDocumento: "",
     }
   );
+
+  // 👉 Quando o perfil chegar do Supabase depois do login, preenche o form e sai do modo edição
+  useEffect(() => {
+    if (basePerfil) {
+      setForm(prev => ({ ...prev, ...(basePerfil as PessoaDadosWithVal) }));
+      setEditMode(false);
+    }
+  }, [state.perfil]); // eslint-disable-line
 
   // ===== Contadores reais do Supabase (documentos) =====
   const [userId, setUserId] = useState<string | null>(null);
@@ -953,34 +961,38 @@ export default function App(){
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
+  const [syncing, setSyncing] = useState<boolean>(true); // 👈 gating até sincronizar
 
   // --- SYNC: no carregamento (se já houver sessão) e sempre que acontecer SIGNED_IN ---
-  useEffect(() => {
-    async function sync() {
-      try {
-        const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
-        setState(prev => {
-          const email = (perfilDb?.email || prev.conta?.email || "");
-          return {
-            ...prev,
-            conta: email ? { email } : prev.conta,
-            perfil: perfilDb ?? prev.perfil,
-            atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
-          };
-        });
-      } catch (e) {
-        console.error("[App] sync pós-login:", e);
-      }
+  const doSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
+      setState(prev => {
+        const email = (perfilDb?.email || prev.conta?.email || "");
+        return {
+          ...prev,
+          conta: email ? { email } : prev.conta,
+          perfil: perfilDb ?? prev.perfil,
+          atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
+        };
+      });
+    } catch (e) {
+      console.error("[App] sync pós-login:", e);
+    } finally {
+      setSyncing(false);
     }
-
-    supabase.auth.getSession().then(({ data }) => { if (data.session) sync(); });
-
-    const sub = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) sync();
-    });
-
-    return () => { sub.data.subscription.unsubscribe(); };
   }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) doSync(); else setSyncing(false);
+    });
+    const sub = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) void doSync(); // fire-and-forget (estado 'syncing' cobre o UI)
+    });
+    return () => { sub.data.subscription.unsubscribe(); };
+  }, [doSync]);
 
   // persistência local
   useEffect(() => { saveState(state); }, [state]);
@@ -1007,36 +1019,42 @@ export default function App(){
       <AuthGate
         fallback={<ContaSection state={state} setState={setState} onLogged={()=>setActiveTab("home")} />}
       >
-        <Tabs key={activeTab} defaultValue={activeTab}>
-          <TabsList>
-            <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
-            {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
-            {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
-            {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
-          </TabsList>
+        {syncing ? (
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
+          </div>
+        ) : (
+          <Tabs key={activeTab} defaultValue={activeTab}>
+            <TabsList>
+              <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
+              {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
+              {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
+              {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
+            </TabsList>
 
-          <TabsContent value="home">
-            <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
-          </TabsContent>
-
-          {hasPerfil && (
-            <TabsContent value="atletas">
-              <AtletasSection state={state} setState={setState} />
+            <TabsContent value="home">
+              <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
             </TabsContent>
-          )}
 
-          {hasPerfil && (
-            <TabsContent value="docs">
-              <UploadDocsSection state={state} setState={setStatePlain} />
-            </TabsContent>
-          )}
+            {hasPerfil && (
+              <TabsContent value="atletas">
+                <AtletasSection state={state} setState={setState} />
+              </TabsContent>
+            )}
 
-          {hasPerfil && hasAtletas && (
-            <TabsContent value="pag">
-              <PagamentosSection state={state} />
-            </TabsContent>
-          )}
-        </Tabs>
+            {hasPerfil && (
+              <TabsContent value="docs">
+                <UploadDocsSection state={state} setState={setStatePlain} />
+              </TabsContent>
+            )}
+
+            {hasPerfil && hasAtletas && (
+              <TabsContent value="pag">
+                <PagamentosSection state={state} />
+              </TabsContent>
+            )}
+          </Tabs>
+        )}
       </AuthGate>
 
       <Dialog open={postSavePrompt} onOpenChange={setPostSavePrompt}>
