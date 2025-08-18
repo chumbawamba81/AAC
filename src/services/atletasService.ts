@@ -2,24 +2,12 @@
 import { supabase } from "../supabaseClient";
 import type { Atleta } from "../types/Atleta";
 
-// ----------------- helpers -----------------
+// ---------- helpers ----------
 function isUuid(v?: string) {
   return !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
-async function waitForJwt(maxMs = 2000) {
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
-    const { data } = await supabase.auth.getSession();
-    if (data.session?.access_token) return data.session;
-    await new Promise(r => setTimeout(r, 120));
-  }
-  // Mesmo que o SDK não “veja” a sessão, confirma no Postgres:
-  const { data: who, error: rpcErr } = await supabase.rpc("whoami");
-  return who ? { user: { id: who } } as any : null;
-}
-
-// Espelha exatamente as colunas da tabela `atletas`
+// Espelho da tabela 'atletas'
 type Row = {
   id: string;
   dados_pessoais_id: string | null;
@@ -84,9 +72,8 @@ function fromRow(r: Row): Atleta {
   };
 }
 
-function toInsertUpdate(a: Atleta): Partial<Row> {
+function toPayload(a: Atleta) {
   return {
-    // user_id é preenchido pelo trigger
     nome: a.nomeCompleto,
     data_nascimento: a.dataNascimento,
     escalao: a.escalao,
@@ -113,12 +100,14 @@ function toInsertUpdate(a: Atleta): Partial<Row> {
     encarregado_educacao: a.encarregadoEducacao ?? null,
     parentesco_outro: a.parentescoOutro ?? null,
     observacoes: a.observacoes ?? null,
-  };
+
+    // se tiveres o id do perfil e quiseres associar
+    // dados_pessoais_id: '<uuid-perfil>'  // ou deixa null
+  } as Record<string, any>;
 }
 
-// ----------------- API -----------------
-
-export async function listAtletas(): Promise<Atleta[]> {
+// ---------- API ----------
+export async function listAtletas(): Promise<Atleta[]>> {
   const { data, error } = await supabase
     .from("atletas")
     .select("*")
@@ -129,41 +118,34 @@ export async function listAtletas(): Promise<Atleta[]> {
 }
 
 export async function upsertAtleta(a: Atleta): Promise<Atleta> {
-  const sess = await waitForJwt();
-  if (!sess) throw new Error("Sessão em falta (aguarde 1–2s após login e tente novamente).");
-
-  const payload = toInsertUpdate(a);
+  // Garante que há sessão (diagnóstico amigável)
+  const { data: s } = await supabase.auth.getSession();
+  if (!s.session?.access_token) {
+    throw new Error("Sessão em falta. Entre novamente.");
+  }
 
   if (isUuid(a.id)) {
-    const { data, error } = await supabase
-      .from("atletas")
-      .update(payload)
-      .eq("id", a.id)
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error("[atletasService.update] RLS/DB error:", error);
-      throw new Error(error.message);
-    }
+    // UPDATE via RPC (confirma ownership no servidor)
+    const payload = toPayload(a);
+    const { data, error } = await supabase.rpc("rpc_update_atleta", {
+      p_id: a.id,
+      p: payload as any,
+    });
+    if (error) throw new Error(error.message);
     return fromRow(data as Row);
   } else {
-    const { data, error } = await supabase
-      .from("atletas")
-      .insert(payload)
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error("[atletasService.insert] payload:", payload);
-      console.error("[atletasService.insert] RLS/DB error:", error);
-      throw new Error(error.message);
-    }
+    // INSERT via RPC SECURITY DEFINER (carimba user_id no servidor)
+    const payload = toPayload(a);
+    const { data, error } = await supabase.rpc("rpc_create_atleta", {
+      p: payload as any,
+    });
+    if (error) throw new Error(error.message);
     return fromRow(data as Row);
   }
 }
 
 export async function deleteAtleta(id: string): Promise<void> {
+  // Delete direto (RLS de DELETE por dono continua válida)
   const { error } = await supabase.from("atletas").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
