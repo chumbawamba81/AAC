@@ -1,47 +1,85 @@
 // src/supabaseClient.ts
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// Lê envs de runtime (Vite) — verifica que em Netlify tens as mesmas variáveis configuradas
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+/**
+ * Cliente minimalista de DIAGNÓSTICO:
+ * - Não faz throw se faltarem envs; apenas avisa no console.
+ * - Regista eventos de auth (login/logout/refresh).
+ * - Exponde o cliente em window.sb para inspeção manual.
+ */
 
-// Throw explícito em build se faltar configuração
+const w = typeof window !== "undefined" ? (window as any) : undefined;
+
+// Tenta primeiro Vite env, depois variáveis que possas meter manualmente em window.*
+const SUPABASE_URL: string | undefined =
+  (import.meta as any)?.env?.VITE_SUPABASE_URL ?? w?.VITE_SUPABASE_URL;
+
+const SUPABASE_ANON_KEY: string | undefined =
+  (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY ?? w?.VITE_SUPABASE_ANON_KEY;
+
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  // Em produção convém falhar cedo para não andarmos a “debugar fantasmas”
-  throw new Error(
-    "[supabaseClient] Variáveis VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY em falta. " +
-      "Confirma o .env local e as envs no Netlify."
+  // Não quebramos o build: apenas avisamos claramente.
+  // Em produção, confirma as envs no Netlify.
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[supabaseClient][diag] Variáveis em falta:",
+    { hasURL: !!SUPABASE_URL, hasAnonKey: !!SUPABASE_ANON_KEY }
   );
 }
 
-// Cria um ÚNICO client (sessões em localStorage do próprio domínio)
-export const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true, // útil para fluxos com redirects (OAuth/magic link)
-    // Força storage do browser quando existir window (SPA)
-    storage: typeof window !== "undefined" ? window.localStorage : undefined,
-  },
-  global: {
-    headers: { "x-application-name": "aac-sb" },
-  },
-});
+// Cria o client (se as envs forem inválidas, as chamadas irão falhar — e isso aparece no console/network)
+export const supabase: SupabaseClient = createClient(
+  SUPABASE_URL || "http://__MISSING_SUPABASE_URL__",
+  SUPABASE_ANON_KEY || "__MISSING_SUPABASE_ANON_KEY__",
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: typeof window !== "undefined" ? window.localStorage : undefined,
+    },
+    global: {
+      headers: { "x-app": "aac-sb-diag" },
+    },
+  }
+);
 
-// ====== DEBUG OPCIONAL: regista transições de autenticação no console ======
+// ====== DIAGNÓSTICO NO BROWSER ======
 declare global {
   interface Window {
-    __supabaseAuthDebugHooked?: boolean;
+    sb?: SupabaseClient;
+    __supabaseDiag?: {
+      url?: string;
+      anonKeyPresent: boolean;
+      startedAt: string;
+    };
   }
 }
-if (typeof window !== "undefined" && !window.__supabaseAuthDebugHooked) {
-  window.__supabaseAuthDebugHooked = true;
+
+if (typeof window !== "undefined") {
+  // Expor cliente para inspecionar manualmente: window.sb.auth.getSession(), etc.
+  w.sb = supabase;
+  w.__supabaseDiag = {
+    url: SUPABASE_URL,
+    anonKeyPresent: !!SUPABASE_ANON_KEY,
+    startedAt: new Date().toISOString(),
+  };
+
+  // Log inicial do estado da sessão
+  supabase.auth.getSession().then(({ data, error }) => {
+    if (error) {
+      console.error("[supabaseClient][diag] getSession error:", error.message);
+    }
+    console.log("[supabaseClient][diag] initial session:", {
+      hasSession: !!data?.session,
+      userId: data?.session?.user?.id,
+      email: data?.session?.user?.email,
+    });
+  });
+
+  // Log contínuo de eventos de autenticação
   supabase.auth.onAuthStateChange((event, session) => {
-    // Isto deve disparar em login/logout/refresh. Se não vires nada após login,
-    // o problema é de ambiente (origens CORS/redirects/keys erradas).
-    // Podes comentar estas linhas depois de validar.
-    // eslint-disable-next-line no-console
-    console.log("[auth:onAuthStateChange]", event, {
+    console.log("[supabaseClient][diag] onAuthStateChange:", event, {
       hasSession: !!session,
       userId: session?.user?.id,
       email: session?.user?.email,
@@ -49,23 +87,17 @@ if (typeof window !== "undefined" && !window.__supabaseAuthDebugHooked) {
   });
 }
 
-// Helpers pequeninos (úteis noutros serviços)
+// Helpers de utilidade (opcionais)
 export async function getCurrentSession() {
   const { data, error } = await supabase.auth.getSession();
-  if (error) {
-    console.error("[supabaseClient] getSession error:", error.message);
-  }
+  if (error) console.error("[supabaseClient][diag] getCurrentSession error:", error.message);
   return data?.session ?? null;
 }
-
 export async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
-  if (error) {
-    console.error("[supabaseClient] getUser error:", error.message);
-  }
+  if (error) console.error("[supabaseClient][diag] getCurrentUser error:", error.message);
   return data?.user ?? null;
 }
-
 export async function getCurrentUserId() {
   const u = await getCurrentUser();
   return u?.id ?? null;
