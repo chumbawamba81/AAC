@@ -1,82 +1,78 @@
 // src/utils/pricing.ts
 
-export type SocioTipo =
-  | "Sócio Pro"
-  | "Sócio Família"
-  | "Sócio Geral Renovação"
-  | "Sócio Geral Novo"
-  | "Não pretendo ser sócio";
-
-export type Plano = "Mensal" | "Trimestral" | "Anual";
-
-export type EstimateArgs = {
-  escalao?: string | null;
-  tipoSocio?: string | null;            // usa o que vier do perfil
-  plano?: string | null;                // plano escolhido no atleta
-  numAtletasAgregado?: number | null;   // opcional, para mensagem informativa
+export type EstimateInput = {
+  /** Escalão textual (ex.: "Mini 10 (2016-2017)", "Sub 14 feminino (2012-2013)", "Masters (<1995)", etc.) */
+  escalao: string;
+  /** Tipo de sócio como vem do perfil (ex.: "Sócio Pro", "Sócio Família", "Sócio Geral Renovação", "Sócio Geral Novo", "Não pretendo ser sócio") */
+  tipoSocio?: string | null;
+  /** Nº de atletas no agregado (se quiseres usar mais tarde descontos por agregado) */
+  numAtletasAgregado?: number;
 };
 
 export type EstimateResult = {
-  taxaInscricao: number;   // € (por atleta)
-  mensal10: number;        // € por mês (10x)
-  trimestre3: number;      // € por trimestre (3x)
-  anual1: number;          // € pagamento único
-  tarifa: string;          // "Tarifa Sócio" ou "Tarifa Não Sócio"
-  info: string;            // mensagem contextual
+  taxaInscricao: number;
+  mensal10: number;   // 10 prestações
+  trimestre3: number; // 3 prestações
+  anual1: number;     // 1 prestação
+  tarifa: string;     // "Tarifa Sócio", "Tarifa Sócio Família", "Tarifa Não Sócio"
+  info: string;       // ex.: "Baseado no tipo de sócio — e em 1 atleta(s) no agregado."
 };
 
-/** Decide se o tipoSocio configura "Tarifa Sócio" */
-function isSocio(tipo?: string | null): boolean {
-  if (!tipo) return false;
-  return tipo !== "Não pretendo ser sócio";
-}
-
-/** Escalões que têm taxa de inscrição 35 € */
-function taxaInscricaoPorEscalao(escalao?: string | null): number {
+function isMiniBand(escalao: string): boolean {
   const s = (escalao || "").toLowerCase();
-  if (s.includes("baby")) return 35;
-  if (s.includes("mini 10") || s.includes("mini-10")) return 35;
-  if (s.includes("mini 12") || s.includes("mini-12")) return 35;
-  // (se quiseres incluir Mini 8 aqui, muda para 35)
-  return 45;
+  return s.includes("baby") || s.includes("mini 10") || s.includes("mini 12");
+}
+
+function socioCategoria(tipo?: string | null): "NAO_SOCIO" | "SOCIO" | "SOCIO_FAMILIA" {
+  const t = (tipo || "").toLowerCase();
+  if (!t || t.includes("não pretendo")) return "NAO_SOCIO";
+  if (t.includes("família") || t.includes("familia")) return "SOCIO_FAMILIA";
+  // Pro, Geral Novo, Geral Renovação, etc. tratam como "Sócio"
+  return "SOCIO";
+}
+
+export function eur(n: number): string {
+  return `${n.toFixed(Number.isInteger(n) ? 0 : 2)} €`.replace(".", ",");
 }
 
 /**
- * Tabelas base (placeholder) — ajusta se necessário:
- *  - Sócio: 35 / 115 / 330
- *  - Não Sócio: 45 / 145 / 430
- * Mantemos iguais para todos os escalões, apenas a taxa de inscrição varia (35 ou 45).
+ * Regras de preço (ver descrição no pedido).
+ * Podes ajustar os números aqui sem tocar no resto da app.
  */
-const SOCIO_BASE = { mensal10: 35, trimestre3: 115, anual1: 330 } as const;
-const NAO_SOCIO_BASE = { mensal10: 45, trimestre3: 145, anual1: 430 } as const;
+export function estimateCosts(input: EstimateInput): EstimateResult {
+  const mini = isMiniBand(input.escalao);
+  const cat = socioCategoria(input.tipoSocio);
+  const n = Math.max(1, Math.floor(input.numAtletasAgregado || 1));
 
-/**
- * estimateCosts
- * Calcula uma estimativa a partir do tipo de sócio e do escalão.
- * Devolve sempre os três valores (mensal10, trimestre3, anual1) para que a UI mostre
- * conforme o plano selecionado; não usamos literais “const” no return para evitar erros TS.
- */
-export function estimateCosts(args: EstimateArgs): EstimateResult {
-  const { escalao, tipoSocio, numAtletasAgregado } = args || {};
-  const socio = isSocio(tipoSocio);
+  // Tabela base por banda e categoria
+  const base = (() => {
+    if (mini) {
+      switch (cat) {
+        case "SOCIO":
+          return { mensal10: 25, trimestre3: 80, anual1: 230, taxa: 35, tarifa: "Tarifa Sócio" as const };
+        case "SOCIO_FAMILIA":
+          return { mensal10: 22.5, trimestre3: 72, anual1: 205, taxa: 35, tarifa: "Tarifa Sócio Família" as const };
+        default:
+          return { mensal10: 35, trimestre3: 113, anual1: 330, taxa: 35, tarifa: "Tarifa Não Sócio" as const };
+      }
+    } else {
+      switch (cat) {
+        case "SOCIO":
+          return { mensal10: 35, trimestre3: 115, anual1: 330, taxa: 45, tarifa: "Tarifa Sócio" as const };
+        case "SOCIO_FAMILIA":
+          return { mensal10: 31.5, trimestre3: 102, anual1: 295, taxa: 45, tarifa: "Tarifa Sócio Família" as const };
+        default:
+          return { mensal10: 45, trimestre3: 145, anual1: 430, taxa: 45, tarifa: "Tarifa Não Sócio" as const };
+      }
+    }
+  })();
 
-  const base = socio ? SOCIO_BASE : NAO_SOCIO_BASE;
-  const taxa = taxaInscricaoPorEscalao(escalao);
-
-  const res: EstimateResult = {
-    taxaInscricao: Number(taxa),
+  return {
+    taxaInscricao: Number(base.taxa),
     mensal10: Number(base.mensal10),
     trimestre3: Number(base.trimestre3),
     anual1: Number(base.anual1),
-    tarifa: socio ? "Tarifa Sócio" : "Tarifa Não Sócio",
-    info:
-      `Baseado no tipo de sócio — e em ${Number(numAtletasAgregado || 1)} atleta(s) no agregado.`,
+    tarifa: base.tarifa,
+    info: `Baseado no tipo de sócio — e em ${n} atleta(s) no agregado.`,
   };
-
-  return res;
-}
-
-/** (Opcional) helper para formatar em euros */
-export function eur(v: number): string {
-  return `${v.toFixed(0)} €`;
 }

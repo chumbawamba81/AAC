@@ -1,8 +1,10 @@
+// src/components/AtletaFormCompleto.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Button } from "./ui/button";
+import ImagesDialog from "./ImagesDialog";
 
 import type {
   Atleta,
@@ -33,7 +35,7 @@ type Props = {
     telefone?: string; // contactos de urgência
     email?: string; // email preferencial
   };
-  /** Vem do perfil para a estimativa de custos */
+  /** Vem do perfil (influencia preços) */
   tipoSocio?: string;
 };
 
@@ -112,7 +114,6 @@ export default function AtletaFormCompleto({
   useEffect(() => {
     if (a.dataNascimento && a.genero) {
       const esc = computeEscalao(a.dataNascimento, a.genero);
-      // cast para Escalao do teu type union
       setA((prev) => ({ ...prev, escalao: esc as Escalao }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,7 +129,7 @@ export default function AtletaFormCompleto({
   const isMasters = a.escalao === "Masters (<1995)";
   const showEscola = !!a.dataNascimento && !isMasters;
 
-  // Anuidade obrigatória para masters/seniores/sub-23
+  // Anuidade obrigatória para seniores/sub-23/masters
   const anuidadeObrigatoria = isAnuidadeObrigatoria(a.escalao);
 
   // Força plano "Anual" quando obrigatório
@@ -139,7 +140,7 @@ export default function AtletaFormCompleto({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anuidadeObrigatoria]);
 
-  // Estimativa de custos (dependente do escalão e do tipo de sócio)
+  // Estimativa de custos (recalcula quando muda escalão OU tipo de sócio)
   const estimate = useMemo(
     () =>
       estimateCosts({
@@ -234,14 +235,22 @@ export default function AtletaFormCompleto({
         </select>
       </div>
 
-      {/* Escalão & Plano logo após género */}
+      {/* Escalão & Plano + Tabela de Preços */}
       <div className="space-y-1">
         <Label>Escalão</Label>
         <Input value={a.escalao} readOnly className="bg-gray-100" />
       </div>
 
       <div className="space-y-1">
-        <Label>Opção de Pagamentos *</Label>
+        <div className="flex items-center justify-between">
+          <Label>Opção de Pagamentos *</Label>
+          <ImagesDialog
+            buttonLabel="Tabela de Preços"
+            images={[
+              { src: "/precos/pagamentos-2025.png", alt: "Tabela de Pagamentos 2025/26" },
+            ]}
+          />
+        </div>
         <select
           className="w-full rounded-xl border px-3 py-2 text-sm"
           value={a.planoPagamento}
@@ -467,7 +476,7 @@ export default function AtletaFormCompleto({
             </div>
           )}
 
-          {/* Filiação: Pai/Mãe (apenas se menor) */}
+          {/* Filiação: Pai/Mãe (abaixo do NIF, em linha própria) */}
           <div className="space-y-1 md:col-span-2">
             <Label>Nome do pai *</Label>
             <Input
