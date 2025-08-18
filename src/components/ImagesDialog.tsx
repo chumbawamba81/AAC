@@ -122,9 +122,6 @@ export default function ImagesDialog({
             </Button>
           </div>
 
-          <p className="text-xs text-gray-500">
-            Coloca os ficheiros em <code>/public/precos/</code>. Ex.: <code>public/precos/pagamentos-2025.png</code> → URL <code>/precos/pagamentos-2025.png</code>.
-          </p>
         </div>
       </div>
     </div>,
