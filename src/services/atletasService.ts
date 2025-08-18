@@ -72,10 +72,9 @@ function fromRow(r: Row): Atleta {
   };
 }
 
-function toInsertUpdate(a: Atleta, userId: string): Partial<Row> {
+function toInsertUpdate(a: Atleta): Partial<Row> {
   return {
-    user_id: userId,
-    // dados_pessoais_id: (preenche se tiveres esse vínculo)
+    // user_id é preenchido pelo trigger
     nome: a.nomeCompleto,
     data_nascimento: a.dataNascimento,
     escalao: a.escalao,
@@ -118,14 +117,13 @@ export async function listAtletas(): Promise<Atleta[]> {
 }
 
 export async function upsertAtleta(a: Atleta): Promise<Atleta> {
+  // Garante sessão (útil para UX, mas o trigger cobre user_id)
   const { data: auth } = await supabase.auth.getUser();
-  const userId = auth.user?.id;
-  if (!userId) throw new Error("Sessão em falta");
+  if (!auth.user) throw new Error("Sessão em falta");
 
-  const payload = toInsertUpdate(a, userId);
+  const payload = toInsertUpdate(a);
 
   if (isUuid(a.id)) {
-    // UPDATE por id já UUID
     const { data, error } = await supabase
       .from("atletas")
       .update(payload)
@@ -136,7 +134,6 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
     if (error) throw new Error(error.message);
     return fromRow(data as Row);
   } else {
-    // INSERT — não enviar id (deixa a BD gerar uuid)
     const { data, error } = await supabase
       .from("atletas")
       .insert(payload)
