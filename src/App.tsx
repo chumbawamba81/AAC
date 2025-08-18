@@ -845,6 +845,12 @@ function AtletasSection({
     return () => { supabase.removeChannel(channel); };
   }, [userId]); // eslint-disable-line
 
+  function isAnuidadeObrigatoria(escalao: string | undefined) {
+    if (!escalao) return false;
+    const s = escalao.toLowerCase();
+    return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
+  }
+
   // Forçar plano Anual para masters/sub-23 no momento da gravação
   function forcePlanoIfNeeded(a: Atleta): Atleta {
     if (isAnuidadeObrigatoria(a.escalao) && a.planoPagamento !== "Anual") {
@@ -948,40 +954,31 @@ export default function App(){
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
 
-  // --- SYNC sempre que o estado de autenticação muda (corrige o "modo anónimo") ---
+  // --- SYNC: no carregamento (se já houver sessão) e sempre que acontecer SIGNED_IN ---
   useEffect(() => {
-    // fetch imediato se já houver sessão (refresh da página)
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
+    async function sync() {
+      try {
         const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
         setState(prev => {
-          const email = data.session?.user?.email || prev.conta?.email || "";
+          const email = (perfilDb?.email || prev.conta?.email || "");
           return {
             ...prev,
             conta: email ? { email } : prev.conta,
-            perfil: perfilDb ? normalizePessoaDados(perfilDb, email) : prev.perfil,
+            perfil: perfilDb ?? prev.perfil,
             atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
           };
         });
+      } catch (e) {
+        console.error("[App] sync pós-login:", e);
       }
-    })();
+    }
 
-    // subscrição para futuros logins/logouts
-    const sub = supabase.auth.onAuthStateChange(async (_e, session) => {
-      if (session) {
-        const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
-        setState(prev => {
-          const email = session.user?.email || prev.conta?.email || "";
-          return {
-            ...prev,
-            conta: email ? { email } : prev.conta,
-            perfil: perfilDb ? normalizePessoaDados(perfilDb, email) : prev.perfil,
-            atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
-          };
-        });
-      }
+    supabase.auth.getSession().then(({ data }) => { if (data.session) sync(); });
+
+    const sub = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) sync();
     });
+
     return () => { sub.data.subscription.unsubscribe(); };
   }, []);
 
@@ -1030,7 +1027,6 @@ export default function App(){
 
           {hasPerfil && (
             <TabsContent value="docs">
-              {/* compat com tua tipagem do componente */}
               <UploadDocsSection state={state} setState={setStatePlain} />
             </TabsContent>
           )}
