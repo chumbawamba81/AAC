@@ -1,125 +1,82 @@
-/**
- * Estimativas de custos de acordo com a tabela 2025-26.
- * Regras usadas:
- *  - Grupo A (Baby Basket, Mini 8, Mini 10) – inscrições 35€; PRO: 25/80/230; 2+ atletas: 22.5/72/205; Não sócio: 35/115/330
- *  - Grupo B (Mini 12, Sub 14, Sub 16, Sub 18) – inscrições 35€ (override pedido); PRO: 35/113/330; 2+ atletas: 31.5/102/295; Não sócio: 45/145/430
- *  - Sub 23 e Masters: inscrição 160€ e 100€ respetivamente; valores de mensalidades não estão definidos na grelha → 0 e nota.
- */
+// src/utils/pricing.ts
 
-export type Estimativa = {
-  inscricao: number;
-  mensal10: number;
-  trimestre3: number;
-  anual1: number;
-  observacoes?: string[];
+export type SocioTipo =
+  | "Sócio Pro"
+  | "Sócio Família"
+  | "Sócio Geral Renovação"
+  | "Sócio Geral Novo"
+  | "Não pretendo ser sócio";
+
+export type Plano = "Mensal" | "Trimestral" | "Anual";
+
+export type EstimateArgs = {
+  escalao?: string | null;
+  tipoSocio?: string | null;            // usa o que vier do perfil
+  plano?: string | null;                // plano escolhido no atleta
+  numAtletasAgregado?: number | null;   // opcional, para mensagem informativa
 };
 
-export function formatEUR(n: number): string {
-  return new Intl.NumberFormat("pt-PT", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: n % 1 === 0 ? 0 : 2,
-  }).format(n);
+export type EstimateResult = {
+  taxaInscricao: number;   // € (por atleta)
+  mensal10: number;        // € por mês (10x)
+  trimestre3: number;      // € por trimestre (3x)
+  anual1: number;          // € pagamento único
+  tarifa: string;          // "Tarifa Sócio" ou "Tarifa Não Sócio"
+  info: string;            // mensagem contextual
+};
+
+/** Decide se o tipoSocio configura "Tarifa Sócio" */
+function isSocio(tipo?: string | null): boolean {
+  if (!tipo) return false;
+  return tipo !== "Não pretendo ser sócio";
 }
 
-function isPro(tipoSocio?: string | null): boolean {
-  if (!tipoSocio) return false;
-  const s = tipoSocio.toLowerCase();
-  return s.includes("pro"); // “Sócio Pro”
+/** Escalões que têm taxa de inscrição 35 € */
+function taxaInscricaoPorEscalao(escalao?: string | null): number {
+  const s = (escalao || "").toLowerCase();
+  if (s.includes("baby")) return 35;
+  if (s.includes("mini 10") || s.includes("mini-10")) return 35;
+  if (s.includes("mini 12") || s.includes("mini-12")) return 35;
+  // (se quiseres incluir Mini 8 aqui, muda para 35)
+  return 45;
 }
 
-function grupo(escalao: string): "A" | "B" | "SUB23" | "MASTERS" | "OUTRO" {
-  const e = escalao.toLowerCase();
-  if (e.includes("baby") || e.includes("mini 8") || e.includes("mini 10"))
-    return "A";
-  if (
-    e.includes("mini 12") ||
-    e.includes("sub 14") ||
-    e.includes("sub 16") ||
-    e.includes("sub 18")
-  )
-    return "B";
-  if (e.includes("sub 23")) return "SUB23";
-  if (e.includes("masters")) return "MASTERS";
-  return "OUTRO";
-}
+/**
+ * Tabelas base (placeholder) — ajusta se necessário:
+ *  - Sócio: 35 / 115 / 330
+ *  - Não Sócio: 45 / 145 / 430
+ * Mantemos iguais para todos os escalões, apenas a taxa de inscrição varia (35 ou 45).
+ */
+const SOCIO_BASE = { mensal10: 35, trimestre3: 115, anual1: 330 } as const;
+const NAO_SOCIO_BASE = { mensal10: 45, trimestre3: 145, anual1: 430 } as const;
 
-export function estimarCusto(args: {
-  escalao: string;
-  tipoSocio: string;
-  totalAtletasNoAgregado: number;
-}): Estimativa {
-  const g = grupo(args.escalao);
-  const pro = isPro(args.tipoSocio);
-  const multi = args.totalAtletasNoAgregado >= 2;
+/**
+ * estimateCosts
+ * Calcula uma estimativa a partir do tipo de sócio e do escalão.
+ * Devolve sempre os três valores (mensal10, trimestre3, anual1) para que a UI mostre
+ * conforme o plano selecionado; não usamos literais “const” no return para evitar erros TS.
+ */
+export function estimateCosts(args: EstimateArgs): EstimateResult {
+  const { escalao, tipoSocio, numAtletasAgregado } = args || {};
+  const socio = isSocio(tipoSocio);
 
-  const out: Estimativa = {
-    inscricao: 0,
-    mensal10: 0,
-    trimestre3: 0,
-    anual1: 0,
-    observacoes: [],
+  const base = socio ? SOCIO_BASE : NAO_SOCIO_BASE;
+  const taxa = taxaInscricaoPorEscalao(escalao);
+
+  const res: EstimateResult = {
+    taxaInscricao: Number(taxa),
+    mensal10: Number(base.mensal10),
+    trimestre3: Number(base.trimestre3),
+    anual1: Number(base.anual1),
+    tarifa: socio ? "Tarifa Sócio" : "Tarifa Não Sócio",
+    info:
+      `Baseado no tipo de sócio — e em ${Number(numAtletasAgregado || 1)} atleta(s) no agregado.`,
   };
 
-  if (g === "A") {
-    out.inscricao = 35;
-    if (pro) {
-      if (multi) {
-        out.mensal10 = 22.5;
-        out.trimestre3 = 72;
-        out.anual1 = 205;
-        out.observacoes!.push("Desconto PRO (2 ou + atletas).");
-      } else {
-        out.mensal10 = 25;
-        out.trimestre3 = 80;
-        out.anual1 = 230;
-        out.observacoes!.push("Tarifa PRO (1 atleta).");
-      }
-    } else {
-      out.mensal10 = 35;
-      out.trimestre3 = 115;
-      out.anual1 = 330;
-      out.observacoes!.push("Tarifa Não Sócio.");
-    }
-  } else if (g === "B") {
-    // override pedido: Mini 12 com 35€
-    out.inscricao =
-      args.escalao.toLowerCase().includes("mini 12") ? 35 : 45;
+  return res;
+}
 
-    if (pro) {
-      if (multi) {
-        out.mensal10 = 31.5;
-        out.trimestre3 = 102;
-        out.anual1 = 295;
-        out.observacoes!.push("Desconto PRO (2 ou + atletas).");
-      } else {
-        out.mensal10 = 35;
-        out.trimestre3 = 113; // << 113 (não 115) conforme grelha
-        out.anual1 = 330;
-        out.observacoes!.push("Tarifa PRO (1 atleta).");
-      }
-    } else {
-      out.mensal10 = 45;
-      out.trimestre3 = 145;
-      out.anual1 = 430;
-      out.observacoes!.push("Tarifa Não Sócio.");
-    }
-  } else if (g === "SUB23") {
-    out.inscricao = 160;
-    out.observacoes!.push(
-      "Para Sub-23 a anuidade é obrigatória; valores de mensalidades na grelha não especificados."
-    );
-  } else if (g === "MASTERS") {
-    out.inscricao = 100;
-    out.observacoes!.push(
-      "Para Masters a anuidade é obrigatória; valores de mensalidades na grelha não especificados."
-    );
-  } else {
-    out.observacoes!.push("Escalão fora de tabela. Valores não definidos.");
-  }
-
-  // limpeza de observações vazias
-  if (!out.observacoes!.length) delete out.observacoes;
-
-  return out;
+/** (Opcional) helper para formatar em euros */
+export function eur(v: number): string {
+  return `${v.toFixed(0)} €`;
 }
