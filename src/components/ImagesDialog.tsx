@@ -8,7 +8,7 @@ type ImgInput = string | Img;
 
 function resolveSrc(i: ImgInput, pathPrefix: string) {
   const raw = typeof i === "string" ? i : i.src;
-  // http(s):// ou caminho absoluto -> usa como está; senão prefixa com pathPrefix
+  // http(s):// ou caminho absoluto -> usa tal como está; caso contrário, prefixa com pathPrefix
   if (/^https?:\/\//i.test(raw) || raw.startsWith("/")) return raw;
   return `${pathPrefix.replace(/\/$/, "")}/${raw.replace(/^\//, "")}`;
 }
@@ -18,7 +18,7 @@ export default function ImagesDialog({
   images,
   triggerText = "Tabela de Preços",
   triggerClassName = "h-7 px-2",
-  pathPrefix = "/precos", // <- imagens em public/precos
+  pathPrefix = "/precos", // imagens em public/precos
 }: {
   title: string;
   images: ImgInput[];
@@ -29,7 +29,7 @@ export default function ImagesDialog({
   const [open, setOpen] = React.useState(false);
   const [errs, setErrs] = React.useState<Record<number, string>>({});
 
-  // Fallback global para ESC (caso a lib não dispare onEscapeKeyDown)
+  // Fecho por ESC (fallback caso o teu Dialog não trate isto)
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -56,13 +56,8 @@ export default function ImagesDialog({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          className="max-w-3xl"
-          // Fechar ao clicar fora
-          onPointerDownOutside={() => setOpen(false)}
-          // Fechar por ESC (se a lib propagar)
-          onEscapeKeyDown={() => setOpen(false)}
-        >
+        {/* NOTA: Removido onPointerDownOutside porque o teu DialogContent não aceita essa prop */}
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>{title}</span>
@@ -96,7 +91,7 @@ export default function ImagesDialog({
                         <div className="font-medium">Não foi possível carregar a imagem.</div>
                         <div className="break-all">{error}</div>
                         <div className="text-gray-500 mt-1">
-                          Verifica se o ficheiro existe em <code>/public{src}</code> e se o nome (maiúsculas/minúsculas) está correto.
+                          Verifica se o ficheiro existe em <code>{src}</code> e se o nome (maiúsculas/minúsculas) está correcto.
                         </div>
                       </div>
                     </div>
@@ -113,6 +108,13 @@ export default function ImagesDialog({
                 </div>
               );
             })}
+
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" className="h-8 px-3" onClick={() => setOpen(false)}>
+                Fechar
+              </Button>
+            </div>
+
             <p className="text-xs text-gray-500">
               Coloca os ficheiros em <code>/public/precos/</code>. Ex.:{" "}
               <code>public/precos/pagamentos-2025.png</code> → URL{" "}
