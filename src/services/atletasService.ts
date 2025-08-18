@@ -2,12 +2,12 @@
 import { supabase } from "../supabaseClient";
 import type { Atleta } from "../types/Atleta";
 
-// ---------- helpers ----------
+/** ----------------------- helpers ----------------------- */
 function isUuid(v?: string) {
   return !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
-// Espelho da tabela 'atletas'
+/** Espelho da tabela public.atletas (colunas que partilhaste) */
 type Row = {
   id: string;
   dados_pessoais_id: string | null;
@@ -41,6 +41,7 @@ type Row = {
   observacoes: string | null;
 };
 
+/** Row -> Atleta (objeto de UI) */
 function fromRow(r: Row): Atleta {
   return {
     id: r.id,
@@ -72,6 +73,7 @@ function fromRow(r: Row): Atleta {
   };
 }
 
+/** Atleta (UI) -> payload JSON para RPC/tabela */
 function toPayload(a: Atleta) {
   return {
     nome: a.nomeCompleto,
@@ -101,13 +103,13 @@ function toPayload(a: Atleta) {
     parentesco_outro: a.parentescoOutro ?? null,
     observacoes: a.observacoes ?? null,
 
-    // se tiveres o id do perfil e quiseres associar
-    // dados_pessoais_id: '<uuid-perfil>'  // ou deixa null
+    // Se tiveres o id do perfil e quiseres associar:
+    // dados_pessoais_id: '<uuid>'  // ou deixa omitido
   } as Record<string, any>;
 }
 
-// ---------- API ----------
-export async function listAtletas(): Promise<Atleta[]>> {
+/** ----------------------- API ----------------------- */
+export async function listAtletas(): Promise<Atleta[]> {
   const { data, error } = await supabase
     .from("atletas")
     .select("*")
@@ -118,14 +120,14 @@ export async function listAtletas(): Promise<Atleta[]>> {
 }
 
 export async function upsertAtleta(a: Atleta): Promise<Atleta> {
-  // Garante que há sessão (diagnóstico amigável)
+  // Garante que o pedido leva JWT (evita chamadas “a seco”)
   const { data: s } = await supabase.auth.getSession();
   if (!s.session?.access_token) {
     throw new Error("Sessão em falta. Entre novamente.");
   }
 
   if (isUuid(a.id)) {
-    // UPDATE via RPC (confirma ownership no servidor)
+    // UPDATE via RPC (valida ownership no servidor)
     const payload = toPayload(a);
     const { data, error } = await supabase.rpc("rpc_update_atleta", {
       p_id: a.id,
@@ -134,7 +136,7 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
     if (error) throw new Error(error.message);
     return fromRow(data as Row);
   } else {
-    // INSERT via RPC SECURITY DEFINER (carimba user_id no servidor)
+    // INSERT via RPC SECURITY DEFINER (carimba user_id = auth.uid())
     const payload = toPayload(a);
     const { data, error } = await supabase.rpc("rpc_create_atleta", {
       p: payload as any,
@@ -145,7 +147,6 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
 }
 
 export async function deleteAtleta(id: string): Promise<void> {
-  // Delete direto (RLS de DELETE por dono continua válida)
   const { error } = await supabase.from("atletas").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
