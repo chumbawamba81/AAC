@@ -209,13 +209,21 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
         <input className="input" value={a.nif} onChange={e=>setA({...a, nif:e.target.value})} required/>
       </Field>
 
-      {/* Filiação (novos campos) */}
-      <Field label={`Nome do pai${isMinor ? ' *' : ''}`}>
-        <input className="input" value={a.nomePai} onChange={e=>setA({...a, nomePai:e.target.value})} required={isMinor}/>
-      </Field>
-      <Field label={`Nome da mãe${isMinor ? ' *' : ''}`}>
-        <input className="input" value={a.nomeMae} onChange={e=>setA({...a, nomeMae:e.target.value})} required={isMinor}/>
-      </Field>
+{/* força quebra de linha (próximo campo começa numa nova row) */}
+<div className="md:col-span-2 h-0 p-0 m-0" aria-hidden="true" />
+
+{/* Filiação — APENAS quando é menor */}
+{isMinor && (
+  <>
+    <Field label="Nome do pai *">
+      <input className="input" value={a.nomePai} onChange={e=>setA({...a, nomePai:e.target.value})} required/>
+    </Field>
+    <Field label="Nome da mãe *">
+      <input className="input" value={a.nomeMae} onChange={e=>setA({...a, nomeMae:e.target.value})} required/>
+    </Field>
+  </>
+)}
+
 
       {/* Morada / CP + atalho para copiar dos dados pessoais */}
       <Field className="md:col-span-2" label="Morada *">
