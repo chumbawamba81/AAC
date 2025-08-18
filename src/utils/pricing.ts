@@ -1,103 +1,129 @@
 // src/utils/pricing.ts
 
-// API pública
 export type EstimateInput = {
-  escalao: string;                 // texto do escalão (ex.: "Mini 12 (2014-2015)")
-  tipoSocio?: string | null;       // ex.: "Sócio Pro", "Sócio Família", "Sócio Geral Novo", "Não pretendo ser sócio"
-  numAtletasAgregado?: number;     // reservado para futura lógica de agregado
+  escalao: string;                // p.e., "Mini 12 (2014-2015)"
+  tipoSocio?: string | null;      // "Sócio Pro" | "Sócio Família" | "Sócio Geral ..." | "Não pretendo ser sócio"
+  numAtletasAgregado?: number;    // nº de atletas no agregado (relevante só para Sócio Pro)
 };
 
 export type EstimateResult = {
-  taxaInscricao: number;  // € único
-  mensal10: number;       // € por mês (10x)
-  trimestre3: number;     // € por trimestre (3x)
-  anual1: number;         // € pagamento único anual
-  tarifa: string;         // legenda da tarifa
-  info: string;           // nota auxiliar
+  taxaInscricao: number;   // €
+  mensal10: number;        // €
+  trimestre3: number;      // €
+  anual1: number;          // €
+  tarifa: string;          // etiqueta/nota
+  info: string;            // detalhe
+  onlyAnnual?: boolean;    // Sub-23 / Masters -> só anuidade/inscrição
 };
 
-// Utilitário de formatação
+// -------- util --------
 export function eur(n: number): string {
-  return n.toLocaleString("pt-PT", { style: "currency", currency: "EUR", minimumFractionDigits: (n % 1 ? 2 : 0) });
+  return n.toLocaleString("pt-PT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: n % 1 ? 2 : 0,
+  });
 }
 
-/**
- * Classificação do escalão para tabela de preços.
- * - MINI_LOW: Baby, Mini 8, Mini 10
- * - MINI12:   Mini 12  (mensal/trimestral/anual = SUBS, mas taxa inscrição = 35€)
- * - SUBS:     Sub 14/16/18
- * - SENIORS:  Seniores (inclui Sub23) e Masters
- */
-function classifyEscalao(txt: string): "MINI_LOW" | "MINI12" | "SUBS" | "SENIORS" | "MASTERS" {
-  const s = (txt || "").toLowerCase();
+// -------- bandas por escalão --------
+type BandKey = "MINI_LOW" | "MINI12" | "SUBS" | "SUB23" | "MASTERS";
 
-  // séniores/masters primeiro
-  if (
-    s.includes("seniores") ||
-    s.includes("sub23") ||
-    s.includes("sub 23") ||
-    s.includes("sub-23") ||
-    s.includes("masters")
-  ) return "SENIORS";
+function classifyEscalao(esc: string): BandKey {
+  const s = (esc || "").toLowerCase();
 
+  // Masters
   if (s.includes("masters")) return "MASTERS";
-  // Mini 12 explícito
+
+  // Sub-23 / Seniores
+  if (s.includes("sub23") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores"))
+    return "SUB23";
+
+  // Mini 12 isolado
   if (s.includes("mini 12")) return "MINI12";
 
-  // Minis “baixos”
-  if (s.includes("baby") || s.includes("mini 8") || s.includes("mini 10")) return "MINI_LOW";
+  // Baby/Mini8/Mini10
+  if (s.includes("baby") || s.includes("mini 8") || s.includes("mini8") || s.includes("mini 10") || s.includes("mini10"))
+    return "MINI_LOW";
 
-  // Subs
-  if (s.includes("sub 14") || s.includes("sub 16") || s.includes("sub 18")) return "SUBS";
+  // Sub14/16/18
+  if (s.includes("sub 14") || s.includes("sub 16") || s.includes("sub 18"))
+    return "SUBS";
 
-  // fallback razoável
+  // fallback mais prudente
   return "SUBS";
 }
 
-/** Tabelas base (sem descontos) */
-const BASE = {
-  MINI_LOW:    { mensal10: 25,  trimestre3: 80,  anual1: 230, taxaInscricao: 35 },
-  MINI12:      { mensal10: 35,  trimestre3: 113, anual1: 330, taxaInscricao: 45 },
-  SUBS:        { mensal10: 35,  trimestre3: 113, anual1: 330, taxaInscricao: 45 },
-  SENIORS:     { mensal10: 0,  trimestre3: 0, anual1: 0, taxaInscricao: 160 },
-  MASTERS:     { mensal10: 0,  trimestre3: 0, anual1: 0, taxaInscricao: 100 },
-} as const;
+// -------- tabelas declarativas (valores EXACTOS da imagem) --------
+// Nota: só “Sócio PRO” altera mensalidades; restantes tratam como “Não Sócio”.
 
-/** Desconto por tipo de sócio */
-function desconto(tipoSocio?: string | null): { factor: number; label: string } {
-  const t = (tipoSocio || "").toLowerCase();
-  if (t.includes("sócio pro") || t.includes("sócio família")) {
-    return { factor: 0.9, label: "Tarifa Sócio (-10%)." };
-  }
-  if (t.includes("sócio geral")) {
-    return { factor: 1.0, label: "Tarifa Sócio Geral." };
-  }
-  return { factor: 1.0, label: "Tarifa Não Sócio." };
+type Prices = { mensal10: number; trimestre3: number; anual1: number; taxaInscricao: number };
+
+// Baby / Mini8 / Mini10 (inscrição 35€)
+const NS_MINI_LOW: Prices = { mensal10: 35, trimestre3: 115, anual1: 330, taxaInscricao: 35 };  // Não Sócio
+const PRO1_MINI_LOW: Prices = { mensal10: 25, trimestre3: 80,  anual1: 230, taxaInscricao: 35 }; // Sócio PRO, 1 atleta
+const PRO2_MINI_LOW: Prices = { mensal10: 22.5, trimestre3: 72, anual1: 205, taxaInscricao: 35 }; // Sócio PRO, >=2
+
+// Mini 12 (inscrição 45€) — atenção: NÃO igual a “restantes mini”; é igual aos SUBS nas mensalidades
+const NS_MINI12: Prices   = { mensal10: 45, trimestre3: 145, anual1: 430, taxaInscricao: 45 };
+const PRO1_MINI12: Prices = { mensal10: 35, trimestre3: 113, anual1: 330, taxaInscricao: 45 };
+const PRO2_MINI12: Prices = { mensal10: 31.5, trimestre3: 102, anual1: 295, taxaInscricao: 45 };
+
+// Sub14/Sub16/Sub18 (inscrição 45€)
+const NS_SUBS: Prices   = { mensal10: 45, trimestre3: 145, anual1: 430, taxaInscricao: 45 };
+const PRO1_SUBS: Prices = { mensal10: 35, trimestre3: 113, anual1: 330, taxaInscricao: 45 };
+const PRO2_SUBS: Prices = { mensal10: 31.5, trimestre3: 102, anual1: 295, taxaInscricao: 45 };
+
+// Sub-23 e Masters — só “anuidade/inscrição”
+const SUB23_ANUIDADE = 160;
+const MASTERS_ANUIDADE = 100;
+
+// -------- selecção por tipo de sócio --------
+function isSocioPro(tipo?: string | null): boolean {
+  return (tipo || "").toLowerCase().includes("pro");
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+function choosePrices(band: BandKey, tipoSocio?: string | null, numAtletasAgregado = 1): Prices {
+  const pro = isSocioPro(tipoSocio);
+  const twoPlus = numAtletasAgregado >= 2;
+
+  switch (band) {
+    case "MINI_LOW":
+      if (pro) return twoPlus ? PRO2_MINI_LOW : PRO1_MINI_LOW;
+      return NS_MINI_LOW;
+
+    case "MINI12":
+      if (pro) return twoPlus ? PRO2_MINI12 : PRO1_MINI12;
+      return NS_MINI12;
+
+    case "SUBS":
+      if (pro) return twoPlus ? PRO2_SUBS : PRO1_SUBS;
+      return NS_SUBS;
+
+    case "SUB23":
+      // devolvemos campos “preenchidos” para uniformizar a UI, mas só interessa a anual/inscrição
+      return { mensal10: 0, trimestre3: 0, anual1: SUB23_ANUIDADE, taxaInscricao: SUB23_ANUIDADE };
+
+    case "MASTERS":
+      return { mensal10: 0, trimestre3: 0, anual1: MASTERS_ANUIDADE, taxaInscricao: MASTERS_ANUIDADE };
+  }
 }
 
-/** Estimativa principal */
+// -------- estimador principal --------
 export function estimateCosts(input: EstimateInput): EstimateResult {
-  const group = classifyEscalao(input.escalao);
-  const base = BASE[group];
-  const { factor, label } = desconto(input.tipoSocio);
+  const band = classifyEscalao(input.escalao);
+  const prices = choosePrices(band, input.tipoSocio, input.numAtletasAgregado ?? 1);
 
-  // aplica desconto apenas às mensalidades; taxa de inscrição mantém-se como está
-  const mensal10    = round2(base.mensal10    * factor);
-  const trimestre3  = round2(base.trimestre3  * factor);
-  const anual1      = round2(base.anual1      * factor);
-
-  const info = `Baseado no tipo de sócio — e em ${Math.max(1, input.numAtletasAgregado ?? 1)} atleta(s) no agregado.`;
+  const onlyAnnual = band === "SUB23" || band === "MASTERS";
+  const socioLabel = isSocioPro(input.tipoSocio) ? "Sócio PRO" :
+    ((input.tipoSocio && !/não\s*pretendo/i.test(input.tipoSocio)) ? input.tipoSocio! : "Não Sócio");
 
   return {
-    taxaInscricao: base.taxaInscricao,
-    mensal10,
-    trimestre3,
-    anual1,
-    tarifa: label,
-    info,
+    taxaInscricao: prices.taxaInscricao,
+    mensal10: prices.mensal10,
+    trimestre3: prices.trimestre3,
+    anual1: prices.anual1,
+    tarifa: `Tarifa ${socioLabel}.`,
+    info: `Baseado no tipo de sócio e no agregado ( ${Math.max(1, input.numAtletasAgregado ?? 1)} atleta(s) ).`,
+    onlyAnnual,
   };
 }

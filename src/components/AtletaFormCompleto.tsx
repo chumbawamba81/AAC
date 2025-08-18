@@ -1,29 +1,11 @@
-// src/components/AtletaFormCompleto.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
-import { Button } from "./ui/button";
-import ImagesDialog from "./ImagesDialog";
-
-import type {
-  Atleta,
-  Genero,
-  Nacionalidade,
-  TipoDocId,
-  PlanoPagamento,
-  Escalao,
-} from "../types/Atleta";
-
-import {
-  computeEscalao,
-  yearsAtSeasonStart,
-  isValidPostalCode,
-  isValidNIF,
-  areEmailsValid,
-} from "../utils/form-utils";
-
-import { estimateCosts, eur } from "../utils/pricing";
+import React, { useEffect, useMemo, useState } from 'react';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Textarea } from './ui/textarea';
+import { Button } from './ui/button';
+import type { Atleta, Genero, Nacionalidade, TipoDocId, PlanoPagamento } from '../types/Atleta';
+import { computeEscalao, isValidNIF, isValidPostalCode, yearsAtSeasonStart, areEmailsValid } from '../utils/form-utils';
+import { estimateCosts, type EstimateResult, eur } from '../utils/pricing';
 
 type Props = {
   initial?: Partial<Atleta>;
@@ -33,532 +15,284 @@ type Props = {
     morada?: string;
     codigoPostal?: string;
     telefone?: string; // contactos de urgência
-    email?: string; // email preferencial
+    email?: string;    // email preferencial
   };
-  /** Vem do perfil (influencia preços) */
-  tipoSocio?: string;
+  /** Tipo de sócio do agregado; usado na estimativa de preços */
+  tipoSocio?: string | null;
+  /** Nº de atletas no agregado (para Sócio PRO distinguir “1 atleta” vs “2 ou +”) */
+  numAtletasAgregado?: number;
 };
 
-const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
-function formatPostal(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 7);
-  if (d.length <= 4) return d;
-  return d.slice(0, 4) + "-" + d.slice(4);
-}
+export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPessoais, tipoSocio, numAtletasAgregado }: Props) {
+  function formatPostal(v: string){
+    const d = v.replace(/\D/g, '').slice(0,7);
+    if (d.length <= 4) return d;
+    return d.slice(0,4) + '-' + d.slice(4);
+  }
 
-function isAnuidadeObrigatoria(escalao?: string) {
-  if (!escalao) return false;
-  const s = escalao.toLowerCase();
-  return (
-    s.includes("masters") ||
-    s.includes("sub 23") ||
-    s.includes("sub-23") ||
-    s.includes("seniores sub 23") ||
-    s.includes("seniores sub-23") ||
-    s.startsWith("seniores ")
-  );
-}
-
-export default function AtletaFormCompleto({
-  initial,
-  onSave,
-  onCancel,
-  dadosPessoais,
-  tipoSocio,
-}: Props) {
   const [a, setA] = useState<Atleta>({
     id: initial?.id || uid(),
-    nomeCompleto: initial?.nomeCompleto || "",
-    dataNascimento: initial?.dataNascimento || "",
-    genero: (initial?.genero as Genero) || "Feminino",
-
-    // identidade/documentos
-    nacionalidade: (initial?.nacionalidade as Nacionalidade) || "Portuguesa",
-    nacionalidadeOutra: initial?.nacionalidadeOutra || "",
-    tipoDoc: (initial?.tipoDoc as TipoDocId) || "Cartão de cidadão",
-    numDoc: initial?.numDoc || "",
-    validadeDoc: initial?.validadeDoc || "",
-    nif: initial?.nif || "",
-
-    nomePai: initial?.nomePai || "",
-    nomeMae: initial?.nomeMae || "",
-
-    // contactos/morada
-    morada: initial?.morada ?? dadosPessoais?.morada ?? "",
-    codigoPostal: initial?.codigoPostal ?? dadosPessoais?.codigoPostal ?? "",
-    telefoneOpc: initial?.telefoneOpc || "",
-    emailOpc: initial?.emailOpc || "",
-
-    // escola/saúde
-    escola: initial?.escola || "",
-    anoEscolaridade: initial?.anoEscolaridade || "",
-    alergias: initial?.alergias || "",
-
-    // EE / urgências
+    nomeCompleto: initial?.nomeCompleto || '',
+    dataNascimento: initial?.dataNascimento || '',
+    genero: (initial?.genero as Genero) || 'Feminino',
+    nacionalidade: (initial?.nacionalidade as Nacionalidade) || 'Portuguesa',
+    nacionalidadeOutra: initial?.nacionalidadeOutra || '',
+    tipoDoc: (initial?.tipoDoc as TipoDocId) || 'Cartão de cidadão',
+    numDoc: initial?.numDoc || '',
+    validadeDoc: initial?.validadeDoc || '',
+    nif: initial?.nif || '',
+    nomePai: initial?.nomePai || '',
+    nomeMae: initial?.nomeMae || '',
+    morada: initial?.morada || '',
+    codigoPostal: initial?.codigoPostal || '',
+    telefoneOpc: initial?.telefoneOpc || '',
+    emailOpc: initial?.emailOpc || '',
+    escola: initial?.escola || '',
+    anoEscolaridade: initial?.anoEscolaridade || '',
+    alergias: initial?.alergias || '',
     encarregadoEducacao: initial?.encarregadoEducacao,
-    parentescoOutro: initial?.parentescoOutro || "",
-    contactosUrgencia: initial?.contactosUrgencia ?? dadosPessoais?.telefone ?? "",
-    emailsPreferenciais:
-      initial?.emailsPreferenciais ?? (dadosPessoais?.email ?? ""),
-
-    // escalão/plano
-    escalao: (initial?.escalao as Escalao) || ("Fora de escalões" as Escalao),
-    planoPagamento: (initial?.planoPagamento as PlanoPagamento) || "Mensal",
-
-    // observações
-    observacoes: initial?.observacoes || "",
+    parentescoOutro: initial?.parentescoOutro || '',
+    contactosUrgencia: initial?.contactosUrgencia || '',
+    emailsPreferenciais: initial?.emailsPreferenciais || '',
+    escalao: initial?.escalao || ('Fora de escalões' as Atleta['escalao']),
+    planoPagamento: (initial?.planoPagamento as PlanoPagamento) || 'Mensal',
+    observacoes: (initial as any)?.observacoes || '',
   });
 
-  // Recalcular escalão quando muda data/género
-  useEffect(() => {
+  // recomputar Escalão quando mudam data/género
+  useEffect(()=>{
     if (a.dataNascimento && a.genero) {
-      const esc = computeEscalao(a.dataNascimento, a.genero);
-      setA((prev) => ({ ...prev, escalao: esc as Escalao }));
+      const e = computeEscalao(a.dataNascimento, a.genero);
+      setA(prev => ({ ...prev, escalao: e as any as Atleta['escalao'] }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.dataNascimento, a.genero]);
 
-  // É menor?
-  const isMinor = useMemo(
-    () => (a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false),
-    [a.dataNascimento]
-  );
+  const isMinor = useMemo(()=> a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false, [a.dataNascimento]);
+  const isMastersOrSub23 = useMemo(()=>{
+    const s = (a.escalao || '').toLowerCase();
+    return s.includes('masters') || s.includes('sub23') || s.includes('sub 23') || s.includes('sub-23') || s.includes('seniores');
+  }, [a.escalao]);
 
-  // Mostrar campos de escola excepto Masters
-  const isMasters = a.escalao === "Masters (<1995)";
-  const showEscola = !!a.dataNascimento && !isMasters;
-
-  // Anuidade obrigatória para seniores/sub-23/masters
-  const anuidadeObrigatoria = isAnuidadeObrigatoria(a.escalao);
-
-  // Força plano "Anual" quando obrigatório
+  // -------- Estimativa (recalcula quando muda escalão ou tipo de sócio) --------
+  const [est, setEst] = useState<EstimateResult | null>(null);
   useEffect(() => {
-    if (anuidadeObrigatoria && a.planoPagamento !== "Anual") {
-      setA((prev) => ({ ...prev, planoPagamento: "Anual" }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anuidadeObrigatoria]);
-
-  // Estimativa de custos (recalcula quando muda escalão OU tipo de sócio)
-  const estimate = useMemo(
-    () =>
-      estimateCosts({
-        escalao: a.escalao,
-        tipoSocio: tipoSocio,
-        numAtletasAgregado: 1,
-      }),
-    [a.escalao, tipoSocio]
-  );
+    const result = estimateCosts({
+      escalao: a.escalao,
+      tipoSocio: tipoSocio || 'Não pretendo ser sócio',
+      numAtletasAgregado: Math.max(1, numAtletasAgregado ?? 1),
+    });
+    setEst(result);
+  }, [a.escalao, tipoSocio, numAtletasAgregado]);
 
   function save(ev: React.FormEvent) {
     ev.preventDefault();
-
     const errs: string[] = [];
-    if (!a.nomeCompleto.trim()) errs.push("Nome do atleta é obrigatório");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.dataNascimento))
-      errs.push("Data de nascimento inválida");
-
-    if (!a.numDoc.trim()) errs.push("Número de documento obrigatório");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.validadeDoc))
-      errs.push("Validade de documento inválida");
-    if (!isValidNIF(a.nif)) errs.push("NIF inválido");
-
-    if (!a.morada.trim()) errs.push("Morada é obrigatória");
-    if (!isValidPostalCode(a.codigoPostal))
-      errs.push("Código-postal inválido (####-###)");
-
-    if (showEscola && !a.escola.trim()) errs.push("Escola é obrigatória");
-    if (showEscola && !a.anoEscolaridade.trim())
-      errs.push("Ano de escolaridade é obrigatório");
-
-    if (!a.alergias.trim())
-      errs.push("Alergias / problemas de saúde é obrigatório");
-
-    if (!a.contactosUrgencia.trim())
-      errs.push("Contactos de urgência são obrigatórios");
-
-    if (
-      !a.emailsPreferenciais.trim() ||
-      !areEmailsValid(a.emailsPreferenciais)
-    )
-      errs.push("Email(s) preferenciais inválidos");
-
-    if (a.nacionalidade === "Outra" && !a.nacionalidadeOutra?.trim())
-      errs.push("Indicar a nacionalidade");
-
-    if (isMinor && !a.encarregadoEducacao)
-      errs.push("Selecionar Encarregado de Educação");
-
-    if (a.encarregadoEducacao === "Outro" && !a.parentescoOutro?.trim())
-      errs.push("Indicar parentesco (Outro)");
-
-    if (errs.length) {
-      alert(errs.join("\n"));
-      return;
-    }
-
+    if (!a.nomeCompleto.trim()) errs.push('Nome do atleta é obrigatório');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.dataNascimento)) errs.push('Data de nascimento inválida');
+    if (!a.numDoc.trim()) errs.push('Número de documento obrigatório');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(a.validadeDoc)) errs.push('Validade de documento inválida');
+    if (!isValidNIF(a.nif)) errs.push('NIF inválido');
+    if (!isValidPostalCode(a.codigoPostal)) errs.push('Código-postal inválido (####-###)');
+    if (!a.morada.trim()) errs.push('Morada é obrigatória');
+    if (!a.alergias.trim()) errs.push('Alergias / problemas de saúde é obrigatório');
+    if (!a.contactosUrgencia.trim()) errs.push('Contactos de urgência são obrigatórios');
+    if (!a.emailsPreferenciais.trim() || !areEmailsValid(a.emailsPreferenciais)) errs.push('Email(s) preferenciais inválidos');
+    if (a.nacionalidade === 'Outra' && !a.nacionalidadeOutra?.trim()) errs.push('Indicar a nacionalidade');
+    if (isMinor && !a.encarregadoEducacao) errs.push('Selecionar Encarregado de Educação');
+    if (a.encarregadoEducacao === 'Outro' && !a.parentescoOutro?.trim()) errs.push('Indicar parentesco (Outro)');
+    if (errs.length) { alert(errs.join('\n')); return; }
     onSave(a);
   }
 
   return (
     <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
-      {/* Identificação básica */}
-      <div className="space-y-1 md:col-span-2">
-        <Label>Nome Completo *</Label>
-        <Input
-          value={a.nomeCompleto}
-          onChange={(e) => setA({ ...a, nomeCompleto: e.target.value })}
-          required
-        />
-      </div>
+      <Field className="md:col-span-2" label="Nome Completo *"><input className="input" value={a.nomeCompleto} onChange={e=>setA({...a, nomeCompleto:e.target.value})} required/></Field>
+      <Field label="Data de Nascimento *"><input type="date" className="input" value={a.dataNascimento} onChange={e=>setA({...a, dataNascimento:e.target.value})} required/></Field>
 
-      <div className="space-y-1">
-        <Label>Data de Nascimento *</Label>
-        <Input
-          type="date"
-          value={a.dataNascimento}
-          onChange={(e) => setA({ ...a, dataNascimento: e.target.value })}
-          required
-        />
-      </div>
-
-      <div className="space-y-1">
-        <Label>Género *</Label>
-        <select
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-          value={a.genero}
-          onChange={(e) => setA({ ...a, genero: e.target.value as Genero })}
-        >
+      <Field label="Género *">
+        <select className="input" value={a.genero} onChange={e=>setA({...a, genero: e.target.value as Genero})}>
           <option>Feminino</option>
           <option>Masculino</option>
         </select>
-      </div>
+      </Field>
 
-      {/* Escalão & Plano + Tabela de Preços */}
-      <div className="space-y-1">
-        <Label>Escalão</Label>
-        <Input value={a.escalao} readOnly className="bg-gray-100" />
-      </div>
+      {/* Escalão calculado (só leitura) */}
+      <Field label="Escalão (sugestão automática)"><input className="input bg-gray-100" value={a.escalao} readOnly/></Field>
 
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <Label>Opção de Pagamentos *</Label>
-          <ImagesDialog
-            title="Tabela de Preços"
-            triggerText="Tabela de Preços"
-            images={[
-              { src: "pagamentos-2025.png", alt: "Tabela de Pagamentos 2025/26" },
-            ]}
-            pathPrefix="/precos"
-          />
-        </div>
+      {/* Plano (continua visível, mas SENIORS/Sub23/Masters forçam Anual no backend) */}
+      <Field label="Opção de Pagamentos *">
         <select
-          className="w-full rounded-xl border px-3 py-2 text-sm"
+          className="input"
           value={a.planoPagamento}
-          onChange={(e) =>
-            setA({ ...a, planoPagamento: e.target.value as PlanoPagamento })
-          }
-          disabled={anuidadeObrigatoria}
-          title={
-            anuidadeObrigatoria
-              ? "Bloqueado a Anual pelo escalão"
-              : "Escolha o plano"
-          }
+          onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}
+          disabled={isMastersOrSub23}  // bloqueia para seniores/masters
+          title={isMastersOrSub23 ? 'Para Sub-23/Masters aplica-se apenas a anuidade' : undefined}
         >
           <option>Mensal</option>
           <option>Trimestral</option>
           <option>Anual</option>
         </select>
-        {anuidadeObrigatoria && (
-          <small className="text-xs text-gray-500">
-            Anuidade obrigatória para este escalão.
-          </small>
+      </Field>
+
+      {/* --- Estimativa de custos (actualiza com escalão e tipo de sócio) --- */}
+      <div className="md:col-span-2 rounded-xl border p-3 bg-gray-50">
+        <div className="font-medium mb-1">Estimativa de custos</div>
+        {est ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
+              <div className="rounded-lg bg-white border p-2">
+                <div className="text-xs text-gray-500">Taxa de inscrição</div>
+                <div className="font-semibold">{eur(est.taxaInscricao)}</div>
+              </div>
+
+              {est.onlyAnnual ? (
+                <div className="rounded-lg bg-white border p-2">
+                  <div className="text-xs text-gray-500">Anuidade (1x)</div>
+                  <div className="font-semibold">{eur(est.anual1)}</div>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg bg-white border p-2">
+                    <div className="text-xs text-gray-500">Mensal (10x)</div>
+                    <div className="font-semibold">{eur(est.mensal10)}</div>
+                  </div>
+                  <div className="rounded-lg bg-white border p-2">
+                    <div className="text-xs text-gray-500">Trimestral (3x)</div>
+                    <div className="font-semibold">{eur(est.trimestre3)}</div>
+                  </div>
+                  <div className="rounded-lg bg-white border p-2">
+                    <div className="text-xs text-gray-500">Anual (1x)</div>
+                    <div className="font-semibold">{eur(est.anual1)}</div>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="text-xs text-gray-600 mt-2">
+              {est.tarifa} {est.info}
+            </div>
+          </>
+        ) : (
+          <div className="text-sm text-gray-500">Sem dados para estimar.</div>
         )}
       </div>
 
-      {/* Nacionalidade / Documento / Fiscal */}
-      <div className="space-y-1">
-        <Label>Nacionalidade *</Label>
-        <select
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-          value={a.nacionalidade}
-          onChange={(e) =>
-            setA({ ...a, nacionalidade: e.target.value as Nacionalidade })
-          }
-        >
+      <Field label="Nacionalidade *">
+        <select className="input" value={a.nacionalidade} onChange={e=>setA({...a, nacionalidade: e.target.value as Nacionalidade})}>
           <option>Portuguesa</option>
           <option>Outra</option>
         </select>
-      </div>
+      </Field>
+      {a.nacionalidade === 'Outra' && <Field className="md:col-span-2" label="Indique a nacionalidade"><input className="input" value={a.nacionalidadeOutra||''} onChange={e=>setA({...a, nacionalidadeOutra:e.target.value})}/></Field>}
 
-      {a.nacionalidade === "Outra" && (
-        <div className="space-y-1">
-          <Label>Indique a nacionalidade</Label>
-          <Input
-            value={a.nacionalidadeOutra || ""}
-            onChange={(e) =>
-              setA({ ...a, nacionalidadeOutra: e.target.value })
-            }
-          />
-        </div>
-      )}
-
-      <div className="space-y-1">
-        <Label>Tipo de documento *</Label>
-        <select
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-          value={a.tipoDoc}
-          onChange={(e) => setA({ ...a, tipoDoc: e.target.value as TipoDocId })}
-        >
+      <Field label="Tipo de documento *">
+        <select className="input" value={a.tipoDoc} onChange={e=>setA({...a, tipoDoc: e.target.value as TipoDocId})}>
           <option>Cartão de cidadão</option>
           <option>Passaporte</option>
           <option>Título de Residência</option>
         </select>
-      </div>
+      </Field>
+      <Field label="Nº documento *"><input className="input" value={a.numDoc} onChange={e=>setA({...a, numDoc:e.target.value})} required/></Field>
+      <Field label="Validade do documento *"><input type="date" className="input" value={a.validadeDoc} onChange={e=>setA({...a, validadeDoc:e.target.value})} required/></Field>
+      <Field label="NIF *"><input className="input" value={a.nif} onChange={e=>setA({...a, nif:e.target.value})} required/></Field>
 
-      <div className="space-y-1">
-        <Label>Nº documento *</Label>
-        <Input
-          value={a.numDoc}
-          onChange={(e) => setA({ ...a, numDoc: e.target.value })}
-          required
-        />
-      </div>
+      {/* Filiação — APENAS quando é menor (abaixo do NIF, como pediste) */}
+      {isMinor && (
+        <>
+          <div className="md:col-span-2" />
+          <Field label="Nome do pai *">
+            <input className="input" value={a.nomePai} onChange={e=>setA({...a, nomePai:e.target.value})} required/>
+          </Field>
+          <Field label="Nome da mãe *">
+            <input className="input" value={a.nomeMae} onChange={e=>setA({...a, nomeMae:e.target.value})} required/>
+          </Field>
+        </>
+      )}
 
-      <div className="space-y-1">
-        <Label>Validade do documento *</Label>
-        <Input
-          type="date"
-          value={a.validadeDoc}
-          onChange={(e) => setA({ ...a, validadeDoc: e.target.value })}
-          required
-        />
-      </div>
-
-      <div className="space-y-1">
-        <Label>NIF *</Label>
-        <Input
-          value={a.nif}
-          onChange={(e) => setA({ ...a, nif: e.target.value })}
-          required
-        />
-      </div>
-
-      {/* Morada/Postal + copiar dados pessoais */}
-      <div className="space-y-1 md:col-span-2">
-        <Label>Morada *</Label>
-        <Input
-          value={a.morada}
-          onChange={(e) => setA({ ...a, morada: e.target.value })}
-          required
-        />
-      </div>
-
+      <Field className="md:col-span-2" label="Morada *"><input className="input" value={a.morada} onChange={e=>setA({...a, morada:e.target.value})} required/></Field>
       <div className="md:col-span-2 grid grid-cols-[1fr_auto] gap-2">
-        <div className="space-y-1">
-          <Label>Código Postal *</Label>
-          <Input
-            value={a.codigoPostal}
-            onChange={(e) =>
-              setA({ ...a, codigoPostal: formatPostal(e.target.value) })
-            }
-            required
-          />
-        </div>
-        <div className="flex items-end">
-          <Button
+        <Field label="Código Postal *"><input className="input" value={a.codigoPostal} onChange={e=>setA({...a, codigoPostal:formatPostal(e.target.value)})} required/></Field>
+        <div className="flex items-end pb-1">
+          <button
             type="button"
-            variant="secondary"
-            className="h-10"
+            className="btn secondary h-10"
             onClick={() => {
               if (!dadosPessoais) return;
-              setA((prev) => ({
+              setA(prev => ({
                 ...prev,
                 morada: dadosPessoais.morada || prev.morada,
                 codigoPostal: dadosPessoais.codigoPostal || prev.codigoPostal,
-                contactosUrgencia:
-                  dadosPessoais.telefone || prev.contactosUrgencia,
-                emailsPreferenciais:
-                  dadosPessoais.email || prev.emailsPreferenciais,
+                contactosUrgencia: dadosPessoais.telefone || prev.contactosUrgencia,
+                emailsPreferenciais: dadosPessoais.email || prev.emailsPreferenciais,
               }));
             }}
           >
             Copiar dados pessoais
-          </Button>
+          </button>
         </div>
       </div>
 
-      {/* Contactos opcionais */}
-      <div className="space-y-1">
-        <Label>Email (opcional)</Label>
-        <Input
-          type="email"
-          value={a.emailOpc || ""}
-          onChange={(e) => setA({ ...a, emailOpc: e.target.value })}
-        />
-      </div>
-      <div className="space-y-1">
-        <Label>Telefone (opcional)</Label>
-        <Input
-          value={a.telefoneOpc || ""}
-          onChange={(e) => setA({ ...a, telefoneOpc: e.target.value })}
-        />
-      </div>
+      <Field label="Email (opcional)"><input type="email" className="input" value={a.emailOpc||''} onChange={e=>setA({...a, emailOpc:e.target.value})}/></Field>
+      <Field label="Telefone (opcional)"><input className="input" value={a.telefoneOpc||''} onChange={e=>setA({...a, telefoneOpc:e.target.value})}/></Field>
 
-      {/* Escola (não Masters) */}
-      {showEscola && (
+      {/* Escola (apenas não-masters) */}
+      {!isMastersOrSub23 && (
         <>
-          <div className="space-y-1 md:col-span-2">
-            <Label>Escola (2025/26) *</Label>
-            <Input
-              value={a.escola}
-              onChange={(e) => setA({ ...a, escola: e.target.value })}
-              required
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Ano de escolaridade (2025/26) *</Label>
-            <Input
-              value={a.anoEscolaridade}
-              onChange={(e) =>
-                setA({ ...a, anoEscolaridade: e.target.value })
-              }
-              required
-            />
-          </div>
+          <Field className="md:col-span-2" label="Escola (2025/26) *"><input className="input" value={a.escola} onChange={e=>setA({...a, escola:e.target.value})} required/></Field>
+          <Field label="Ano de escolaridade (2025/26) *"><input className="input" value={a.anoEscolaridade} onChange={e=>setA({...a, anoEscolaridade:e.target.value})} required/></Field>
         </>
       )}
 
-      {/* Saúde */}
-      <div className="space-y-1 md:col-span-2">
-        <Label>Alergias / problemas de saúde *</Label>
-        <Textarea
-          value={a.alergias}
-          onChange={(e) => setA({ ...a, alergias: e.target.value })}
-          required
-        />
-      </div>
+      <Field className="md:col-span-2" label="Alergias / problemas de saúde *"><textarea className="input min-h-[100px]" value={a.alergias} onChange={e=>setA({...a, alergias:e.target.value})} required/></Field>
 
-      {/* Encarregado de Educação (apenas menor) */}
       {isMinor && (
         <>
-          <div className="space-y-1">
-            <Label>Encarregado de Educação *</Label>
-            <select
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              value={a.encarregadoEducacao || ""}
-              onChange={(e) =>
-                setA({
-                  ...a,
-                  encarregadoEducacao: e.target.value as
-                    | "Pai"
-                    | "Mãe"
-                    | "Outro"
-                    | undefined,
-                })
-              }
-            >
+          <Field label="Encarregado de Educação *">
+            <select className="input" value={a.encarregadoEducacao||''} onChange={e=>setA({...a, encarregadoEducacao: e.target.value as any})}>
               <option value="">—</option>
               <option>Pai</option>
               <option>Mãe</option>
               <option>Outro</option>
             </select>
-          </div>
-
-          {a.encarregadoEducacao === "Outro" && (
-            <div className="space-y-1">
-              <Label>Parentesco</Label>
-              <Input
-                value={a.parentescoOutro || ""}
-                onChange={(e) =>
-                  setA({ ...a, parentescoOutro: e.target.value })
-                }
-              />
-            </div>
-          )}
-
-          {/* Filiação: Pai/Mãe (abaixo do NIF, em linha própria) */}
-          <div className="space-y-1 md:col-span-2">
-            <Label>Nome do pai *</Label>
-            <Input
-              value={a.nomePai}
-              onChange={(e) => setA({ ...a, nomePai: e.target.value })}
-              required
-            />
-          </div>
-          <div className="space-y-1 md:col-span-2">
-            <Label>Nome da mãe *</Label>
-            <Input
-              value={a.nomeMae}
-              onChange={(e) => setA({ ...a, nomeMae: e.target.value })}
-              required
-            />
-          </div>
+          </Field>
+          {a.encarregadoEducacao === 'Outro' && <Field label="Parentesco"><input className="input" value={a.parentescoOutro||''} onChange={e=>setA({...a, parentescoOutro:e.target.value})}/></Field>}
         </>
       )}
 
-      {/* Urgência + emails preferenciais */}
-      <div className="space-y-1 md:col-span-2">
-        <Label>Contactos telefónicos de urgência *</Label>
-        <Input
-          placeholder="912...; 913..."
-          value={a.contactosUrgencia}
-          onChange={(e) =>
-            setA({ ...a, contactosUrgencia: e.target.value })
-          }
-          required
-        />
-      </div>
+      <Field className="md:col-span-2" label="Contactos telefónicos de urgência *">
+        <input className="input" placeholder="912...; 913..." value={a.contactosUrgencia} onChange={e=>setA({...a, contactosUrgencia:e.target.value})} required/>
+      </Field>
+      <Field className="md:col-span-2" label="Email(s) preferenciais *">
+        <input className="input" placeholder="a@x.pt; b@y.pt" value={a.emailsPreferenciais} onChange={e=>setA({...a, emailsPreferenciais:e.target.value})} required/>
+        <small className="text-gray-500">Se mais do que um, separar por ponto e vírgula (;)</small>
+      </Field>
 
-      <div className="space-y-1 md:col-span-2">
-        <Label>Email(s) preferenciais *</Label>
-        <Input
-          placeholder="a@x.pt; b@y.pt"
-          value={a.emailsPreferenciais}
-          onChange={(e) =>
-            setA({ ...a, emailsPreferenciais: e.target.value })
-          }
-          required
-        />
-        <small className="text-gray-500">
-          Se mais do que um, separar por ponto e vírgula (;)
-        </small>
-      </div>
+      <Field className="md:col-span-2" label="Observações">
+        <Textarea className="input min-h-[80px]" value={(a as any).observacoes || ''} onChange={e=>setA({...a, ...( {observacoes: e.target.value } as any)})}/>
+      </Field>
 
-      {/* Observações */}
-      <div className="space-y-1 md:col-span-2">
-        <Label>Observações</Label>
-        <Textarea
-          value={a.observacoes || ""}
-          onChange={(e) => setA({ ...a, observacoes: e.target.value })}
-          placeholder="Notas internas relevantes (opcional)"
-        />
-      </div>
-
-      {/* Estimativa de custos */}
-      <div className="md:col-span-2 rounded-xl border p-3 bg-gray-50">
-        <div className="font-medium mb-1">Estimativa de custos</div>
-        <div className="grid gap-1 text-sm">
-          <div>Taxa de inscrição: <strong>{eur(estimate.taxaInscricao)}</strong></div>
-          <div>Mensal (10x): <strong>{eur(estimate.mensal10)}</strong></div>
-          <div>Trimestral (3x): <strong>{eur(estimate.trimestre3)}</strong></div>
-          <div>Anual (1x): <strong>{eur(estimate.anual1)}</strong></div>
-          <div className="text-xs text-gray-600 mt-1">
-            {estimate.tarifa}. {estimate.info}
-          </div>
-        </div>
-      </div>
-
-      {/* Ações */}
       <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-        {onCancel && (
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            Cancelar
-          </Button>
-        )}
-        <Button type="submit">Guardar atleta</Button>
+        {onCancel && <button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>}
+        <button type="submit" className="btn primary">Guardar atleta</button>
       </div>
+
+      <style>{`
+        .input { width: 100%; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.9rem; }
+        .btn { border-radius: 0.75rem; padding: 0.5rem 0.9rem; font-weight: 600; }
+        .btn.primary { background:#2563eb; color:#fff; }
+        .btn.primary:hover { background:#1d4ed8; }
+        .btn.secondary { background:#f3f4f6; }
+      `}</style>
     </form>
+  );
+}
+
+function Field({ label, children, className='' }:{ label:string; children:React.ReactNode; className?:string }){
+  return (
+    <div className={['space-y-1', className].join(' ')}>
+      <label className="text-sm font-medium">{label}</label>
+      {children}
+    </div>
   );
 }
