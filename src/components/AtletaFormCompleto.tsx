@@ -1,6 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { Atleta, Genero, Nacionalidade, TipoDocId, PlanoPagamento } from '../types/Atleta';
-import { computeEscalao, isValidNIF, isValidPostalCode, yearsAtSeasonStart, areEmailsValid } from '../utils/form-utils';
+import type {
+  Atleta,
+  Genero,
+  Nacionalidade,
+  TipoDocId,
+  PlanoPagamento,
+  Escalao
+} from '../types/Atleta';
+import {
+  computeEscalao,
+  isValidNIF,
+  isValidPostalCode,
+  yearsAtSeasonStart,
+  areEmailsValid
+} from '../utils/form-utils';
 
 type Props = {
   initial?: Partial<Atleta>;
@@ -57,7 +70,7 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
     contactosUrgencia: initial?.contactosUrgencia || '',
     emailsPreferenciais: initial?.emailsPreferenciais || '',
 
-    escalao: initial?.escalao || 'Fora de escalões',
+    escalao: (initial?.escalao as Escalao) || 'Fora de escalões',
     planoPagamento: (initial?.planoPagamento as PlanoPagamento) || 'Mensal',
 
     // NOVO
@@ -65,7 +78,10 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
   });
 
   useEffect(()=>{
-    if (a.dataNascimento && a.genero) setA(prev => ({ ...prev, escalao: computeEscalao(a.dataNascimento, a.genero) }));
+    if (a.dataNascimento && a.genero) {
+      const sug = computeEscalao(a.dataNascimento, a.genero) as Escalao; // <- cast para Escalao
+      setA(prev => ({ ...prev, escalao: sug }));
+    }
   }, [a.dataNascimento, a.genero]);
 
   const isMinor = useMemo(()=> a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false, [a.dataNascimento]);
