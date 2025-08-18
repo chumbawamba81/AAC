@@ -1,4 +1,3 @@
-// src/components/AtletaFormCompleto.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -21,7 +20,8 @@ import {
   isValidNIF,
   areEmailsValid,
 } from "../utils/form-utils";
-import { estimateCosts } from "../utils/pricing";
+
+import { estimateCosts, eur } from "../utils/pricing";
 
 type Props = {
   initial?: Partial<Atleta>;
@@ -33,17 +33,11 @@ type Props = {
     telefone?: string; // contactos de urgência
     email?: string; // email preferencial
   };
-  /** Tipo de sócio do agregado (influencia estimativa de custos) */
-  tipoSocio?:
-    | "Sócio Pro"
-    | "Sócio Família"
-    | "Sócio Geral Renovação"
-    | "Sócio Geral Novo"
-    | "Não pretendo ser sócio";
+  /** Vem do perfil para a estimativa de custos */
+  tipoSocio?: string;
 };
 
-const uid = () =>
-  Math.random().toString(36).slice(2) + Date.now().toString(36);
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 function formatPostal(v: string) {
   const d = v.replace(/\D/g, "").slice(0, 7);
@@ -59,7 +53,8 @@ function isAnuidadeObrigatoria(escalao?: string) {
     s.includes("sub 23") ||
     s.includes("sub-23") ||
     s.includes("seniores sub 23") ||
-    s.includes("seniores sub-23")
+    s.includes("seniores sub-23") ||
+    s.startsWith("seniores ")
   );
 }
 
@@ -76,79 +71,88 @@ export default function AtletaFormCompleto({
     dataNascimento: initial?.dataNascimento || "",
     genero: (initial?.genero as Genero) || "Feminino",
 
-    // colocamos já um valor coerente; será recalculado no useEffect
-    escalao:
-      (initial?.escalao as Escalao) ||
-      ("Fora de escalões" as unknown as Escalao),
-
-    // plano default (será forçado a Anual quando aplicável)
-    planoPagamento: (initial?.planoPagamento as PlanoPagamento) || "Mensal",
-
-    // “longos”
+    // identidade/documentos
     nacionalidade: (initial?.nacionalidade as Nacionalidade) || "Portuguesa",
     nacionalidadeOutra: initial?.nacionalidadeOutra || "",
     tipoDoc: (initial?.tipoDoc as TipoDocId) || "Cartão de cidadão",
     numDoc: initial?.numDoc || "",
     validadeDoc: initial?.validadeDoc || "",
     nif: initial?.nif || "",
+
     nomePai: initial?.nomePai || "",
     nomeMae: initial?.nomeMae || "",
+
+    // contactos/morada
     morada: initial?.morada ?? dadosPessoais?.morada ?? "",
     codigoPostal: initial?.codigoPostal ?? dadosPessoais?.codigoPostal ?? "",
     telefoneOpc: initial?.telefoneOpc || "",
     emailOpc: initial?.emailOpc || "",
+
+    // escola/saúde
     escola: initial?.escola || "",
     anoEscolaridade: initial?.anoEscolaridade || "",
     alergias: initial?.alergias || "",
+
+    // EE / urgências
     encarregadoEducacao: initial?.encarregadoEducacao,
     parentescoOutro: initial?.parentescoOutro || "",
-    contactosUrgencia:
-      initial?.contactosUrgencia ?? dadosPessoais?.telefone ?? "",
+    contactosUrgencia: initial?.contactosUrgencia ?? dadosPessoais?.telefone ?? "",
     emailsPreferenciais:
-      initial?.emailsPreferenciais ?? dadosPessoais?.email ?? "",
-    observacoes: (initial as any)?.observacoes || "",
+      initial?.emailsPreferenciais ?? (dadosPessoais?.email ?? ""),
+
+    // escalão/plano
+    escalao: (initial?.escalao as Escalao) || ("Fora de escalões" as Escalao),
+    planoPagamento: (initial?.planoPagamento as PlanoPagamento) || "Mensal",
+
+    // observações
+    observacoes: initial?.observacoes || "",
   });
 
   // Recalcular escalão quando muda data/género
   useEffect(() => {
     if (a.dataNascimento && a.genero) {
-      const novo = computeEscalao(a.dataNascimento, a.genero) as unknown as Escalao;
-      setA((prev) => ({ ...prev, escalao: novo }));
+      const esc = computeEscalao(a.dataNascimento, a.genero);
+      // cast para Escalao do teu type union
+      setA((prev) => ({ ...prev, escalao: esc as Escalao }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.dataNascimento, a.genero]);
 
-  // Forçar plano Anual para Seniores Sub-23 & Masters
-  useEffect(() => {
-    if (isAnuidadeObrigatoria(a.escalao) && a.planoPagamento !== "Anual") {
-      setA((prev) => ({ ...prev, planoPagamento: "Anual" }));
-    }
-  }, [a.escalao, a.planoPagamento]);
-
+  // É menor?
   const isMinor = useMemo(
     () => (a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false),
     [a.dataNascimento]
   );
 
-  const isMasters = a.escalao?.toLowerCase().includes("masters");
+  // Mostrar campos de escola excepto Masters
+  const isMasters = a.escalao === "Masters (<1995)";
+  const showEscola = !!a.dataNascimento && !isMasters;
 
-  // Estimativa de custos (reage a escalao/plano/tipoSocio)
-  const tipoSocioAtual =
-    tipoSocio ?? ("Não pretendo ser sócio" as const);
-  const estimativa = useMemo(() => {
-    try {
-      return estimateCosts({
-        escalao: a.escalao,
-        plano: a.planoPagamento,
-        tipoSocio: tipoSocioAtual,
-      });
-    } catch {
-      return null;
+  // Anuidade obrigatória para masters/seniores/sub-23
+  const anuidadeObrigatoria = isAnuidadeObrigatoria(a.escalao);
+
+  // Força plano "Anual" quando obrigatório
+  useEffect(() => {
+    if (anuidadeObrigatoria && a.planoPagamento !== "Anual") {
+      setA((prev) => ({ ...prev, planoPagamento: "Anual" }));
     }
-  }, [a.escalao, a.planoPagamento, tipoSocioAtual]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anuidadeObrigatoria]);
+
+  // Estimativa de custos (dependente do escalão e do tipo de sócio)
+  const estimate = useMemo(
+    () =>
+      estimateCosts({
+        escalao: a.escalao,
+        tipoSocio: tipoSocio,
+        numAtletasAgregado: 1,
+      }),
+    [a.escalao, tipoSocio]
+  );
 
   function save(ev: React.FormEvent) {
     ev.preventDefault();
+
     const errs: string[] = [];
     if (!a.nomeCompleto.trim()) errs.push("Nome do atleta é obrigatório");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(a.dataNascimento))
@@ -157,32 +161,24 @@ export default function AtletaFormCompleto({
     if (!a.numDoc.trim()) errs.push("Número de documento obrigatório");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(a.validadeDoc))
       errs.push("Validade de documento inválida");
-
     if (!isValidNIF(a.nif)) errs.push("NIF inválido");
 
-    if (!a.morada?.trim()) errs.push("Morada é obrigatória");
-    if (!isValidPostalCode(a.codigoPostal || ""))
+    if (!a.morada.trim()) errs.push("Morada é obrigatória");
+    if (!isValidPostalCode(a.codigoPostal))
       errs.push("Código-postal inválido (####-###)");
 
-    // Filiação (só menores)
-    if (isMinor && !a.nomePai?.trim()) errs.push("Nome do pai é obrigatório");
-    if (isMinor && !a.nomeMae?.trim()) errs.push("Nome da mãe é obrigatório");
+    if (showEscola && !a.escola.trim()) errs.push("Escola é obrigatória");
+    if (showEscola && !a.anoEscolaridade.trim())
+      errs.push("Ano de escolaridade é obrigatório");
 
-    // Escola para não-masters (coerente com versão antiga)
-    if (!isMasters) {
-      if (!a.escola?.trim()) errs.push("Escola é obrigatória");
-      if (!a.anoEscolaridade?.trim())
-        errs.push("Ano de escolaridade é obrigatório");
-    }
-
-    if (!a.alergias?.trim())
+    if (!a.alergias.trim())
       errs.push("Alergias / problemas de saúde é obrigatório");
 
-    if (!a.contactosUrgencia?.trim())
+    if (!a.contactosUrgencia.trim())
       errs.push("Contactos de urgência são obrigatórios");
 
     if (
-      !a.emailsPreferenciais?.trim() ||
+      !a.emailsPreferenciais.trim() ||
       !areEmailsValid(a.emailsPreferenciais)
     )
       errs.push("Email(s) preferenciais inválidos");
@@ -192,6 +188,7 @@ export default function AtletaFormCompleto({
 
     if (isMinor && !a.encarregadoEducacao)
       errs.push("Selecionar Encarregado de Educação");
+
     if (a.encarregadoEducacao === "Outro" && !a.parentescoOutro?.trim())
       errs.push("Indicar parentesco (Outro)");
 
@@ -205,7 +202,7 @@ export default function AtletaFormCompleto({
 
   return (
     <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
-      {/* Identificação base */}
+      {/* Identificação básica */}
       <div className="space-y-1 md:col-span-2">
         <Label>Nome Completo *</Label>
         <Input
@@ -237,9 +234,9 @@ export default function AtletaFormCompleto({
         </select>
       </div>
 
-      {/* Escalão e Plano — imediatamente abaixo do Género */}
+      {/* Escalão & Plano logo após género */}
       <div className="space-y-1">
-        <Label>Escalão (sugestão automática)</Label>
+        <Label>Escalão</Label>
         <Input value={a.escalao} readOnly className="bg-gray-100" />
       </div>
 
@@ -249,40 +246,34 @@ export default function AtletaFormCompleto({
           className="w-full rounded-xl border px-3 py-2 text-sm"
           value={a.planoPagamento}
           onChange={(e) =>
-            setA({
-              ...a,
-              planoPagamento: e.target.value as PlanoPagamento,
-            })
+            setA({ ...a, planoPagamento: e.target.value as PlanoPagamento })
           }
-          disabled={isAnuidadeObrigatoria(a.escalao)}
+          disabled={anuidadeObrigatoria}
           title={
-            isAnuidadeObrigatoria(a.escalao)
-              ? "Para Seniores Sub-23 e Masters a anuidade é obrigatória."
-              : undefined
+            anuidadeObrigatoria
+              ? "Bloqueado a Anual pelo escalão"
+              : "Escolha o plano"
           }
         >
           <option>Mensal</option>
           <option>Trimestral</option>
           <option>Anual</option>
         </select>
-        {isAnuidadeObrigatoria(a.escalao) && (
+        {anuidadeObrigatoria && (
           <small className="text-xs text-gray-500">
-            Para Seniores Sub-23 e Masters, a anuidade é obrigatória.
+            Anuidade obrigatória para este escalão.
           </small>
         )}
       </div>
 
-      {/* Nacionalidade / Documento */}
+      {/* Nacionalidade / Documento / Fiscal */}
       <div className="space-y-1">
         <Label>Nacionalidade *</Label>
         <select
           className="w-full rounded-xl border px-3 py-2 text-sm"
           value={a.nacionalidade}
           onChange={(e) =>
-            setA({
-              ...a,
-              nacionalidade: e.target.value as Nacionalidade,
-            })
+            setA({ ...a, nacionalidade: e.target.value as Nacionalidade })
           }
         >
           <option>Portuguesa</option>
@@ -343,29 +334,7 @@ export default function AtletaFormCompleto({
         />
       </div>
 
-      {/* Filiação — APENAS quando é menor (abaixo do NIF) */}
-      {isMinor && (
-        <>
-          <div className="space-y-1">
-            <Label>Nome do pai *</Label>
-            <Input
-              value={a.nomePai}
-              onChange={(e) => setA({ ...a, nomePai: e.target.value })}
-              required
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Nome da mãe *</Label>
-            <Input
-              value={a.nomeMae}
-              onChange={(e) => setA({ ...a, nomeMae: e.target.value })}
-              required
-            />
-          </div>
-        </>
-      )}
-
-      {/* Morada / CP + copiar */}
+      {/* Morada/Postal + copiar dados pessoais */}
       <div className="space-y-1 md:col-span-2">
         <Label>Morada *</Label>
         <Input
@@ -383,7 +352,6 @@ export default function AtletaFormCompleto({
             onChange={(e) =>
               setA({ ...a, codigoPostal: formatPostal(e.target.value) })
             }
-            placeholder="0000-000"
             required
           />
         </div>
@@ -397,8 +365,7 @@ export default function AtletaFormCompleto({
               setA((prev) => ({
                 ...prev,
                 morada: dadosPessoais.morada || prev.morada,
-                codigoPostal:
-                  dadosPessoais.codigoPostal || prev.codigoPostal,
+                codigoPostal: dadosPessoais.codigoPostal || prev.codigoPostal,
                 contactosUrgencia:
                   dadosPessoais.telefone || prev.contactosUrgencia,
                 emailsPreferenciais:
@@ -428,8 +395,8 @@ export default function AtletaFormCompleto({
         />
       </div>
 
-      {/* Escola (não masters) */}
-      {!isMasters && (
+      {/* Escola (não Masters) */}
+      {showEscola && (
         <>
           <div className="space-y-1 md:col-span-2">
             <Label>Escola (2025/26) *</Label>
@@ -462,7 +429,7 @@ export default function AtletaFormCompleto({
         />
       </div>
 
-      {/* EE — só menores */}
+      {/* Encarregado de Educação (apenas menor) */}
       {isMinor && (
         <>
           <div className="space-y-1">
@@ -473,7 +440,11 @@ export default function AtletaFormCompleto({
               onChange={(e) =>
                 setA({
                   ...a,
-                  encarregadoEducacao: e.target.value as any,
+                  encarregadoEducacao: e.target.value as
+                    | "Pai"
+                    | "Mãe"
+                    | "Outro"
+                    | undefined,
                 })
               }
             >
@@ -483,6 +454,7 @@ export default function AtletaFormCompleto({
               <option>Outro</option>
             </select>
           </div>
+
           {a.encarregadoEducacao === "Outro" && (
             <div className="space-y-1">
               <Label>Parentesco</Label>
@@ -494,10 +466,28 @@ export default function AtletaFormCompleto({
               />
             </div>
           )}
+
+          {/* Filiação: Pai/Mãe (apenas se menor) */}
+          <div className="space-y-1 md:col-span-2">
+            <Label>Nome do pai *</Label>
+            <Input
+              value={a.nomePai}
+              onChange={(e) => setA({ ...a, nomePai: e.target.value })}
+              required
+            />
+          </div>
+          <div className="space-y-1 md:col-span-2">
+            <Label>Nome da mãe *</Label>
+            <Input
+              value={a.nomeMae}
+              onChange={(e) => setA({ ...a, nomeMae: e.target.value })}
+              required
+            />
+          </div>
         </>
       )}
 
-      {/* Contactos obrigatórios */}
+      {/* Urgência + emails preferenciais */}
       <div className="space-y-1 md:col-span-2">
         <Label>Contactos telefónicos de urgência *</Label>
         <Input
@@ -529,31 +519,24 @@ export default function AtletaFormCompleto({
       <div className="space-y-1 md:col-span-2">
         <Label>Observações</Label>
         <Textarea
-          value={(a as any).observacoes || ""}
-          onChange={(e) =>
-            setA({ ...(a as any), observacoes: e.target.value } as Atleta)
-          }
+          value={a.observacoes || ""}
+          onChange={(e) => setA({ ...a, observacoes: e.target.value })}
+          placeholder="Notas internas relevantes (opcional)"
         />
       </div>
 
       {/* Estimativa de custos */}
-      <div className="md:col-span-2 border rounded-xl p-3 bg-gray-50">
+      <div className="md:col-span-2 rounded-xl border p-3 bg-gray-50">
         <div className="font-medium mb-1">Estimativa de custos</div>
-        {estimativa ? (
-          <div className="text-sm space-y-0.5">
-            <div>Taxa de inscrição: {estimativa.taxaInscricao} €</div>
-            <div>Mensal (10x): {estimativa.mensal?.toString?.() ?? estimativa.mensal} €</div>
-            <div>Trimestral (3x): {estimativa.trimestral?.toString?.() ?? estimativa.trimestral} €</div>
-            <div>Anual (1x): {estimativa.anual?.toString?.() ?? estimativa.anual} €</div>
-            <div className="text-xs text-gray-600">
-              Tarifa {tipoSocioAtual}. Baseado no tipo de sócio.
-            </div>
+        <div className="grid gap-1 text-sm">
+          <div>Taxa de inscrição: <strong>{eur(estimate.taxaInscricao)}</strong></div>
+          <div>Mensal (10x): <strong>{eur(estimate.mensal10)}</strong></div>
+          <div>Trimestral (3x): <strong>{eur(estimate.trimestre3)}</strong></div>
+          <div>Anual (1x): <strong>{eur(estimate.anual1)}</strong></div>
+          <div className="text-xs text-gray-600 mt-1">
+            {estimate.tarifa}. {estimate.info}
           </div>
-        ) : (
-          <div className="text-sm text-gray-600">
-            Indisponível para o escalão/plano atuais.
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Ações */}
