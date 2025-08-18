@@ -1,14 +1,16 @@
+// src/services/atletasService.ts
 import { supabase } from '../supabaseClient';
-import type { Atleta, Genero, PlanoPagamento, Escalao, Nacionalidade, TipoDocId } from '../types/Atleta';
+import type {
+  Atleta, Genero, PlanoPagamento, Escalao, Nacionalidade, TipoDocId
+} from '../types/Atleta';
 
-/** Linha tal como existe na BD (snake_case). */
 type DBAtletaRow = {
   id: string;
   dados_pessoais_id: string | null;
   user_id: string | null;
 
   nome: string;
-  data_nascimento: string; // date (YYYY-MM-DD)
+  data_nascimento: string; // date
   escalao: string | null;
   alergias: string;
 
@@ -21,26 +23,24 @@ type DBAtletaRow = {
   emails_preferenciais: string | null;
   genero: string | null; // 'Feminino'|'Masculino'
 
-  /* Novos campos que adicionaste na tabela */
-  nacionalidade?: string | null;
-  nacionalidade_outra?: string | null;
-  tipo_doc?: string | null;
-  num_doc?: string | null;
-  validade_doc?: string | null; // date
-  nif?: string | null;
-  nome_pai?: string | null;
-  nome_mae?: string | null;
-  telefone_opc?: string | null;
-  email_opc?: string | null;
-  escola?: string | null;
-  ano_escolaridade?: string | null;
-  encarregado_educacao?: string | null; // 'Pai'|'Mãe'|'Outro'
-  parentesco_outro?: string | null;
-  observacoes?: string | null;
+  nacionalidade: string | null;
+  nacionalidade_outra: string | null;
+  tipo_doc: string | null;
+  num_doc: string | null;
+  validade_doc: string | null; // date
+  nif: string | null;
+  nome_pai: string | null;
+  nome_mae: string | null;
+  telefone_opc: string | null;
+  email_opc: string | null;
+  escola: string | null;
+  ano_escolaridade: string | null;
+  encarregado_educacao: string | null; // 'Pai'|'Mãe'|'Outro'
+  parentesco_outro: string | null;
+  observacoes: string | null;
 };
 
-/* ------------------------ Helpers de normalização ------------------------ */
-
+/* ---------------- Helpers ---------------- */
 function toGenero(v: string | null | undefined): Genero {
   return v === 'Masculino' ? 'Masculino' : 'Feminino';
 }
@@ -54,7 +54,15 @@ function nonEmpty(s: string | null | undefined): string {
   return s ?? '';
 }
 
-/** DB -> UI */
+async function requireSessionUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const uid = data?.user?.id;
+  if (!uid) throw new Error('Sessão inválida. Inicie sessão novamente.');
+  return uid;
+}
+
+/* --------------- Conversores DB ↔ UI ---------------- */
 function fromRow(r: DBAtletaRow): Atleta {
   return {
     id: r.id,
@@ -70,7 +78,6 @@ function fromRow(r: DBAtletaRow): Atleta {
     contactosUrgencia: nonEmpty(r.contactos_urgencia),
     emailsPreferenciais: nonEmpty(r.emails_preferenciais),
 
-    // Novos campos
     nacionalidade: (r.nacionalidade as Nacionalidade) ?? 'Portuguesa',
     nacionalidadeOutra: r.nacionalidade_outra ?? undefined,
     tipoDoc: (r.tipo_doc as TipoDocId) ?? 'Cartão de cidadão',
@@ -89,19 +96,17 @@ function fromRow(r: DBAtletaRow): Atleta {
   };
 }
 
-/** UI -> DB (payload) */
 async function toRow(a: Atleta): Promise<Partial<DBAtletaRow>> {
-  const { data } = await supabase.auth.getUser();
-  const user_id = data?.user?.id ?? null;
+  const uid = await requireSessionUserId();
 
-  // Masters e Seniores Sub23: plano forçado a 'Anual'
+  // Força plano 'Anual' para Masters/Sub23
   const forceAnnual =
     a.escalao === 'Masters (<1995)' ||
     a.escalao === 'Seniores masculinos Sub23 (2002-2007)';
 
   return {
     id: a.id,
-    user_id,
+    user_id: uid,
 
     nome: a.nomeCompleto.trim(),
     data_nascimento: a.dataNascimento,
@@ -115,7 +120,6 @@ async function toRow(a: Atleta): Promise<Partial<DBAtletaRow>> {
     contactos_urgencia: a.contactosUrgencia ?? null,
     emails_preferenciais: a.emailsPreferenciais ?? null,
 
-    // Novos campos
     nacionalidade: a.nacionalidade,
     nacionalidade_outra: a.nacionalidade === 'Outra' ? (a.nacionalidadeOutra ?? null) : null,
     tipo_doc: a.tipoDoc,
@@ -134,14 +138,12 @@ async function toRow(a: Atleta): Promise<Partial<DBAtletaRow>> {
   };
 }
 
-/* --------------------------------- CRUD ---------------------------------- */
-
+/* --------------------------- API --------------------------- */
 export async function listAtletas(): Promise<Atleta[]> {
   const { data, error } = await supabase
     .from('atletas')
     .select('*')
     .order('created_at', { ascending: false });
-
   if (error) throw error;
   return (data as DBAtletaRow[] | null)?.map(fromRow) ?? [];
 }
@@ -152,7 +154,6 @@ export async function getAtleta(id: string): Promise<Atleta | null> {
     .select('*')
     .eq('id', id)
     .maybeSingle();
-
   if (error) throw error;
   return data ? fromRow(data as DBAtletaRow) : null;
 }
@@ -160,13 +161,40 @@ export async function getAtleta(id: string): Promise<Atleta | null> {
 export async function upsertAtleta(a: Atleta): Promise<Atleta> {
   const payload = await toRow(a);
 
+  // Verifica se existe (e evita "upsert" a linha de outro user)
+  const { data: existing, error: exErr } = await supabase
+    .from('atletas')
+    .select('id, user_id')
+    .eq('id', a.id)
+    .maybeSingle();
+  if (exErr) throw exErr;
+
+  if (!existing) {
+    // INSERT (cumpre INSERT policy; trigger ainda preenche user_id se faltar)
+    const { data, error } = await supabase
+      .from('atletas')
+      .insert(payload)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return fromRow(data as DBAtletaRow);
+  }
+
+  // UPDATE (só se a linha for do próprio utilizador)
   const { data, error } = await supabase
     .from('atletas')
-    .upsert(payload, { onConflict: 'id' })
+    .update(payload)
+    .eq('id', a.id)
     .select('*')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // Ajuda de diagnóstico para RLS
+    if ((error as any).code === '42501') {
+      throw new Error('Sem permissão para alterar este atleta (RLS). A linha não pertence ao utilizador atual.');
+    }
+    throw error;
+  }
   return fromRow(data as DBAtletaRow);
 }
 
