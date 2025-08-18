@@ -2,43 +2,43 @@
 import { supabase } from "../supabaseClient";
 import type { PessoaDados } from "../types/PessoaDados";
 
-/** Converte uma linha da BD -> modelo da app */
+/** Converte uma linha da BD -> modelo da app (carrega também validade_documento) */
 function rowToPessoa(row: any): PessoaDados {
-  if (!row) {
-    return {
-      nomeCompleto: "",
-      tipoSocio: "Não pretendo ser sócio",
-      dataNascimento: "",
-      morada: "",
-      codigoPostal: "",
-      tipoDocumento: "Cartão de cidadão",
-      numeroDocumento: "",
-      nif: "",
-      telefone: "",
-      email: "",
-      profissao: "",
-    };
-  }
-  return {
-    nomeCompleto: row.nome_completo ?? "",
-    tipoSocio: row.tipo_socio ?? "Não pretendo ser sócio",
-    dataNascimento: row.data_nascimento ?? "",
-    morada: row.morada ?? "",
-    codigoPostal: row.codigo_postal ?? "",
-    tipoDocumento: row.tipo_documento ?? "Cartão de cidadão",
-    numeroDocumento: row.numero_documento ?? "",
-    nif: row.nif ?? "",
-    telefone: row.telefone ?? "",
-    email: row.email ?? "",
-    profissao: row.profissao ?? "",
+  const out: any = {
+    nomeCompleto: row?.nome_completo ?? "",
+    tipoSocio: row?.tipo_socio ?? "Não pretendo ser sócio",
+    dataNascimento: row?.data_nascimento ?? "",
+    morada: row?.morada ?? "",
+    codigoPostal: row?.codigo_postal ?? "",
+    tipoDocumento: row?.tipo_documento ?? "Cartão de cidadão",
+    numeroDocumento: row?.numero_documento ?? "",
+    nif: row?.nif ?? "",
+    telefone: row?.telefone ?? "",
+    email: row?.email ?? "",
+    profissao: row?.profissao ?? "",
   };
+
+  // Campo extra do formulário: data de validade do documento
+  // Guardamos como ISO yyyy-mm-dd (string) para o <input type="date">
+  if (row?.validade_documento) {
+    // row.validade_documento já vem como 'YYYY-MM-DD' na maioria dos casos
+    out.dataValidadeDocumento = String(row.validade_documento);
+  } else {
+    out.dataValidadeDocumento = "";
+  }
+
+  return out as PessoaDados;
 }
 
 /** Converte o modelo da app -> payload para a BD (snake_case) */
-function pessoaToRow(p: PessoaDados, userId: string) {
-  // Strings vazias guardamos como null para não “pisar” dados com lixo
+function pessoaToRow(p: PessoaDados & { dataValidadeDocumento?: string }, userId: string) {
   const nz = (v: unknown) =>
     typeof v === "string" ? (v.trim() === "" ? null : v.trim()) : v ?? null;
+
+  // Converter string ISO para DATE (o Postgres aceita 'YYYY-MM-DD' em text)
+  const validade = p.dataValidadeDocumento && /^\d{4}-\d{2}-\d{2}$/.test(p.dataValidadeDocumento)
+    ? p.dataValidadeDocumento
+    : null;
 
   return {
     user_id: userId,
@@ -53,6 +53,7 @@ function pessoaToRow(p: PessoaDados, userId: string) {
     telefone: nz(p.telefone),
     email: nz(p.email),
     profissao: nz(p.profissao),
+    validade_documento: validade, // <- NOVO
   };
 }
 
@@ -79,7 +80,7 @@ export async function getMyProfile(): Promise<PessoaDados | null> {
  * Cria/atualiza o meu perfil.
  * Usa upsert com onConflict em user_id (necessita índice único em user_id).
  */
-export async function upsertMyProfile(p: PessoaDados): Promise<PessoaDados> {
+export async function upsertMyProfile(p: PessoaDados & { dataValidadeDocumento?: string }): Promise<PessoaDados> {
   const { data: u, error: uerr } = await supabase.auth.getUser();
   if (uerr) throw uerr;
   const userId = u?.user?.id;
@@ -89,7 +90,6 @@ export async function upsertMyProfile(p: PessoaDados): Promise<PessoaDados> {
 
   const { data, error } = await supabase
     .from("dados_pessoais")
-    // NOTA: evitar generics aqui para não apanhar o erro "Expected 2 type arguments"
     .upsert(payload, { onConflict: "user_id" })
     .select("*")
     .single();
