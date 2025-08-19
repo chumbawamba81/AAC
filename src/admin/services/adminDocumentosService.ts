@@ -1,7 +1,7 @@
 // src/admin/services/adminDocumentosService.ts
 import { supabase } from "../../supabaseClient";
 
-/** Estrutura normalizada para a UI de admin */
+/** Linha normalizada para a UI de admin */
 export type DocumentoRow = {
   id: string;
   user_id: string | null;
@@ -17,15 +17,14 @@ export type DocumentoRow = {
   signedUrl?: string;
 };
 
-type ListArgs =
-  | { nivel: "socio"; userId: string }
-  | { nivel: "atleta"; atletaId: string };
+type SocioArgs = { userId: string };
+type AtletaArgs = { atletaId: string };
 
-export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
-  let q = supabase
+/** Lista documentos do SÓCIO (nível 'socio'). */
+export async function listSocioDocs({ userId }: SocioArgs): Promise<DocumentoRow[]> {
+  const { data, error } = await supabase
     .from("documentos")
-    .select(
-      `
+    .select(`
       id,
       user_id,
       atleta_id,
@@ -33,27 +32,51 @@ export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
       doc_tipo,
       page,
       file_path,
-      file_name:nome,      -- ✅ alias correto
+      file_name:nome,     -- alias apenas na projeção
       mime_type,
       file_size,
       uploaded_at
-    `
-    )
+    `)
+    .eq("doc_nivel", "socio")
+    .eq("user_id", userId)
+    .is("atleta_id", null)
+    // ⚠️ ordenar SEM usar o alias
     .order("doc_tipo", { ascending: true })
-    .order("page", { ascending: true, nullsFirst: true });
+    .order("page", { ascending: true, nullsFirst: true })
+    .order("nome", { ascending: true });
 
-  if (args.nivel === "socio") {
-    q = q.eq("doc_nivel", "socio").eq("user_id", args.userId).is("atleta_id", null);
-  } else {
-    q = q.eq("doc_nivel", "atleta").eq("atleta_id", args.atletaId);
-  }
-
-  const { data, error } = await q;
   if (error) throw error;
-  // Tipagem defensiva para contornar inference do supabase-js sem generics
-  return (data as unknown as DocumentoRow[]) || [];
+  return (data as unknown as DocumentoRow[]) ?? [];
 }
 
+/** Lista documentos por ATLETA (nível 'atleta'). */
+export async function listAtletaDocs({ atletaId }: AtletaArgs): Promise<DocumentoRow[]> {
+  const { data, error } = await supabase
+    .from("documentos")
+    .select(`
+      id,
+      user_id,
+      atleta_id,
+      doc_nivel,
+      doc_tipo,
+      page,
+      file_path,
+      file_name:nome,     -- alias apenas na projeção
+      mime_type,
+      file_size,
+      uploaded_at
+    `)
+    .eq("doc_nivel", "atleta")
+    .eq("atleta_id", atletaId)
+    .order("doc_tipo", { ascending: true })
+    .order("page", { ascending: true, nullsFirst: true })
+    .order("nome", { ascending: true });
+
+  if (error) throw error;
+  return (data as unknown as DocumentoRow[]) ?? [];
+}
+
+/** Adiciona signed URLs (bucket 'documentos'). */
 export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow[]> {
   if (!rows?.length) return [];
   const out: DocumentoRow[] = [];
@@ -61,7 +84,7 @@ export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow
     const { data, error } = await supabase
       .storage
       .from("documentos")
-      .createSignedUrl(r.file_path, 60 * 60); // 1h
+      .createSignedUrl(r.file_path, 60 * 60); // 1 hora
     out.push({ ...r, signedUrl: error ? undefined : data?.signedUrl });
   }
   return out;
