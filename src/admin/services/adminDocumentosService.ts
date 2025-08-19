@@ -1,130 +1,96 @@
 // src/admin/services/adminDocumentosService.ts
 import { supabase } from "../../supabaseClient";
 
-/** Bucket de documentos no Storage */
-const BUCKET_DOCS = "documentos";
-/** Validade dos links assinados (segundos) */
-const SIGNED_URL_SECONDS = 60 * 60; // 1h
-
-export type Nivel = "socio" | "atleta";
-
 export type DocumentoRow = {
   id: string;
   user_id: string;
   atleta_id: string | null;
-  doc_nivel: Nivel;
+  doc_nivel: "socio" | "atleta";
   doc_tipo: string;
   page: number | null;
-  /** caminho no Storage (ex.: "USERID/socio/Ficha de Sócio/123_abc.pdf") */
-  file_path: string;
-  /** nome amigável (coluna 'nome' na tua tabela) */
-  nome: string | null;
+  file_path: string;      // caminho no bucket "documentos"
+  nome: string | null;    // nome legível guardado na tabela
   mime_type: string | null;
   file_size: number | null;
   uploaded_at: string | null;
-  /** gerado em runtime */
-  signedUrl?: string;
+  signedUrl?: string;     // gerado em runtime
 };
 
 export type ListArgs =
   | { nivel: "socio"; userId: string }
   | { nivel: "atleta"; userId: string; atletaId: string };
 
-/** Util: nome para mostrar (fallback a partir do file_path) */
-export function displayName(row: DocumentoRow): string {
-  if (row.nome && row.nome.trim()) return row.nome.trim();
-  const p = row.file_path || "";
-  const last = p.split("/").pop();
-  return last || "ficheiro";
-}
-
-/** Util: agrupa por tipo e ordena por page asc */
-export function groupByTipo(rows: DocumentoRow[]): Map<string, DocumentoRow[]> {
-  const map = new Map<string, DocumentoRow[]>();
-  for (const r of rows) {
-    const arr = map.get(r.doc_tipo) || [];
-    arr.push(r);
-    map.set(r.doc_tipo, arr);
-  }
-  for (const [k, arr] of map) {
-    arr.sort((a, b) => (a.page ?? 0) - (b.page ?? 0));
-    map.set(k, arr);
-  }
-  return map;
-}
-
-/**
- * Lista documentos do sócio (nivel='socio') ou do atleta (nivel='atleta').
- */
 export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
-  let q = supabase
+  const q = supabase
     .from("documentos")
     .select(
       "id,user_id,atleta_id,doc_nivel,doc_tipo,page,file_path,nome,mime_type,file_size,uploaded_at"
-    )
-    .eq("user_id", args.userId)
-    .eq("doc_nivel", args.nivel);
+    );
 
   if (args.nivel === "socio") {
-    q = q.is("atleta_id", null);
+    const { data, error } = await q
+      .eq("user_id", args.userId)
+      .eq("doc_nivel", "socio")
+      .is("atleta_id", null)
+      .order("doc_tipo", { ascending: true })
+      .order("page", { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as DocumentoRow[];
   } else {
-    q = q.eq("atleta_id", args.atletaId);
+    const { data, error } = await q
+      .eq("user_id", args.userId)
+      .eq("doc_nivel", "atleta")
+      .eq("atleta_id", args.atletaId)
+      .order("doc_tipo", { ascending: true })
+      .order("page", { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as DocumentoRow[];
   }
-
-  q = q.order("doc_tipo", { ascending: true }).order("page", { ascending: true });
-
-  const { data, error } = await q;
-  if (error) {
-    console.error("[adminDocumentosService.listDocs] erro:", error.message);
-    throw error;
-  }
-  return (data || []) as DocumentoRow[];
 }
 
-/** Lista todos os docs (sócio + atletas) de um user */
-export async function listAllDocsByUser(userId: string): Promise<DocumentoRow[]> {
-  const { data, error } = await supabase
-    .from("documentos")
-    .select(
-      "id,user_id,atleta_id,doc_nivel,doc_tipo,page,file_path,nome,mime_type,file_size,uploaded_at"
-    )
-    .eq("user_id", userId)
-    .order("doc_nivel", { ascending: true })
-    .order("doc_tipo", { ascending: true })
-    .order("page", { ascending: true });
+/** Gera signed URLs para cada row (bucket privado "documentos"). */
+export async function withSignedUrls<T extends DocumentoRow>(
+  rows: T[],
+  expireSeconds = 3600
+): Promise<T[]> {
+  if (!rows?.length) return rows;
 
-  if (error) {
-    console.error("[adminDocumentosService.listAllDocsByUser] erro:", error.message);
-    throw error;
-  }
-  return (data || []) as DocumentoRow[];
-}
-
-/** Assina URLs para download */
-export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow[]> {
-  const out: DocumentoRow[] = [];
+  // Gera URLs em série (simples). Se preferires, podes paralelizar com Promise.all.
+  const out: T[] = [];
   for (const r of rows) {
-    let signedUrl: string | undefined = undefined;
-    if (r.file_path) {
-      const { data, error } = await supabase
-        .storage
-        .from(BUCKET_DOCS)
-        .createSignedUrl(r.file_path, SIGNED_URL_SECONDS);
-      if (!error && data?.signedUrl) {
-        signedUrl = data.signedUrl;
-      } else if (error) {
-        console.warn("[withSignedUrls] falha signedUrl:", r.file_path, error.message);
-      }
-    }
-    out.push({ ...r, signedUrl });
+    const { data, error } = await supabase
+      .storage
+      .from("documentos")
+      .createSignedUrl(r.file_path, expireSeconds);
+
+    out.push({
+      ...r,
+      signedUrl: data?.signedUrl ?? undefined,
+    });
   }
   return out;
 }
 
-/** Conveniências */
-export async function listDocsSocio(userId: string): Promise<DocumentoRow[]> {
-  return listDocs({ nivel: "socio", userId });
+/** Agrupa por doc_tipo e ordena por page ascendente. */
+export function groupByTipo(rows: DocumentoRow[]): Map<string, DocumentoRow[]> {
+  const m = new Map<string, DocumentoRow[]>();
+  for (const r of rows) {
+    const arr = m.get(r.doc_tipo) ?? [];
+    arr.push(r);
+    m.set(r.doc_tipo, arr);
+  }
+  // ordenação por page
+  for (const [k, arr] of m) {
+    arr.sort((a, b) => (a.page ?? 0) - (b.page ?? 0));
+    m.set(k, arr);
+  }
+  return m;
 }
-export async function listDocsAtleta(userId: string, atletaId: string): Promise<DocumentoRow[]> {
-  return listDocs({ nivel: "atleta", userId, atletaId });
+
+/** Pequena ajuda para extrair um nome “legível” */
+export function displayName(row: DocumentoRow): string {
+  if (row.nome && row.nome.trim() !== "") return row.nome.trim();
+  // fallback ao último segmento do path
+  const seg = row.file_path.split("/").pop();
+  return seg || "ficheiro";
 }
