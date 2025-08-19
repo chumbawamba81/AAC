@@ -1,29 +1,24 @@
+// src/services/adminService.ts
 import { supabase } from "../supabaseClient";
 
-// verifica se user_id está na tabela app_admins
-export async function isAdmin(): Promise<boolean> {
-  const { data: u } = await supabase.auth.getUser();
-  const id = u?.user?.id;
-  if (!id) return false;
-  const { data } = await supabase.from("app_admins")
-    .select("user_id").eq("user_id", id).maybeSingle();
-  return !!data;
-}
+export type AdminState =
+  | { ok: false; reason: "no-session" }
+  | { ok: false; reason: "not-admin" }
+  | { ok: true; userId: string };
 
-export async function listSociosEE() {/*…*/}
-export async function listAtletasAdmin() {/*…*/}
-export async function listPagamentosAdmin() {/*…*/}
+export async function checkIsAdmin(): Promise<AdminState> {
+  const { data: u, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const userId = u?.user?.id;
+  if (!userId) return { ok: false, reason: "no-session" };
 
-export async function signedUrlForStorage(bucket: "documentos"|"pagamentos", path: string) {
-  const { data } = await supabase.storage.from(bucket)
-    .createSignedUrl(path, 60 * 60); // 1h
-  return data?.signedUrl ?? null;
-}
+  const { data, error: selErr } = await supabase
+    .from("admins")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-export async function marcarPagamentoValidado(id: string, validado: boolean) {
-  await supabase.from("pagamentos").update({ validado }).eq("id", id);
-}
-export async function atualizarSituacaoTesouraria(titularUserId: string, estado: string) {
-  await supabase.from("dados_pessoais")
-    .update({ situacao_tesouraria: estado }).eq("user_id", titularUserId);
+  if (selErr) throw selErr;
+  if (!data) return { ok: false, reason: "not-admin" };
+  return { ok: true, userId };
 }
