@@ -2,6 +2,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import AdminGate from "./AdminGate";
+import SociosPage from "./pages/Socios";
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -31,10 +32,6 @@ function Dashboard() {
   return <div className="text-sm text-gray-700">Bem-vindo à área de administração.</div>;
 }
 
-function SociosEE() {
-  return <div className="text-sm text-gray-700">Tabela de sócios / encarregados de educação (em breve).</div>;
-}
-
 function Atletas() {
   return <div className="text-sm text-gray-700">Tabela de atletas com filtros e ordenação (em breve).</div>;
 }
@@ -54,7 +51,7 @@ export default function AdminApp() {
         <Layout>
           <Routes>
             <Route path="/admin" element={<Dashboard />} />
-            <Route path="/admin/socios" element={<SociosEE />} />
+            <Route path="/admin/socios" element={<SociosPage />} />
             <Route path="/admin/atletas" element={<Atletas />} />
             <Route path="/admin/pagamentos" element={<Pagamentos />} />
             {/* fallback */}
