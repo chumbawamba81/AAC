@@ -10,7 +10,7 @@ export type DocumentoRow = {
   doc_tipo: string;
   page: number | null;
   file_path: string;
-  file_name: string | null;   // <- vem de "nome" (alias)
+  file_name: string | null;   // <- alias de "nome"
   mime_type: string | null;
   file_size: number | null;
   uploaded_at: string | null;
@@ -33,7 +33,7 @@ export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
       doc_tipo,
       page,
       file_path,
-      nome as file_name,         -- <- ALIAS corrige o erro
+      file_name:nome,      -- ✅ alias correto
       mime_type,
       file_size,
       uploaded_at
@@ -50,7 +50,8 @@ export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
 
   const { data, error } = await q;
   if (error) throw error;
-  return (data || []) as DocumentoRow[];
+  // Tipagem defensiva para contornar inference do supabase-js sem generics
+  return (data as unknown as DocumentoRow[]) || [];
 }
 
 export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow[]> {
@@ -61,11 +62,7 @@ export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow
       .storage
       .from("documentos")
       .createSignedUrl(r.file_path, 60 * 60); // 1h
-    if (error) {
-      out.push({ ...r, signedUrl: undefined });
-    } else {
-      out.push({ ...r, signedUrl: data?.signedUrl });
-    }
+    out.push({ ...r, signedUrl: error ? undefined : data?.signedUrl });
   }
   return out;
 }
