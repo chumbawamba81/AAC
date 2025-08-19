@@ -1,164 +1,193 @@
 // src/admin/components/MemberDetailsDialog.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
 import { Link as LinkIcon, RefreshCw } from "lucide-react";
 
-import { supabase } from "../../supabaseClient";
-import { listDocs, withSignedUrls, groupByTipo, type DocumentoRow } from "../services/adminDocumentosService";
+import {
+  listDocsSocio,
+  listDocsAtleta,
+  withSignedUrls,
+  groupByTipo,
+  displayName,
+  type DocumentoRow,
+} from "../services/adminDocumentosService";
 
-type AtletaLite = {
+import { supabase } from "../../supabaseClient";
+
+type AtletaRow = {
   id: string;
+  user_id: string;
   nome: string;
   escalao: string | null;
   data_nascimento: string;
   genero: string | null;
 };
 
-export type SocioRow = {
+type Member = {
   user_id: string;
-  nome_completo: string;
-  email: string;
-  telefone: string | null;
-  morada: string | null;
-  codigo_postal: string | null;
-  tipo_socio: string | null;
-  situacao_tesouraria: string | null;
+  nome_completo?: string | null;
+  email?: string | null;
+  telefone?: string | null;
+  codigo_postal?: string | null;
+  tipo_socio?: string | null;
 };
 
-export default function MemberDetailsDialog({
-  open,
-  onOpenChange,
-  socio,
-}: {
+type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  socio: SocioRow | null;
-}) {
-  const userId = socio?.user_id || null;
+  member: Member;
+};
 
-  const [loading, setLoading] = useState(false);
-  const [atletas, setAtletas] = useState<AtletaLite[]>([]);
+export default function MemberDetailsDialog({ open, onOpenChange, member }: Props) {
+  const userId = member.user_id;
+  const [busy, setBusy] = useState(false);
 
-  // Documentos do Sócio
-  const [socioDocs, setSocioDocs] = useState<Map<string, DocumentoRow[]>>(new Map());
-
-  // Documentos por Atleta
-  const [athDocs, setAthDocs] = useState<Record<string, Map<string, DocumentoRow[]>>>({});
+  // atletas do titular
+  const [atletas, setAtletas] = useState<AtletaRow[]>([]);
+  // docs: sócio
+  const [docsSocio, setDocsSocio] = useState<DocumentoRow[]>([]);
+  // docs por atletaId
+  const [docsByAth, setDocsByAth] = useState<Record<string, DocumentoRow[]>>({});
 
   async function refresh() {
     if (!userId) return;
-    setLoading(true);
+    setBusy(true);
     try {
-      // Sócio
-      const sRows = await listDocs({ nivel: "socio", userId });
-      const sWith = await withSignedUrls(sRows);
-      setSocioDocs(groupByTipo(sWith));
-
-      // Atletas do titular
-      const { data: aData, error: aErr } = await supabase
+      // atletas
+      const { data: ath, error: aerr } = await supabase
         .from("atletas")
-        .select("id,nome,escalao,data_nascimento,genero")
+        .select("id,user_id,nome,escalao,data_nascimento,genero")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
-      if (aErr) throw aErr;
-      setAtletas((aData || []) as AtletaLite[]);
+      if (aerr) throw aerr;
+      setAtletas((ath || []) as AtletaRow[]);
 
-      // Doc por atleta
-      const next: Record<string, Map<string, DocumentoRow[]>> = {};
-      for (const a of (aData || []) as AtletaLite[]) {
-        const rows = await listDocs({ nivel: "atleta", atletaId: a.id });
-        const withUrls = await withSignedUrls(rows);
-        next[a.id] = groupByTipo(withUrls);
+      // docs sócio
+      const socio = await listDocsSocio(userId).then(withSignedUrls);
+      setDocsSocio(socio);
+
+      // docs por atleta
+      const next: Record<string, DocumentoRow[]> = {};
+      for (const a of (ath || []) as AtletaRow[]) {
+        const rows = await listDocsAtleta(userId, a.id).then(withSignedUrls);
+        next[a.id] = rows;
       }
-      setAthDocs(next);
+      setDocsByAth(next);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
   useEffect(() => {
-    if (!open) return;
-    void refresh();
+    if (open) void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, userId]);
 
-  const socioDocsMissing = useMemo(() => {
-    const OBRIG = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"];
-    let miss = 0;
-    for (const k of OBRIG) {
-      if (!socioDocs.get(k)?.length) miss++;
-    }
-    return miss;
-  }, [socioDocs]);
+  const socioGrouped = useMemo(() => groupByTipo(docsSocio), [docsSocio]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Detalhes do Titular</DialogTitle>
+          <DialogTitle>Detalhes — {member.nome_completo || "Titular"}</DialogTitle>
         </DialogHeader>
 
-        {!socio ? (
-          <div className="text-sm text-gray-500">Sem registo selecionado.</div>
-        ) : (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Titular</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">
-                <div><strong>Nome:</strong> {socio.nome_completo}</div>
-                <div><strong>Email:</strong> {socio.email}</div>
-                <div><strong>Telefone:</strong> {socio.telefone || "—"}</div>
-                <div><strong>Morada:</strong> {socio.morada || "—"}</div>
-                <div><strong>CP:</strong> {socio.codigo_postal || "—"}</div>
-                <div><strong>Tipo de sócio:</strong> {socio.tipo_socio || "Não definido"}</div>
-                <div><strong>Tesouraria:</strong> {socio.situacao_tesouraria || "—"}</div>
-              </CardContent>
-            </Card>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm">
+            <div><strong>Email:</strong> {member.email || "—"}</div>
+            <div><strong>Telefone:</strong> {member.telefone || "—"}</div>
+            <div><strong>Tipo de sócio:</strong> {member.tipo_socio || "—"}</div>
+          </div>
+          <div>
+            <Button variant="outline" onClick={() => refresh()}>
+              <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
+            </Button>
+          </div>
+        </div>
 
-            <Tabs defaultValue="socio">
-              <TabsList>
-                <TabsTrigger value="socio">Documentos do Sócio {loading && <RefreshCw className="h-3 w-3 ml-1 animate-spin" />}</TabsTrigger>
-                <TabsTrigger value="atletas">Atletas</TabsTrigger>
-                <TabsTrigger value="ath_docs">Documentos dos Atletas</TabsTrigger>
-              </TabsList>
+        {/* ---- Documentos do Sócio ---- */}
+        <section className="mt-4">
+          <h3 className="font-semibold mb-2">Documentos do Sócio</h3>
+          {docsSocio.length === 0 ? (
+            <p className="text-sm text-gray-500">Sem ficheiros.</p>
+          ) : (
+            <div className="space-y-2">
+              {[...socioGrouped.entries()].map(([tipo, rows]) => (
+                <div key={tipo} className="border rounded-lg p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="font-medium">{tipo}</div>
+                  </div>
+                  <ul className="space-y-1">
+                    {rows.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between text-sm">
+                        <span className="inline-flex items-center gap-2">
+                          <Badge variant="secondary">Ficheiro {r.page ?? 1}</Badge>
+                          <a
+                            href={r.signedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline inline-flex items-center gap-1"
+                          >
+                            <LinkIcon className="h-4 w-4" />
+                            {displayName(r)}
+                          </a>
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {(r.mime_type || "").split("/")[1] || "doc"} · {r.file_size ? `${r.file_size} B` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
-              {/* TAB: Documentos do Sócio */}
-              <TabsContent value="socio">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">
-                      Documentos do Sócio {socioDocsMissing > 0 ? `— ${socioDocsMissing} em falta` : "— Completo"}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {socioDocs.size === 0 ? (
-                      <p className="text-sm text-gray-500">Sem documentos.</p>
+        {/* ---- Atletas + documentos ---- */}
+        <section className="mt-6">
+          <h3 className="font-semibold mb-2">Atletas do titular</h3>
+          {atletas.length === 0 ? (
+            <p className="text-sm text-gray-500">Sem atletas associados.</p>
+          ) : (
+            <div className="space-y-4">
+              {atletas.map((a) => {
+                const rows = docsByAth[a.id] || [];
+                const grouped = groupByTipo(rows);
+                return (
+                  <div key={a.id} className="border rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-medium">{a.nome}</div>
+                      <div className="text-xs text-gray-500">{a.escalao || "—"} · Nasc.: {a.data_nascimento}</div>
+                    </div>
+
+                    {rows.length === 0 ? (
+                      <p className="text-sm text-gray-500">Sem ficheiros.</p>
                     ) : (
-                      <div className="grid md:grid-cols-2 gap-3">
-                        {[...socioDocs.entries()].map(([tipo, files]) => (
-                          <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                            <div className="font-medium">{tipo}</div>
-                            <ul className="space-y-2">
-                              {files.map((row) => (
-                                <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
-                                  <div className="text-sm flex items-center gap-2">
-                                    <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                                      {row.page ?? 0}
-                                    </span>
-                                    {row.signedUrl ? (
-                                      <a href={row.signedUrl} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
-                                        <LinkIcon className="h-4 w-4" />
-                                        {row.file_name || row.file_path}
-                                      </a>
-                                    ) : (
-                                      <span className="text-gray-500">{row.file_name || row.file_path}</span>
-                                    )}
-                                  </div>
+                      <div className="space-y-2">
+                        {[...grouped.entries()].map(([tipo, rws]) => (
+                          <div key={tipo} className="border rounded-lg p-2">
+                            <div className="font-medium mb-1">{tipo}</div>
+                            <ul className="space-y-1">
+                              {rws.map((r) => (
+                                <li key={r.id} className="flex items-center justify-between text-sm">
+                                  <span className="inline-flex items-center gap-2">
+                                    <Badge variant="secondary">Ficheiro {r.page ?? 1}</Badge>
+                                    <a
+                                      href={r.signedUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="underline inline-flex items-center gap-1"
+                                    >
+                                      <LinkIcon className="h-4 w-4" />
+                                      {displayName(r)}
+                                    </a>
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {(r.mime_type || "").split("/")[1] || "doc"} · {r.file_size ? `${r.file_size} B` : ""}
+                                  </span>
                                 </li>
                               ))}
                             </ul>
@@ -166,97 +195,16 @@ export default function MemberDetailsDialog({
                         ))}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-              {/* TAB: Atletas (lista simples) */}
-              <TabsContent value="atletas">
-                <Card>
-                  <CardHeader><CardTitle className="text-base">Atletas</CardTitle></CardHeader>
-                  <CardContent>
-                    {atletas.length === 0 ? (
-                      <p className="text-sm text-gray-500">Sem atletas associados.</p>
-                    ) : (
-                      <div className="grid md:grid-cols-2 gap-3">
-                        {atletas.map((a) => (
-                          <div key={a.id} className="border rounded-lg p-3 space-y-1">
-                            <div className="font-medium">{a.nome}</div>
-                            <div className="text-xs text-gray-500">
-                              {a.genero || "—"} · Nasc.: {a.data_nascimento} · Escalão: {a.escalao || "—"}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* TAB: Documentos dos Atletas */}
-              <TabsContent value="ath_docs">
-                <Card>
-                  <CardHeader><CardTitle className="text-base">Documentos dos Atletas</CardTitle></CardHeader>
-                  <CardContent>
-                    {atletas.length === 0 ? (
-                      <p className="text-sm text-gray-500">Sem atletas associados.</p>
-                    ) : (
-                      <div className="space-y-4">
-                        {atletas.map((a) => {
-                          const mapa = athDocs[a.id] || new Map<string, DocumentoRow[]>();
-                          if (mapa.size === 0) {
-                            return (
-                              <div key={a.id} className="border rounded-lg p-3">
-                                <div className="font-medium">{a.nome}</div>
-                                <div className="text-xs text-gray-500 mb-2">
-                                  {a.genero || "—"} · Nasc.: {a.data_nascimento} · Escalão: {a.escalao || "—"}
-                                </div>
-                                <div className="text-sm text-gray-500">Sem documentos.</div>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div key={a.id} className="border rounded-lg p-3 space-y-2">
-                              <div className="font-medium">{a.nome}</div>
-                              <div className="text-xs text-gray-500">
-                                {a.genero || "—"} · Nasc.: {a.data_nascimento} · Escalão: {a.escalao || "—"}
-                              </div>
-
-                              <div className="grid md:grid-cols-2 gap-3 mt-2">
-                                {[...mapa.entries()].map(([tipo, files]) => (
-                                  <div key={tipo} className="border rounded-md p-2 space-y-2">
-                                    <div className="font-medium">{tipo}</div>
-                                    <ul className="space-y-2">
-                                      {files.map((row) => (
-                                        <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
-                                          <div className="text-sm flex items-center gap-2">
-                                            <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                                              {row.page ?? 0}
-                                            </span>
-                                            {row.signedUrl ? (
-                                              <a href={row.signedUrl} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
-                                                <LinkIcon className="h-4 w-4" />
-                                                {row.file_name || row.file_path}
-                                              </a>
-                                            ) : (
-                                              <span className="text-gray-500">{row.file_name || row.file_path}</span>
-                                            )}
-                                          </div>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+        {busy && (
+          <div className="mt-3 text-xs text-gray-500 inline-flex items-center gap-2">
+            <RefreshCw className="h-3 w-3 animate-spin" /> A carregar…
           </div>
         )}
       </DialogContent>

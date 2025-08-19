@@ -22,7 +22,7 @@ export type DocumentoRow = {
   mime_type: string | null;
   file_size: number | null;
   uploaded_at: string | null;
-  /** campo apenas de conveniência para UI */
+  /** gerado em runtime */
   signedUrl?: string;
 };
 
@@ -30,16 +30,36 @@ export type ListArgs =
   | { nivel: "socio"; userId: string }
   | { nivel: "atleta"; userId: string; atletaId: string };
 
+/** Util: nome para mostrar (fallback a partir do file_path) */
+export function displayName(row: DocumentoRow): string {
+  if (row.nome && row.nome.trim()) return row.nome.trim();
+  const p = row.file_path || "";
+  const last = p.split("/").pop();
+  return last || "ficheiro";
+}
+
+/** Util: agrupa por tipo e ordena por page asc */
+export function groupByTipo(rows: DocumentoRow[]): Map<string, DocumentoRow[]> {
+  const map = new Map<string, DocumentoRow[]>();
+  for (const r of rows) {
+    const arr = map.get(r.doc_tipo) || [];
+    arr.push(r);
+    map.set(r.doc_tipo, arr);
+  }
+  for (const [k, arr] of map) {
+    arr.sort((a, b) => (a.page ?? 0) - (b.page ?? 0));
+    map.set(k, arr);
+  }
+  return map;
+}
+
 /**
  * Lista documentos do sócio (nivel='socio') ou do atleta (nivel='atleta').
- * - Para 'socio' devolve docs com atleta_id IS NULL
- * - Para 'atleta' exige atletaId e filtra por esse atleta
  */
 export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
   let q = supabase
     .from("documentos")
     .select(
-      // NÃO usar generics para evitar "Expected 2 type arguments"
       "id,user_id,atleta_id,doc_nivel,doc_tipo,page,file_path,nome,mime_type,file_size,uploaded_at"
     )
     .eq("user_id", args.userId)
@@ -51,7 +71,6 @@ export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
     q = q.eq("atleta_id", args.atletaId);
   }
 
-  // Importante: ordenar por colunas reais, não pelo alias "file_name"
   q = q.order("doc_tipo", { ascending: true }).order("page", { ascending: true });
 
   const { data, error } = await q;
@@ -62,7 +81,7 @@ export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
   return (data || []) as DocumentoRow[];
 }
 
-/** Atalho: lista todos os docs (sócio + todos atletas) de um user */
+/** Lista todos os docs (sócio + atletas) de um user */
 export async function listAllDocsByUser(userId: string): Promise<DocumentoRow[]> {
   const { data, error } = await supabase
     .from("documentos")
@@ -81,10 +100,7 @@ export async function listAllDocsByUser(userId: string): Promise<DocumentoRow[]>
   return (data || []) as DocumentoRow[];
 }
 
-/**
- * Gera signed URLs para cada linha (campo file_path) no bucket 'documentos'.
- * Devolve um novo array, imutável, com 'signedUrl' preenchido quando possível.
- */
+/** Assina URLs para download */
 export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow[]> {
   const out: DocumentoRow[] = [];
   for (const r of rows) {
@@ -97,8 +113,7 @@ export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow
       if (!error && data?.signedUrl) {
         signedUrl = data.signedUrl;
       } else if (error) {
-        // Não rebentar a UI por falhar um link; só regista
-        console.warn("[adminDocumentosService.withSignedUrls] falha signedUrl:", r.file_path, error.message);
+        console.warn("[withSignedUrls] falha signedUrl:", r.file_path, error.message);
       }
     }
     out.push({ ...r, signedUrl });
@@ -106,12 +121,10 @@ export async function withSignedUrls(rows: DocumentoRow[]): Promise<DocumentoRow
   return out;
 }
 
-/** Conveniência: docs do sócio (nível 'socio') */
+/** Conveniências */
 export async function listDocsSocio(userId: string): Promise<DocumentoRow[]> {
   return listDocs({ nivel: "socio", userId });
 }
-
-/** Conveniência: docs de um atleta específico (nível 'atleta') */
 export async function listDocsAtleta(userId: string, atletaId: string): Promise<DocumentoRow[]> {
   return listDocs({ nivel: "atleta", userId, atletaId });
 }
