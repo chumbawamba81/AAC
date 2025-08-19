@@ -1,11 +1,20 @@
 import React from "react";
-import ReactDOM from "react-dom";
+import { createRoot } from "react-dom/client"; // 👈 React 18
 import App from "./App";
 import AdminApp from "./admin/AdminApp";
+import "./index.css";
 
-const isAdminRoute = window.location.pathname.startsWith("/admin");
-ReactDOM.createRoot(document.getElementById("root")!).render(
+const el = document.getElementById("root");
+if (!el) {
+  throw new Error("Elemento #root não encontrado no index.html");
+}
+const root = createRoot(el);
+
+// Troca de app consoante a rota
+const isAdmin = window.location.pathname.startsWith("/admin");
+
+root.render(
   <React.StrictMode>
-    { isAdminRoute ? <AdminApp /> : <App /> }
+    {isAdmin ? <AdminApp /> : <App />}
   </React.StrictMode>
 );
