@@ -1,79 +1,100 @@
-// Admin · src/services/tesourariaService.ts
 import { supabase } from "../supabaseClient";
 
-/** Marca um pagamento como validado/invalidado. */
+/**
+ * Tipagem mínima para listagem na área de admin.
+ * Alguns campos (validado, titular_*) podem não existir ainda — ajusta conforme a tua BD.
+ */
+export type AdminPagamento = {
+  id: string;
+  atleta_id: string | null;
+  atleta_nome?: string | null;
+  descricao: string | null;
+  comprovativo_url: string | null;
+  created_at: string | null;
+  validado?: boolean | null;
+  titular_user_id?: string | null;
+  titular_nome?: string | null;
+  titular_email?: string | null;
+};
+
+/** Lista pagamentos com URL assinado quando necessário e infos básicas do atleta/titular. */
+export async function listarPagamentosComUrl(): Promise<AdminPagamento[]> {
+  // 1) Ler pagamentos
+  const { data, error } = await supabase
+    .from("pagamentos")
+    .select(
+      "id, atleta_id, descricao, comprovativo_url, created_at, validado, titular_user_id"
+    )
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  const rows = (data ?? []) as any[];
+
+  // 2) Enriquecer com nome do atleta (se quiseres; depende das tuas RLS/joins)
+  //    Mantemos simples: tentamos ir buscar o nome do atleta por id
+  const out: AdminPagamento[] = [];
+  for (const r of rows) {
+    let atletaNome: string | null = null;
+
+    if (r.atleta_id) {
+      const { data: a } = await supabase
+        .from("atletas")
+        .select("nome")
+        .eq("id", r.atleta_id)
+        .maybeSingle();
+      atletaNome = (a as any)?.nome ?? null;
+    }
+
+    // (opcional) titular
+    let titularNome: string | null = null;
+    let titularEmail: string | null = null;
+    if (r.titular_user_id) {
+      const { data: dp } = await supabase
+        .from("dados_pessoais")
+        .select("nome_completo,email")
+        .eq("user_id", r.titular_user_id)
+        .maybeSingle();
+      titularNome = (dp as any)?.nome_completo ?? null;
+      titularEmail = (dp as any)?.email ?? null;
+    }
+
+    out.push({
+      id: r.id,
+      atleta_id: r.atleta_id ?? null,
+      atleta_nome: atletaNome,
+      descricao: r.descricao ?? null,
+      comprovativo_url: r.comprovativo_url ?? null,
+      created_at: r.created_at ?? null,
+      validado: r.validado ?? null,
+      titular_user_id: r.titular_user_id ?? null,
+      titular_nome: titularNome,
+      titular_email: titularEmail,
+    });
+  }
+
+  return out;
+}
+
+/** Marca um pagamento como validado/invalidado (requer coluna `validado` na tabela). */
 export async function marcarPagamentoValidado(
   pagamentoId: string,
   validado: boolean
 ): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const adminId = auth?.user?.id ?? null;
-
-  const payload: any = { validado };
-  if (validado) {
-    payload.validado_em = new Date().toISOString();
-    payload.validado_por = adminId;
-  } else {
-    payload.validado_em = null;
-    payload.validado_por = null;
-  }
-
   const { error } = await supabase
     .from("pagamentos")
-    .update(payload)
+    .update({ validado })
     .eq("id", pagamentoId);
-
   if (error) throw error;
 }
 
-/** Atualiza a situação de tesouraria do titular (registo em dados_pessoais). */
+/** Atualiza o campo `situacao_tesouraria` no titular (tabela `dados_pessoais`). */
 export async function atualizarSituacaoTesouraria(
   titularUserId: string,
-  situacao: "Regularizado" | "Pendente"
+  situacao: string
 ): Promise<void> {
   const { error } = await supabase
     .from("dados_pessoais")
     .update({ situacao_tesouraria: situacao })
     .eq("user_id", titularUserId);
-
   if (error) throw error;
-}
-
-/** Resolve o user_id (titular) de um pagamento via atleta -> user_id. */
-export async function obterTitularUserIdPorPagamento(
-  pagamentoId: string
-): Promise<string> {
-  const { data: pago, error: e1 } = await supabase
-    .from("pagamentos")
-    .select("atleta_id")
-    .eq("id", pagamentoId)
-    .single();
-
-  if (e1) throw e1;
-  const atletaId = (pago as any)?.atleta_id;
-  if (!atletaId) throw new Error("Pagamento sem atleta associado.");
-
-  const { data: atl, error: e2 } = await supabase
-    .from("atletas")
-    .select("user_id")
-    .eq("id", atletaId)
-    .maybeSingle();
-
-  if (e2) throw e2;
-  const userId = (atl as any)?.user_id;
-  if (!userId) throw new Error("Não foi possível determinar o titular do pagamento.");
-  return userId as string;
-}
-
-/**
- * Orquestração: valida/ invalida e sincroniza a situação de tesouraria do titular.
- * Uso típico no botão "Validar/Invalidar".
- */
-export async function validarPagamentoESincronizar(
-  pagamentoId: string,
-  validado: boolean
-): Promise<void> {
-  await marcarPagamentoValidado(pagamentoId, validado);
-  const titular = await obterTitularUserIdPorPagamento(pagamentoId);
-  await atualizarSituacaoTesouraria(titular, validado ? "Regularizado" : "Pendente");
 }
