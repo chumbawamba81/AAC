@@ -46,7 +46,6 @@ export async function listSocios(args: ListArgs) {
 
   if (search && search.trim() !== "") {
     const s = `%${search.trim()}%`;
-    // nome | email | telefone
     q = q.or(`nome_completo.ilike.${s},email.ilike.${s},telefone.ilike.${s}`);
   }
   if (status) q = q.eq("situacao_tesouraria", status);
@@ -76,7 +75,7 @@ export async function updateSituacaoTesouraria(
   if (error) throw error;
 }
 
-/** Linha detalhada (para modal) — usamos select * para ser resiliente a colunas novas */
+/** Linha detalhada (para modal) */
 export type SocioFullRow = {
   [k: string]: any;
   id: string;
@@ -120,36 +119,39 @@ export type DocRow = {
 };
 
 export async function fetchSocioDocs(userId: string): Promise<DocRow[]> {
-  try {
-    const { data, error } = await supabase
-      .from("documentos")
-      .select("id, doc_tipo, page, file_name, file_path")
-      .eq("user_id", userId)
-      .eq("doc_nivel", "socio")
-      .is("atleta_id", null)
-      .order("doc_tipo", { ascending: true })
-      .order("page", { ascending: true });
+  // 1) ler metadados da tabela documentos
+  const { data, error } = await supabase
+    .from("documentos")
+    .select("id, doc_tipo, page, file_name, file_path")
+    .eq("user_id", userId)
+    .eq("doc_nivel", "socio")
+    .is("atleta_id", null)
+    .order("doc_tipo", { ascending: true })
+    .order("page", { ascending: true });
 
-    if (error) throw error;
+  if (error) throw error;
 
-    const rows = (data || []) as DocRow[];
+  const rows = (data || []) as DocRow[];
 
-    const out: DocRow[] = [];
-    for (const r of rows) {
-      // gerar signed URL (requer policy SELECT em storage.objects para admins)
+  // 2) gerar signed URL por ficheiro (pode falhar para algum; não mandamos o conjunto todo abaixo)
+  const out: DocRow[] = [];
+  for (const r of rows) {
+    try {
       const { data: signed, error: sErr } = await supabase.storage
         .from("documentos")
         .createSignedUrl(r.file_path, 60 * 60);
-      // mesmo que falhe um, não bloqueia restantes
-      out.push({ ...r, signedUrl: signed?.signedUrl });
-      if (sErr) console.warn("[adminSociosService] signedUrl falhou:", sErr.message, r.file_path);
+      if (sErr) {
+        console.warn("[adminSociosService] createSignedUrl falhou:", sErr.message, r.file_path);
+        out.push({ ...r, signedUrl: undefined });
+      } else {
+        out.push({ ...r, signedUrl: signed?.signedUrl });
+      }
+    } catch (e) {
+      console.warn("[adminSociosService] erro inesperado a gerar signedUrl:", e);
+      out.push({ ...r, signedUrl: undefined });
     }
-    return out;
-  } catch (e) {
-    console.error("[adminSociosService] fetchSocioDocs:", e);
-    // não atirar erro para o UI ficar preso em "A carregar…"
-    return [];
   }
+  return out;
 }
 
 /** Atletas do titular (user_id) */
@@ -246,7 +248,6 @@ export async function exportSociosAsCsv(args: Omit<ListArgs, "limit" | "page">) 
 }
 
 function safe(v: string) {
-  // escapa ; e quebras simples
   const s = (v || "").replace(/;/g, ",").replace(/\r?\n/g, " ");
   return `"${s.replace(/"/g, '""')}"`;
 }
