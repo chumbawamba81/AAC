@@ -1,108 +1,101 @@
 // src/admin/pages/Pagamentos.tsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { Button } from "../../components/ui/button";
+import React, { useEffect, useMemo, useState } from "react";
 import PaymentsTable from "../PaymentsTable";
 import {
   listPagamentosAdmin,
-  marcarPagamentoValidado,
-  recomputeSlotsMensalidades,
-  type TipoPagamento,
   type AdminPagamento,
 } from "../services/adminPagamentosService";
 
-export default function PagamentosPage() {
-  const [tipo, setTipo] = useState<TipoPagamento>("mensalidade"); // Alterna entre 'mensalidade' e 'inscricao'
-  const [validado, setValidado] = useState<"qualquer" | "sim" | "nao">("qualquer");
-  const [search, setSearch] = useState("");
-  const [rows, setRows] = useState<AdminPagamento[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [info, setInfo] = useState<string | null>(null);
+type Filtro = "todos" | "inscricao" | "mensalidades";
 
-  const refresh = useCallback(async () => {
+export default function PagamentosPage() {
+  const [rows, setRows] = useState<AdminPagamento[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [search, setSearch] = useState("");
+
+  async function refresh() {
     setLoading(true);
     try {
-      const data = await listPagamentosAdmin({ tipo, validado, search: search.trim() || undefined });
+      const data = await listPagamentosAdmin(filtro);
       setRows(data);
+    } catch (e: any) {
+      console.error("[Admin Pagamentos] load", e);
+      alert(e?.message || "Falha a carregar pagamentos");
     } finally {
       setLoading(false);
     }
-  }, [tipo, validado, search]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  async function onValidate(row: AdminPagamento, next: boolean) {
-    await marcarPagamentoValidado(row.id, next);
-    await refresh();
   }
 
-  const stats = useMemo(() => {
-    const total = rows.length;
-    const ok = rows.filter((r) => r.validado).length;
-    const pend = total - ok;
-    return { total, ok, pend };
-  }, [rows]);
+  useEffect(() => { refresh(); }, [filtro]); // recarrega ao mudar filtro
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return rows;
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) =>
+      (r.titularName || "").toLowerCase().includes(q) ||
+      (r.atletaNome || "").toLowerCase().includes(q) ||
+      (r.descricao || "").toLowerCase().includes(q)
+    );
+  }, [rows, search]);
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Tesouraria · {tipo === "mensalidade" ? "Mensalidades" : "Inscrição"}</span>
-            {loading && <span className="text-xs text-gray-500">A carregar…</span>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="inline-flex rounded-lg overflow-hidden border">
-              <button
-                className={`px-3 py-1 text-sm ${tipo === "mensalidade" ? "bg-gray-900 text-white" : "bg-white"}`}
-                onClick={() => setTipo("mensalidade")}
-              >
-                Mensalidades
-              </button>
-              <button
-                className={`px-3 py-1 text-sm ${tipo === "inscricao" ? "bg-gray-900 text-white" : "bg-white"}`}
-                onClick={() => setTipo("inscricao")}
-              >
-                Inscrição
-              </button>
-            </div>
-
-            <select
-              className="border rounded-lg px-2 py-1 text-sm"
-              value={validado}
-              onChange={(e) => setValidado(e.target.value as any)}
-            >
-              <option value="qualquer">Todos</option>
-              <option value="sim">Validados</option>
-              <option value="nao">Pendentes</option>
-            </select>
-
-            <input
-              className="border rounded-lg px-2 py-1 text-sm"
-              placeholder="Procurar descrição…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <Button variant="secondary" onClick={refresh}>Atualizar</Button>
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <div className="text-lg font-semibold">Tesouraria · Pagamentos</div>
+          <div className="text-xs text-gray-500">
+            Validar comprovativos, ver detalhes e abrir ficheiros.
           </div>
+        </div>
 
-          <div className="text-xs text-gray-600">
-            {stats.total} registo(s) — {stats.ok} validado(s), {stats.pend} pendente(s).
-          </div>
+        <div className="ml-auto flex items-center gap-2">
+          <select
+            className="border rounded-lg px-3 py-2 text-sm"
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value as Filtro)}
+          >
+            <option value="todos">Todos</option>
+            <option value="inscricao">Só inscrições</option>
+            <option value="mensalidades">Só mensalidades</option>
+          </select>
 
-          <PaymentsTable rows={rows} onValidate={onValidate} />
+          <input
+            className="border rounded-lg px-3 py-2 text-sm"
+            placeholder="Pesquisar titular/atleta/descrição…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
 
-          {tipo === "mensalidade" && (
-            <div className="rounded-lg bg-amber-50 border p-3 text-sm">
-              <strong>Nota:</strong> ao mudar o plano de pagamento do atleta (Mensal ⇄ Trimestral ⇄ Anual),
-              as “slots” de <em>mensalidades</em> são recriadas automaticamente. Os comprovativos ligados às
-              slots antigas deixam de estar associados e deverão ser <em>resubmetidos</em>.
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <button
+            className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50"
+            onClick={() => refresh()}
+          >
+            Recarregar
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-500">A carregar…</div>
+      ) : (
+        <PaymentsTable
+          rows={filtered}
+          onOpen={(row) => {
+            // podes trocar para um Dialog com mais campos
+            alert(
+              [
+                `Titular/EE: ${row.titularName}`,
+                row.atletaNome ? `Atleta: ${row.atletaNome}` : "",
+                `Descrição: ${row.descricao}`,
+                `Estado: ${row.status}`,
+                row.createdAt ? `Submetido em: ${new Date(row.createdAt).toLocaleString()}` : "",
+              ].filter(Boolean).join("\n")
+            );
+          }}
+          onChanged={refresh}
+        />
+      )}
     </div>
   );
 }

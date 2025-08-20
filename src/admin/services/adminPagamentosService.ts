@@ -1,128 +1,157 @@
 // src/admin/services/adminPagamentosService.ts
 import { supabase } from "../../supabaseClient";
 
-/** Tipo de pagamento (separação mensalidades vs inscrição) */
-export type TipoPagamento = "mensalidade" | "inscricao";
+/** Nível do pagamento: inscrição/quotas de sócio vs atleta (mensalidades/inscrição atleta) */
+export type NivelPagamento = "socio" | "atleta";
 
-export type AdminPagamento = {
+/** Estado básico (podes expandir depois se tiveres "em_atraso", etc.) */
+export type StatusPagamento = "pendente" | "validado";
+
+/** Linha que a tabela de Tesouraria apresenta */
+export interface AdminPagamento {
   id: string;
-  tipo: TipoPagamento;
-  descricao: string;
-  validado: boolean;
-  createdAt: string | null;
-  comprovativoUrl: string | null;
-  signedUrl?: string | null;
+  nivel: NivelPagamento;
+  descricao: string;          // ex.: "Pagamento - 1º Mês" ou "Inscrição de Sócio"
+  createdAt: string | null;   // ISO ou null
+  status: StatusPagamento;    // 'pendente' | 'validado'
+  validado: boolean;          // conveniência
 
-  atletaId: string | null;
-  atletaNome: string | null;
+  titularUserId: string;      // user_id do titular/EE
+  titularName: string;        // nome no dados_pessoais (ou "—" se faltar)
 
-  titularUserId: string | null;
-  titularNome: string | null;
-};
+  atletaId: string | null;    // null quando nivel='socio'
+  atletaNome: string | null;  // null quando nivel='socio'
 
-/** Assina URL do Storage para admins (bucket 'pagamentos') */
-async function sign(urlPath: string | null): Promise<string | null> {
-  if (!urlPath) return null;
-  const { data, error } = await supabase
-    .storage
-    .from("pagamentos")
-    .createSignedUrl(urlPath, 60 * 60);
-  if (error) return null;
-  return data?.signedUrl || null;
+  filePath: string | null;    // caminho no bucket de comprovativos (se existir)
+  signedUrl: string | null;   // URL temporária para abrir o ficheiro (se existir)
 }
 
-/** Lista pagamentos (com join a atletas e nomes do titular) */
-export async function listPagamentosAdmin(opts?: {
-  tipo?: TipoPagamento;
-  validado?: "qualquer" | "sim" | "nao";
-  search?: string;
-}): Promise<AdminPagamento[]> {
-  // 1) pagamentos + relação a atleta (FK direta)
-  let q = supabase
+/** Helper: obter Signed URL (ignora erros e devolve null) */
+async function getSignedUrl(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  try {
+    // Ajusta o nome do bucket se o teu for diferente
+    const { data, error } = await supabase
+      .storage
+      .from("pagamentos")
+      .createSignedUrl(path, 60 * 60);
+    if (error) return null;
+    return data?.signedUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+type Filtro = "todos" | "inscricao" | "mensalidades";
+
+/**
+ * Lista pagamentos para a Tesouraria (admin), já enriquecidos com:
+ * - nome do titular/EE
+ * - nome do atleta (se aplicável)
+ * - signed URL do comprovativo (se existir)
+ */
+export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<AdminPagamento[]> {
+  // 1) Ler pagamentos crus
+  const { data: pays, error } = await supabase
     .from("pagamentos")
-    .select("id,tipo,descricao,validado,created_at,comprovativo_url,user_id,atleta_id,atletas(id,nome,user_id)")
+    .select("id, created_at, status, validado, nivel, descricao, user_id, atleta_id, file_path")
     .order("created_at", { ascending: false });
 
-  if (opts?.tipo) q = q.eq("tipo", opts.tipo);
-  if (opts?.validado === "sim") q = q.eq("validado", true);
-  if (opts?.validado === "nao") q = q.eq("validado", false);
-  if (opts?.search) q = q.ilike("descricao", `%${opts.search}%`);
-
-  const { data, error } = await q;
   if (error) throw error;
 
-  const rows = (data || []) as any[];
+  // 2) Filtrar por 'inscricao' vs 'mensalidades'
+  const filtered = (pays ?? []).filter((r: any) => {
+    if (filtro === "todos") return true;
+    const isInscricao = (r.descricao || "").toLowerCase().includes("inscri");
+    return filtro === "inscricao" ? isInscricao : !isInscricao;
+  });
 
-  // 2) mapear titular user_id e atleta user_id -> buscar nome no dados_pessoais (1 batelada)
-  const userIds = new Set<string>();
-  for (const r of rows) {
-    if (r.user_id) userIds.add(r.user_id);
-    if (r.atletas?.user_id) userIds.add(r.atletas.user_id);
-  }
-  const ids = Array.from(userIds);
-  const titularMap = new Map<string, string>(); // user_id -> nome_completo
+  // 3) Recolher user_ids e atleta_ids
+  const userIds = Array.from(new Set(filtered.map((r: any) => r.user_id).filter(Boolean)));
+  const atletaIds = Array.from(new Set(filtered.map((r: any) => r.atleta_id).filter(Boolean)));
 
-  if (ids.length) {
-    const { data: dps, error: e2 } = await supabase
+  // 4) Ler nomes de titulares
+  const titularByUser: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: titulares, error: tErr } = await supabase
       .from("dados_pessoais")
-      .select("user_id,nome_completo")
-      .in("user_id", ids);
-    if (!e2 && dps) {
-      for (const dp of dps as any[]) {
-        if (dp.user_id) titularMap.set(dp.user_id, dp.nome_completo || "");
+      .select("user_id, nome_completo")
+      .in("user_id", userIds);
+    if (!tErr && titulares) {
+      for (const r of titulares) {
+        titularByUser[r.user_id] = r.nome_completo ?? "—";
       }
     }
   }
 
-  // 3) construir saída + assinar urls
-  const out: AdminPagamento[] = [];
-  for (const r of rows) {
-    const titularUserId: string | null = r.user_id ?? r.atletas?.user_id ?? null;
-    const titularNome: string | null =
-      titularUserId ? (titularMap.get(titularUserId) || null) : null;
-
-    out.push({
-      id: r.id,
-      tipo: (r.tipo || "mensalidade") as TipoPagamento,
-      descricao: r.descricao,
-      validado: !!r.validado,
-      createdAt: r.created_at || null,
-      comprovativoUrl: r.comprovativo_url || null,
-      atletaId: r.atleta_id || null,
-      atletaNome: r.atletas?.nome || null,
-      titularUserId,
-      titularNome,
-    });
+  // 5) Ler nomes de atletas
+  const atletaById: Record<string, string> = {};
+  if (atletaIds.length > 0) {
+    const { data: atletas, error: aErr } = await supabase
+      .from("atletas")
+      .select("id, nome");
+    if (!aErr && atletas) {
+      for (const r of atletas) {
+        atletaById[r.id] = r.nome ?? "—";
+      }
+    }
   }
 
-  // assinar em paralelo (sem falhar a lista se algum falhar)
-  await Promise.all(
-    out.map(async (x) => {
-      x.signedUrl = await sign(x.comprovativoUrl);
+  // 6) Montar resultado e assinar URLs (em paralelo)
+  const out: AdminPagamento[] = await Promise.all(
+    filtered.map(async (r: any): Promise<AdminPagamento> => {
+      const status: StatusPagamento =
+        (r.status as StatusPagamento) ??
+        (r.validado ? "validado" : "pendente");
+
+      return {
+        id: r.id,
+        nivel: (r.nivel as NivelPagamento) ?? (r.atleta_id ? "atleta" : "socio"),
+        descricao: r.descricao ?? "",
+        createdAt: r.created_at ?? null,
+        status,
+        validado: !!r.validado,
+        titularUserId: r.user_id,
+        titularName: titularByUser[r.user_id] ?? "—",
+        atletaId: r.atleta_id ?? null,
+        atletaNome: r.atleta_id ? (atletaById[r.atleta_id] ?? "—") : null,
+        filePath: r.file_path ?? null,
+        signedUrl: await getSignedUrl(r.file_path ?? null),
+      };
     })
   );
 
   return out;
 }
 
-/** Marca/Desmarca um pagamento como validado */
-export async function marcarPagamentoValidado(pagamentoId: string, validado: boolean) {
-  const { error } = await supabase
+/** Alterna validação (true/false) e devolve a linha atualizada. */
+export async function marcarPagamentoValidado(pagamentoId: string, next: boolean): Promise<AdminPagamento | null> {
+  const { data, error } = await supabase
     .from("pagamentos")
-    .update({ validado })
-    .eq("id", pagamentoId);
-  if (error) throw error;
-}
+    .update({
+      validado: next,
+      status: next ? "validado" : "pendente",
+    })
+    .eq("id", pagamentoId)
+    .select("id, created_at, status, validado, nivel, descricao, user_id, atleta_id, file_path")
+    .maybeSingle();
 
-/** Recria as slots de mensalidade do atleta segundo o plano atual (SQL trigger-compatible) */
-export async function recomputeSlotsMensalidades(atletaId: string) {
-  // A função definida no SQL chama-se ensure_pagamentos_for_atleta(atleta_id uuid)
-  const { error } = await supabase.rpc("ensure_pagamentos_for_atleta", { p_atleta_id: atletaId });
   if (error) throw error;
-}
+  if (!data) return null;
 
-/** (Opcional) Recalcula situação de tesouraria do Sócio/EE (placeholder) */
-export async function recomputeTesourariaSocio(_userId: string) {
-  // Mantive como “no-op” para já — a tua UI mostra o estado por pagamento.
-  return;
+  // Enriquecer minimamente (sem outro round-trip)
+  return {
+    id: data.id,
+    nivel: (data.nivel as NivelPagamento) ?? (data.atleta_id ? "atleta" : "socio"),
+    descricao: data.descricao ?? "",
+    createdAt: data.created_at ?? null,
+    status: (data.status as StatusPagamento) ?? (data.validado ? "validado" : "pendente"),
+    validado: !!data.validado,
+    titularUserId: data.user_id,
+    titularName: "—", // será re-hidratado quando fizeres refresh via listPagamentosAdmin()
+    atletaId: data.atleta_id ?? null,
+    atletaNome: data.atleta_id ? "—" : null,
+    filePath: data.file_path ?? null,
+    signedUrl: await getSignedUrl(data.file_path ?? null),
+  };
 }

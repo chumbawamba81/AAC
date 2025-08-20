@@ -1,173 +1,109 @@
 // src/admin/PaymentsTable.tsx
-import React from "react";
-import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
-import { CheckCircle2, XCircle, Link as LinkIcon } from "lucide-react";
-
-export type AdminPagamento = {
-  id: string;
-  // identificação
-  titularUserId: string | null;
-  titularNome: string | null;     // <- nome do Sócio/EE
-  titularEmail: string | null;
-  atletaId: string | null;
-  atletaNome: string | null;
-
-  // pagamento
-  descricao: string;
-  tipo: "mensalidade" | "inscricao" | null;
-
-  // ficheiros & estado
-  comprovativoUrl: string | null;
-  signedUrl?: string | null;
-  validado: boolean | null;
-
-  // NOVO: data de submissão (created_at)
-  createdAt: string | null;
-};
+import React, { useState } from "react";
+import type { AdminPagamento } from "./services/adminPagamentosService";
+import { marcarPagamentoValidado } from "./services/adminPagamentosService";
 
 type Props = {
   rows: AdminPagamento[];
-  onOpen: (row: AdminPagamento) => void;                 // abrir detalhes
-  onValidate: (row: AdminPagamento, ok: boolean) => void; // validar / rejeitar
-  busyIds?: Set<string>;
-  title?: string;
+  onOpen: (row: AdminPagamento) => void;
+  /** Notifica o parent para recarregar a lista após alterações */
+  onChanged?: () => void;
 };
 
-function fmtDate(dt: string | null) {
-  if (!dt) return "—";
-  try {
-    const d = new Date(dt);
-    return `${d.toLocaleDateString("pt-PT")} ${d.toLocaleTimeString("pt-PT", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })}`;
-  } catch {
-    return dt;
-  }
+function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
+  const map: Record<string, string> = {
+    validado: "bg-green-100 text-green-800",
+    pendente: "bg-yellow-100 text-yellow-800",
+  };
+  return (
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || "bg-gray-100 text-gray-800"}`}>
+      {status === "validado" ? "Validado" : "Pendente"}
+    </span>
+  );
 }
 
-export default function PaymentsTable({
-  rows,
-  onOpen,
-  onValidate,
-  busyIds,
-  title = "Tesouraria",
-}: Props) {
-  const b = busyIds || new Set<string>();
+export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function toggle(row: AdminPagamento, next: boolean) {
+    try {
+      setBusyId(row.id);
+      await marcarPagamentoValidado(row.id, next);
+      onChanged?.();
+    } catch (e: any) {
+      alert(e?.message || "Não foi possível alterar a validação.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (!rows || rows.length === 0) {
+    return <div className="text-sm text-gray-500">Sem pagamentos para mostrar.</div>;
+  }
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="px-4 pt-4 pb-2">
-          <h2 className="text-lg font-semibold">{title}</h2>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-600">
-                <th className="px-4 py-2">Submetido em</th>   {/* <- NOVO (substitui “Tipo”) */}
-                <th className="px-4 py-2">Titular/EE</th>
-                <th className="px-4 py-2">Atleta</th>
-                <th className="px-4 py-2">Descrição</th>
-                <th className="px-4 py-2">Comprovativo</th>
-                <th className="px-4 py-2">Estado</th>
-                <th className="px-4 py-2 text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-gray-500">
-                    Sem registos.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((r) => {
-                  const pending = !!r.comprovativoUrl && r.validado === null;
-                  const regular = r.validado === true;
-                  const rejected = r.validado === false;
-
-                  return (
-                    <tr key={r.id} className="border-t">
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        {fmtDate(r.createdAt)}
-                      </td>
-
-                      <td className="px-4 py-2">
-                        <div className="flex flex-col">
-                          <span className="font-medium">{r.titularNome || "—"}</span>
-                          <span className="text-xs text-gray-500">{r.titularEmail || "—"}</span>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-2">{r.atletaNome || "—"}</td>
-                      <td className="px-4 py-2">{r.descricao}</td>
-
-                      <td className="px-4 py-2">
-                        {r.signedUrl ? (
-                          <a
-                            href={r.signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline inline-flex items-center gap-1"
-                          >
-                            <LinkIcon className="h-4 w-4" />
-                            Abrir
-                          </a>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-2">
-                        {regular && (
-                          <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 rounded-full px-2 py-0.5">
-                            <CheckCircle2 className="h-4 w-4" /> Validado
-                          </span>
-                        )}
-                        {rejected && (
-                          <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 rounded-full px-2 py-0.5">
-                            <XCircle className="h-4 w-4" /> Rejeitado
-                          </span>
-                        )}
-                        {pending && (
-                          <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
-                            Pendente
-                          </span>
-                        )}
-                        {!regular && !rejected && !pending && <span className="text-gray-400">—</span>}
-                      </td>
-
-                      <td className="px-4 py-2">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="outline" onClick={() => onOpen(r)}>
-                            Detalhes
-                          </Button>
-                          <Button
-                            onClick={() => onValidate(r, true)}
-                            disabled={b.has(r.id)}
-                          >
-                            Validar
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            onClick={() => onValidate(r, false)}
-                            disabled={b.has(r.id)}
-                          >
-                            Rejeitar
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="overflow-x-auto border rounded-xl">
+      <table className="min-w-full text-sm">
+        <thead className="bg-gray-50 text-gray-700">
+          <tr>
+            <th className="text-left px-3 py-2">Data submissão</th>
+            <th className="text-left px-3 py-2">Titular/EE</th>
+            <th className="text-left px-3 py-2">Atleta</th>
+            <th className="text-left px-3 py-2">Descrição</th>
+            <th className="text-left px-3 py-2">Estado</th>
+            <th className="text-right px-3 py-2">Ações</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {rows.map((r) => (
+            <tr key={r.id} className="hover:bg-gray-50">
+              <td className="px-3 py-2 whitespace-nowrap">
+                {r.createdAt ? new Date(r.createdAt).toLocaleString() : "—"}
+              </td>
+              <td className="px-3 py-2">{r.titularName || "—"}</td>
+              <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
+              <td className="px-3 py-2">{r.descricao}</td>
+              <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
+              <td className="px-3 py-2">
+                <div className="flex items-center gap-2 justify-end">
+                  {r.signedUrl && (
+                    <a
+                      className="px-2 py-1 rounded-lg border hover:bg-gray-100"
+                      href={r.signedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Abrir
+                    </a>
+                  )}
+                  <button
+                    className="px-2 py-1 rounded-lg border hover:bg-gray-100"
+                    onClick={() => onOpen(r)}
+                  >
+                    Detalhes
+                  </button>
+                  <div className="inline-flex rounded-lg overflow-hidden border">
+                    <button
+                      disabled={busyId === r.id}
+                      className={`px-2 py-1 text-xs ${r.validado ? "bg-white" : "bg-green-600 text-white hover:bg-green-700"}`}
+                      onClick={() => toggle(r, true)}
+                    >
+                      Validar
+                    </button>
+                    <button
+                      disabled={busyId === r.id}
+                      className={`px-2 py-1 text-xs ${!r.validado ? "bg-white" : "bg-red-600 text-white hover:bg-red-700"}`}
+                      onClick={() => toggle(r, false)}
+                    >
+                      Anular
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

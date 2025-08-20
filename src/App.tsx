@@ -1211,13 +1211,19 @@ export default function App() {
           </div>
         ) : (
           // Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab
-          <Tabs key={activeTab} defaultValue={activeTab} onValueChange={setActiveTab as any}>
-            <TabsList>
-              <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
-              {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
-              {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
-              {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
-            </TabsList>
+          <Tabs key={activeTab} defaultValue={activeTab}>
+  <TabsList>
+    <TabsTrigger value="home" onClick={() => setActiveTab("home")}>{mainTabLabel}</TabsTrigger>
+    {hasPerfil && (
+      <TabsTrigger value="atletas" onClick={() => setActiveTab("atletas")}>Atletas</TabsTrigger>
+    )}
+    {hasPerfil && (
+      <TabsTrigger value="docs" onClick={() => setActiveTab("docs")}>Documentos</TabsTrigger>
+    )}
+    {hasPerfil && hasAtletas && (
+      <TabsTrigger value="pag" onClick={() => setActiveTab("pag")}>Pagamentos</TabsTrigger>
+    )}
+  </TabsList>
 
             <TabsContent value="home">
               <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil} />
