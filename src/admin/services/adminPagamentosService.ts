@@ -71,13 +71,6 @@ async function signDocumentos(path: string | null | undefined): Promise<string |
 
 /* -------------------------- Pagamentos (tabela) --------------------------- */
 
-/**
- * Lista todos os pagamentos com enriquecimento (atleta, plano, titular email) para o admin.
- * Tabelas:
- *  - public.pagamentos: id, atleta_id, descricao, comprovativo_url, validado, created_at
- *  - public.atletas: id, user_id, nome, escalao, opcao_pagamento
- *  - public.dados_pessoais: user_id, email
- */
 export async function listPagamentosAdmin(): Promise<AdminPagamento[]> {
   const { data: base, error } = await supabase
     .from("pagamentos")
@@ -176,7 +169,6 @@ export async function markPagamentoValidado(id: string, value: boolean): Promise
 
 /* --------------------- Comprovativos de INSCRIÇÃO (documentos) -------------------- */
 
-/** Sócio — continua disponível para a outra aba */
 export async function listComprovativosSocio(): Promise<AdminDoc[]> {
   const { data: docs, error } = await supabase
     .from("documentos")
@@ -232,6 +224,8 @@ export async function listComprovativosInscricaoAtleta(): Promise<AdminDoc[]> {
 
   const rows = (docs ?? []) as Array<any>;
   const atletaIds = Array.from(new Set(rows.map((r) => r.atleta_id).filter(Boolean)));
+
+  // Mapear atletas -> (nome, user_id)
   const atletasMap = new Map<string, { nome: string | null; user_id: string | null }>();
   if (atletaIds.length > 0) {
     const { data: at, error: atErr } = await supabase
@@ -242,8 +236,10 @@ export async function listComprovativosInscricaoAtleta(): Promise<AdminDoc[]> {
     for (const a of at ?? []) atletasMap.set(a.id, { nome: a.nome ?? null, user_id: a.user_id ?? null });
   }
 
-  // emails
-  const userIds = Array.from(new Set((at ?? []).map((a) => a.user_id).filter(Boolean)));
+  // Emails dos titulares a partir do atletasMap (❗️corrige o erro do 'at' fora de escopo)
+  const userIds = Array.from(
+    new Set(Array.from(atletasMap.values()).map(v => v.user_id).filter((x): x is string => !!x))
+  );
   const emailMap = new Map<string, string>();
   if (userIds.length > 0) {
     const { data: dp, error: dpErr } = await supabase
