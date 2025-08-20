@@ -17,7 +17,8 @@ export type AtletaRow = {
   contactos_urgencia: string | null;
   emails_preferenciais: string | null;
   created_at: string | null;
-  // campos extra que possas ter:
+
+  // extras que podes ter na tabela (sem quebrar se não existirem)
   nacionalidade?: string | null;
   nacionalidade_outra?: string | null;
   tipo_doc?: string | null;
@@ -101,13 +102,18 @@ async function attachSignedUrls<T extends { signedUrl?: string }>(
   return out as T[];
 }
 
+/** Cast seguro via unknown (evita TS2352 por GenericStringError) */
+function asType<T>(v: any): T {
+  return v as unknown as T;
+}
+
 /** ------- Listagens principais ------- */
 
 export async function listAtletasAdmin(opts?: {
   search?: string;
   genero?: "Feminino" | "Masculino" | "";
   escalao?: string | "";
-  tipoSocio?: string | ""; // filtro por tipo de sócio (usa dados_pessoais)
+  tipoSocio?: string | ""; // filtro por tipo de sócio (via dados_pessoais)
   sort?: "nome_asc" | "nome_desc" | "created_desc" | "created_asc";
 }): Promise<
   Array<{
@@ -141,7 +147,7 @@ export async function listAtletasAdmin(opts?: {
   const { data, error } = await q;
   if (error) throw error;
 
-  const atletas = (data ?? []) as AtletaRow[];
+  const atletas = asType<AtletaRow[]>(data ?? []);
 
   // Buscar titulares (dados_pessoais) para os user_id encontrados
   const userIds = Array.from(new Set(atletas.map(a => a.user_id).filter(Boolean))) as string[];
@@ -152,7 +158,7 @@ export async function listAtletasAdmin(opts?: {
       .select("user_id,nome_completo,email,telefone,tipo_socio,codigo_postal")
       .in("user_id", userIds);
     if (terr) throw terr;
-    titulares = (tdata ?? []) as TitularMinimal[];
+    titulares = asType<TitularMinimal[]>(tdata ?? []);
   }
 
   const byUser = new Map<string, TitularMinimal>();
@@ -178,7 +184,7 @@ export async function getMissingCountsForAtletas(atletaIds: string[]): Promise<R
 
   const want = new Set<string>(DOCS_ATLETA as unknown as string[]);
   const byAth = new Map<string, Set<string>>();
-  for (const r of (data ?? []) as any[]) {
+  for (const r of asType<Array<{ atleta_id: string | null; doc_tipo: string }>>(data ?? [])) {
     if (!r.atleta_id) continue;
     const set = byAth.get(r.atleta_id) || new Set<string>();
     set.add(r.doc_tipo);
@@ -206,7 +212,7 @@ export async function listDocsByAtleta(userId: string, atletaId: string) {
     .order("page", { ascending: true });
 
   if (error) throw error;
-  const rows = (data ?? []) as DocumentoRow[];
+  const rows = asType<DocumentoRow[]>(data ?? []);
   return attachSignedUrls<DocumentoRow>("documentos", rows, "file_path");
 }
 
@@ -218,6 +224,6 @@ export async function listPagamentosByAtleta(atletaId: string) {
     .eq("atleta_id", atletaId)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  const rows = (data ?? []) as PagamentoRow[];
+  const rows = asType<PagamentoRow[]>(data ?? []);
   return attachSignedUrls<PagamentoRow>("pagamentos", rows, "comprovativo_url");
 }
