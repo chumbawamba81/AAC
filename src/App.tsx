@@ -1210,45 +1210,39 @@ export default function App() {
             <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
           </div>
         ) : (
-          // Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab
-          <Tabs key={activeTab} defaultValue={activeTab}>
+{/* Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab */}
+<Tabs key={activeTab} defaultValue={activeTab}>
   <TabsList>
-    <TabsTrigger value="home" onClick={() => setActiveTab("home")}>{mainTabLabel}</TabsTrigger>
-    {hasPerfil && (
-      <TabsTrigger value="atletas" onClick={() => setActiveTab("atletas")}>Atletas</TabsTrigger>
-    )}
-    {hasPerfil && (
-      <TabsTrigger value="docs" onClick={() => setActiveTab("docs")}>Documentos</TabsTrigger>
-    )}
-    {hasPerfil && hasAtletas && (
-      <TabsTrigger value="pag" onClick={() => setActiveTab("pag")}>Pagamentos</TabsTrigger>
-    )}
+    <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
+    {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
+    {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
+    {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
   </TabsList>
 
-            <TabsContent value="home">
-              <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil} />
-            </TabsContent>
+  <TabsContent value="home">
+    <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
+  </TabsContent>
 
-            {hasPerfil && (
-              <TabsContent value="atletas">
-                <AtletasSection state={state} setState={setState} onOpenForm={openAthForm} />
-              </TabsContent>
-            )}
+  {hasPerfil && (
+    <TabsContent value="atletas">
+      <AtletasSection state={state} setState={setState} onOpenForm={openAthForm} />
+    </TabsContent>
+  )}
 
-            {hasPerfil && (
-              <TabsContent value="docs">
-                <TemplatesDownloadSection />
-                {/* setState como função simples para compatibilidade do componente */}
-                <UploadDocsSection state={state} setState={(s: State) => setState(s)} />
-              </TabsContent>
-            )}
+  {hasPerfil && (
+    <TabsContent value="docs">
+      <TemplatesDownloadSection />
+      <UploadDocsSection state={state} setState={(s: State)=>setState(s)} />
+    </TabsContent>
+  )}
 
-            {hasPerfil && hasAtletas && (
-              <TabsContent value="pag">
-                <PagamentosSection state={state} />
-              </TabsContent>
-            )}
-          </Tabs>
+  {hasPerfil && hasAtletas && (
+    <TabsContent value="pag">
+      <PagamentosSection state={state} />
+    </TabsContent>
+  )}
+</Tabs>
+
         )}
       </AuthGate>
 
