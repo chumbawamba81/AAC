@@ -3,6 +3,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import AdminGate from "./AdminGate";
 import SociosPage from "./pages/Socios";
+import AtletasPage from "./pages/Atletas";
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
