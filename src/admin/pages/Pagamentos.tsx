@@ -7,12 +7,14 @@ import {
 } from "../services/adminPagamentosService";
 
 type Filtro = "todos" | "inscricao" | "mensalidades";
+type Tab = "inscricao" | "mensalidades";
 
 export default function PagamentosPage() {
   const [rows, setRows] = useState<AdminPagamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<Tab>("inscricao"); // ← tab controlada no parent
 
   async function refresh() {
     setLoading(true);
@@ -20,14 +22,15 @@ export default function PagamentosPage() {
       const data = await listPagamentosAdmin(filtro);
       setRows(data);
     } catch (e: any) {
-      console.error("[Admin Pagamentos] load", e);
       alert(e?.message || "Falha a carregar pagamentos");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { refresh(); }, [filtro]); // recarrega ao mudar filtro
+  useEffect(() => {
+    refresh();
+  }, [filtro]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return rows;
@@ -41,48 +44,43 @@ export default function PagamentosPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <div className="text-lg font-semibold">Tesouraria · Pagamentos</div>
-          <div className="text-xs text-gray-500">
-            Validar comprovativos, ver detalhes e abrir ficheiros.
-          </div>
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Pagamentos</h1>
+        <div className="flex items-center gap-2">
           <select
-            className="border rounded-lg px-3 py-2 text-sm"
+            className="rounded-lg border px-2 py-1 text-sm"
             value={filtro}
             onChange={(e) => setFiltro(e.target.value as Filtro)}
+            title="Filtro de backend"
           >
             <option value="todos">Todos</option>
-            <option value="inscricao">Só inscrições</option>
-            <option value="mensalidades">Só mensalidades</option>
+            <option value="inscricao">Inscrições</option>
+            <option value="mensalidades">Mensalidades</option>
           </select>
-
           <input
-            className="border rounded-lg px-3 py-2 text-sm"
-            placeholder="Pesquisar titular/atleta/descrição…"
+            className="rounded-lg border px-3 py-1 text-sm"
+            placeholder="Pesquisar titular, atleta ou descrição…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-
           <button
-            className="border rounded-lg px-3 py-2 text-sm hover:bg-gray-50"
-            onClick={() => refresh()}
+            className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-100"
+            onClick={refresh}
+            disabled={loading}
           >
-            Recarregar
+            {loading ? "A carregar…" : "Atualizar"}
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-sm text-gray-500">A carregar…</div>
+        <div className="text-sm text-gray-500">A carregar pagamentos…</div>
       ) : (
         <PaymentsTable
           rows={filtered}
+          tab={tab}                         // ← passa a tab atual
+          onTabChange={setTab}              // ← e o setter
           onOpen={(row) => {
-            // podes trocar para um Dialog com mais campos
             alert(
               [
                 `Titular/EE: ${row.titularName}`,
@@ -90,7 +88,9 @@ export default function PagamentosPage() {
                 `Descrição: ${row.descricao}`,
                 `Estado: ${row.status}`,
                 row.createdAt ? `Submetido em: ${new Date(row.createdAt).toLocaleString()}` : "",
-              ].filter(Boolean).join("\n")
+              ]
+                .filter(Boolean)
+                .join("\n")
             );
           }}
           onChanged={refresh}
