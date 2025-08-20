@@ -1,11 +1,15 @@
 // src/admin/services/adminPagamentosService.ts
 import { supabase } from "../../supabaseClient";
 
-/** Nível do pagamento: inscrição/quotas de sócio vs atleta (mensalidades/inscrição atleta) */
+/** Nível do pagamento */
 export type NivelPagamento = "socio" | "atleta";
 
-/** Estado (derivado de `validado`) */
-export type StatusPagamento = "pendente" | "validado";
+/** Estados (derivados) */
+export type StatusPagamento =
+  | "Regularizado"
+  | "Pendente de validação"
+  | "Por regularizar"
+  | "Em atraso";
 
 /** Linha apresentada na Tesouraria/Admin */
 export interface AdminPagamento {
@@ -13,66 +17,80 @@ export interface AdminPagamento {
   nivel: NivelPagamento;
   descricao: string;
   createdAt: string | null;
-  status: StatusPagamento;    // ← derivado de `validado`
+  status: StatusPagamento;    // ← derivado
   validado: boolean;
 
-  titularUserId: string;      // user_id do titular
-  titularName: string;        // nome em dados_pessoais (ou "—")
+  titularUserId: string;
+  titularName: string;
 
   atletaId: string | null;
   atletaNome: string | null;
 
-  filePath: string | null;    // mantemos para compat: será o valor bruto de comprovativo_url (se for path)
-  signedUrl: string | null;   // link para abrir o comprovativo (assinada ou directa)
+  filePath: string | null;    // pode ser URL absoluto ou caminho de storage
+  signedUrl: string | null;   // URL para abrir
 
-  // extra úteis (presentes no schema)
-  tipo?: string | null;       // campo `tipo` da tabela (se quiseres mostrar/filtrar)
-  devidoEm?: string | null;   // ISO de `devido_em`
-  validadoEm?: string | null; // timestamp de validação
-  validadoPor?: string | null;// uuid do admin que validou
+  // extras presentes no schema (mantidos para contexto/filtragem)
+  tipo?: string | null;
+  devidoEm?: string | null;
+  validadoEm?: string | null;
+  validadoPor?: string | null;
 }
 
 type Filtro = "todos" | "inscricao" | "mensalidades";
 
-/** Heurística: a partir de atleta_id decide nivel */
-function nivelFromRow(atleta_id: string | null | undefined): NivelPagamento {
-  return atleta_id ? "atleta" : "socio";
+/** Heurística: separa inscrição vs mensalidades */
+function isInscricaoFromRow(r: any): boolean {
+  if (r.atleta_id == null) return true; // sócio → inscrições/quotas
+  const t = (r.tipo || "").toLowerCase();
+  if (t.includes("inscri")) return true;
+  return (r.descricao || "").toLowerCase().includes("inscri");
 }
 
-/** Derivar status a partir de `validado` */
-function statusFromValidado(validado: any): StatusPagamento {
-  return !!validado ? "validado" : "pendente";
+/** 10.º dia do mês de `devido_em` (23:59:59) */
+function deadlineFromDevidoEm(devidoEm: string | null | undefined): Date | null {
+  if (!devidoEm) return null;
+  const d = new Date(devidoEm);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getFullYear(), d.getMonth(), 10, 23, 59, 59, 999);
 }
 
-/** Tentar gerar um link abrível a partir de `comprovativo_url` */
+/** Derivar estado segundo as regras indicadas */
+function deriveStatus(params: {
+  validado: boolean;
+  comprovativoUrl: string | null;
+  devidoEm: string | null;
+  now?: Date;
+}): StatusPagamento {
+  const { validado, comprovativoUrl, devidoEm } = params;
+  const now = params.now ?? new Date();
+
+  if (validado) return "Regularizado";
+
+  const hasComprovativo = !!(comprovativoUrl && `${comprovativoUrl}`.trim().length > 0);
+  if (hasComprovativo) return "Pendente de validação";
+
+  const dl = deadlineFromDevidoEm(devidoEm);
+  if (!dl) return "Por regularizar"; // sem referência temporal, assume dentro do prazo
+
+  return now <= dl ? "Por regularizar" : "Em atraso";
+}
+
+/** Resolver link abrível a partir de `comprovativo_url` */
 async function resolveSignedUrl(comprovativo_url: string | null): Promise<{ filePath: string | null; signedUrl: string | null }> {
   if (!comprovativo_url) return { filePath: null, signedUrl: null };
-
-  // Se já for um URL http(s), usa directamente
   if (/^https?:\/\//i.test(comprovativo_url)) {
     return { filePath: comprovativo_url, signedUrl: comprovativo_url };
   }
-
-  // Caso contrário, assumimos que é um caminho de Storage no bucket "pagamentos"
   try {
-    const { data, error } = await supabase
-      .storage
-      .from("pagamentos")
-      .createSignedUrl(comprovativo_url, 60 * 60);
-    if (error) return { filePath: comprovativo_url, signedUrl: null };
+    const { data } = await supabase.storage.from("pagamentos").createSignedUrl(comprovativo_url, 60 * 60);
     return { filePath: comprovativo_url, signedUrl: data?.signedUrl ?? null };
   } catch {
     return { filePath: comprovativo_url, signedUrl: null };
   }
 }
 
-/**
- * Lista pagamentos para a Tesouraria (admin).
- * NOTA: Não selecciona 'status' na BD (não existe); é derivado de 'validado'.
- * Usa `comprovativo_url` em vez de `file_path`.
- */
+/** Lista pagamentos para a Tesouraria (admin) */
 export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<AdminPagamento[]> {
-  // 1) Ler pagamentos crus (campos existentes no teu schema)
   const { data: pays, error } = await supabase
     .from("pagamentos")
     .select(`
@@ -92,26 +110,16 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
 
   if (error) throw error;
 
-  // 2) Filtrar por 'inscricao' vs 'mensalidades'
-  const filtered = (pays ?? []).filter((r: any) => {
+  const filtered = (pays ?? []).filter((r) => {
     if (filtro === "todos") return true;
-
-    // Preferir o campo `tipo` se estiver preenchido; caso contrário, usar heurística na descrição
-    const tipo: string = (r.tipo || "").toLowerCase();
-    if (tipo) {
-      const isInscricao = tipo.includes("inscri") || tipo.includes("insc");
-      return filtro === "inscricao" ? isInscricao : !isInscricao;
-    }
-    const isInscricaoDesc = (r.descricao || "").toLowerCase().includes("inscri");
-    return filtro === "inscricao" ? isInscricaoDesc : !isInscricaoDesc;
+    const insc = isInscricaoFromRow(r);
+    return filtro === "inscricao" ? insc : !insc;
   });
 
-  // 3) Mapear titulares (dados_pessoais) e atletas
-  const userIds = Array.from(new Set(filtered.map((r: any) => r.user_id).filter(Boolean)));
-  const atletaIds = Array.from(new Set(filtered.map((r: any) => r.atleta_id).filter(Boolean)));
-
+  // titulares
+  const userIds = Array.from(new Set(filtered.map((r) => r.user_id).filter(Boolean)));
   const titularByUser: Record<string, string> = {};
-  if (userIds.length > 0) {
+  if (userIds.length) {
     const { data: titulares } = await supabase
       .from("dados_pessoais")
       .select("user_id, nome_completo")
@@ -121,28 +129,29 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
     }
   }
 
+  // atletas
+  const atletaIds = Array.from(new Set(filtered.map((r) => r.atleta_id).filter(Boolean)));
   const atletaById: Record<string, string> = {};
-  if (atletaIds.length > 0) {
-    const { data: atletas } = await supabase
-      .from("atletas")
-      .select("id, nome")
-      .in("id", atletaIds);
+  if (atletaIds.length) {
+    const { data: atletas } = await supabase.from("atletas").select("id, nome").in("id", atletaIds);
     for (const a of (atletas ?? [])) {
       atletaById[(a as any).id] = (a as any).nome ?? "—";
     }
   }
 
-  // 4) Montar saída + assinar URLs em paralelo
   const out: AdminPagamento[] = await Promise.all(
     filtered.map(async (r: any) => {
-      const nivel = nivelFromRow(r.atleta_id);
-      const status = statusFromValidado(r.validado);
+      const status = deriveStatus({
+        validado: !!r.validado,
+        comprovativoUrl: r.comprovativo_url ?? null,
+        devidoEm: r.devido_em ?? null,
+      });
 
       const { filePath, signedUrl } = await resolveSignedUrl(r.comprovativo_url ?? null);
 
       return {
         id: r.id,
-        nivel,
+        nivel: r.atleta_id ? "atleta" : "socio",
         descricao: r.descricao ?? "",
         createdAt: r.created_at ?? null,
         status,
@@ -164,13 +173,8 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
   return out;
 }
 
-/**
- * Alterna validação (true/false) e devolve a linha atualizada.
- * Escreve também `validado_em` e `validado_por`.
- * NOTA: continua a não escrever 'status' (inexistente); o status é derivado.
- */
+/** Alterna validação (true/false) e devolve a linha atualizada */
 export async function marcarPagamentoValidado(pagamentoId: string, next: boolean): Promise<AdminPagamento | null> {
-  // identificar o admin autenticado para preencher `validado_por`
   const { data: auth } = await supabase.auth.getUser();
   const adminId = auth?.user?.id ?? null;
 
@@ -202,18 +206,22 @@ export async function marcarPagamentoValidado(pagamentoId: string, next: boolean
   if (error) throw error;
   if (!data) return null;
 
-  const status = statusFromValidado(data.validado);
+  const status = deriveStatus({
+    validado: !!data.validado,
+    comprovativoUrl: data.comprovativo_url ?? null,
+    devidoEm: data.devido_em ?? null,
+  });
   const { filePath, signedUrl } = await resolveSignedUrl(data.comprovativo_url ?? null);
 
   return {
     id: data.id,
-    nivel: nivelFromRow(data.atleta_id),
+    nivel: data.atleta_id ? "atleta" : "socio",
     descricao: data.descricao ?? "",
     createdAt: data.created_at ?? null,
     status,
     validado: !!data.validado,
     titularUserId: data.user_id,
-    titularName: "—",         // será reidratado num refresh da listagem
+    titularName: "—",
     atletaId: data.atleta_id ?? null,
     atletaNome: data.atleta_id ? "—" : null,
     filePath,

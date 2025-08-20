@@ -7,20 +7,22 @@ type Tab = "inscricao" | "mensalidades";
 
 type Props = {
   rows: AdminPagamento[];
-  tab: Tab;                            // ← tab controlada pelo parent
-  onTabChange: (t: Tab) => void;       // ← setter vindo do parent
+  tab: Tab;                      // controlada pelo parent
+  onTabChange: (t: Tab) => void; // setter vindo do parent
   onOpen: (row: AdminPagamento) => void;
-  onChanged?: () => void;              // pedir ao parent para recarregar a lista
+  onChanged?: () => void;
 };
 
 function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
   const map: Record<AdminPagamento["status"], string> = {
-    validado: "bg-green-100 text-green-800",
-    pendente: "bg-yellow-100 text-yellow-800",
+    "Regularizado": "bg-green-100 text-green-800",
+    "Pendente de validação": "bg-yellow-100 text-yellow-800",
+    "Por regularizar": "bg-gray-100 text-gray-800",
+    "Em atraso": "bg-red-100 text-red-800",
   };
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
-      {status === "validado" ? "Validado" : "Pendente"}
+      {status}
     </span>
   );
 }
@@ -37,16 +39,10 @@ function fmtDate(d: string | null | undefined, withTime = true) {
 
 /** Heurística local para separar inscrição vs mensalidades */
 function isInscricao(row: AdminPagamento): boolean {
-  // Se o nível é 'socio', tipicamente trata-se de inscrição/quotas
   if (row.nivel === "socio") return true;
-
-  // Se existir o campo "tipo" (opcional no serviço), aproveita
   const t = (row.tipo ?? "").toLowerCase();
   if (t.includes("inscri")) return true;
-
-  // Caso contrário, usar descrição
-  const d = (row.descricao ?? "").toLowerCase();
-  return d.includes("inscri");
+  return (row.descricao ?? "").toLowerCase().includes("inscri");
 }
 
 function TableView({
@@ -82,7 +78,7 @@ function TableView({
         <thead className="bg-gray-50 text-gray-700">
           <tr>
             <th className="text-left px-3 py-2">Submissão</th>
-            <th className="text-left px-3 py-2">Vencimento</th>
+            {/* Vencimento removido */}
             <th className="text-left px-3 py-2">Titular/EE</th>
             <th className="text-left px-3 py-2">Atleta</th>
             <th className="text-left px-3 py-2">Descrição</th>
@@ -94,7 +90,7 @@ function TableView({
           {rows.map((r) => (
             <tr key={r.id} className="hover:bg-gray-50">
               <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
-              <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.devidoEm ?? null, false)}</td>
+              {/* coluna Vencimento removida */}
               <td className="px-3 py-2">{r.titularName || "—"}</td>
               <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
               <td className="px-3 py-2">{r.descricao}</td>
@@ -125,59 +121,4 @@ function TableView({
                     <button
                       disabled={busyId === r.id}
                       className={`px-2 py-1 text-xs ${r.validado ? "bg-white" : "bg-green-600 text-white hover:bg-green-700"}`}
-                      onClick={() => toggle(r, true)}
-                    >
-                      Validar
-                    </button>
-                    <button
-                      disabled={busyId === r.id}
-                      className={`px-2 py-1 text-xs ${!r.validado ? "bg-white" : "bg-red-600 text-white hover:bg-red-700"}`}
-                      onClick={() => toggle(r, false)}
-                    >
-                      Anular
-                    </button>
-                  </div>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export default function PaymentsTable({ rows, tab, onTabChange, onOpen, onChanged }: Props) {
-  const { inscricoes, mensalidades } = useMemo(() => {
-    const insc: AdminPagamento[] = [];
-    const mens: AdminPagamento[] = [];
-    for (const r of rows ?? []) {
-      (isInscricao(r) ? insc : mens).push(r);
-    }
-    return { inscricoes: insc, mensalidades: mens };
-  }, [rows]);
-
-  const current = tab === "inscricao" ? inscricoes : mensalidades;
-
-  return (
-    <div className="space-y-3">
-      {/* Separador (tabs controladas pelo parent) */}
-      <div className="inline-flex rounded-xl border overflow-hidden">
-        <button
-          onClick={() => onTabChange("inscricao")}
-          className={`px-4 py-2 text-sm ${tab === "inscricao" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
-        >
-          Inscrições ({inscricoes.length})
-        </button>
-        <button
-          onClick={() => onTabChange("mensalidades")}
-          className={`px-4 py-2 text-sm ${tab === "mensalidades" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
-        >
-          Mensalidades ({mensalidades.length})
-        </button>
-      </div>
-
-      <TableView rows={current} onOpen={onOpen} onChanged={onChanged} />
-    </div>
-  );
-}
+                      onClick={() => toggle(
