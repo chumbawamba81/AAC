@@ -1,12 +1,11 @@
 // src/admin/PaymentsTable.tsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import type { AdminPagamento } from "./services/adminPagamentosService";
 import { marcarPagamentoValidado } from "./services/adminPagamentosService";
 
 type Props = {
   rows: AdminPagamento[];
   onOpen: (row: AdminPagamento) => void;
-  /** Notifica o parent para recarregar a lista após alterações */
   onChanged?: () => void;
 };
 
@@ -32,7 +31,29 @@ function fmtDate(d: string | null | undefined, withTime = true) {
   }
 }
 
-export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
+/** Heurística local para separar inscrição vs mensalidades */
+function isInscricao(row: AdminPagamento): boolean {
+  // Se tiver "nivel" socio, geralmente é inscrição/quotas
+  if (row.nivel === "socio") return true;
+
+  // Se tiver `tipo` (quando presente no serviço), aproveita
+  const t = (row.tipo ?? "").toLowerCase();
+  if (t.includes("inscri")) return true;
+
+  // Caso contrário, usa descrição
+  const d = (row.descricao ?? "").toLowerCase();
+  return d.includes("inscri");
+}
+
+function TableView({
+  rows,
+  onOpen,
+  onChanged,
+}: {
+  rows: AdminPagamento[];
+  onOpen: (row: AdminPagamento) => void;
+  onChanged?: () => void;
+}) {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   async function toggle(row: AdminPagamento, next: boolean) {
@@ -48,7 +69,7 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
   }
 
   if (!rows || rows.length === 0) {
-    return <div className="text-sm text-gray-500">Sem pagamentos para mostrar.</div>;
+    return <div className="text-sm text-gray-500">Sem pagamentos nesta categoria.</div>;
   }
 
   return (
@@ -61,7 +82,6 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
             <th className="text-left px-3 py-2">Titular/EE</th>
             <th className="text-left px-3 py-2">Atleta</th>
             <th className="text-left px-3 py-2">Descrição</th>
-            <th className="text-left px-3 py-2">Tipo</th>
             <th className="text-left px-3 py-2">Estado</th>
             <th className="text-right px-3 py-2">Ações</th>
           </tr>
@@ -74,7 +94,6 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
               <td className="px-3 py-2">{r.titularName || "—"}</td>
               <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
               <td className="px-3 py-2">{r.descricao}</td>
-              <td className="px-3 py-2">{r.tipo ?? "—"}</td>
               <td className="px-3 py-2">
                 <StatusBadge status={r.status} />
               </td>
@@ -120,6 +139,43 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
+  const [tab, setTab] = useState<"inscricao" | "mensalidades">("inscricao");
+
+  const { inscricoes, mensalidades } = useMemo(() => {
+    const insc: AdminPagamento[] = [];
+    const mens: AdminPagamento[] = [];
+    for (const r of rows ?? []) {
+      (isInscricao(r) ? insc : mens).push(r);
+    }
+    return { inscricoes: insc, mensalidades: mens };
+  }, [rows]);
+
+  const current = tab === "inscricao" ? inscricoes : mensalidades;
+
+  return (
+    <div className="space-y-3">
+      {/* Separador (tabs simples) */}
+      <div className="inline-flex rounded-xl border overflow-hidden">
+        <button
+          onClick={() => setTab("inscricao")}
+          className={`px-4 py-2 text-sm ${tab === "inscricao" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
+        >
+          Inscrições ({inscricoes.length})
+        </button>
+        <button
+          onClick={() => setTab("mensalidades")}
+          className={`px-4 py-2 text-sm ${tab === "mensalidades" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
+        >
+          Mensalidades ({mensalidades.length})
+        </button>
+      </div>
+
+      <TableView rows={current} onOpen={onOpen} onChanged={onChanged} />
     </div>
   );
 }
