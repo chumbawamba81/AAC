@@ -1,232 +1,155 @@
 // src/admin/services/adminPagamentosService.ts
 import { supabase } from "../../supabaseClient";
 
-/* ===================== Tipos ===================== */
-
-export type NivelPagamento = "socio" | "atleta";
-
-export type AdminPagamento = {
+/** Modelo usado no Admin */
+export interface AdminPagamento {
   id: string;
-  nivel: NivelPagamento;
   descricao: string | null;
   createdAt: string | null;
-  // atleta
+  comprovativoUrl: string | null;
+  signedUrl: string | null;
+
+  // ligações (se existirem)
   atletaId: string | null;
   atletaNome: string | null;
-  // titular
-  titularUserId: string | null;
-  titularEmail: string | null;
-  // comprovativo (pagamentos)
-  storageKey: string | null;
-  signedUrl?: string | null;
-  // estado de validação do pagamento
-  validado: boolean;
-};
 
-export type EstadoMensalidades = "Regularizado" | "Pendente de validação" | "Em atraso" | "—";
+  titularUserId: string | null;   // se a tabela tiver user_id
+  titularEmail: string | null;    // resolvido via dados_pessoais
 
-export type AdminDoc = {
-  id: string;
-  userId: string | null;
-  atletaId: string | null;
-  docNivel: "socio" | "atleta";
-  docTipo: string;
-  page: number | null;
-  objectPath: string | null;
-  uploadedAt: string | null;
-  // extras
-  titularEmail: string | null;
-  atletaNome: string | null;
-  // NOVO: validação no documento
-  validadoDoc: boolean;
-  // NOVO: validação agregada no atleta
-  inscricaoValidada: boolean | null; // só faz sentido quando docNivel='atleta'
-  signedUrl?: string | null;
-};
-
-/* =============== Helpers de signed URL =============== */
-
-async function signFromBucket(bucket: string, key: string | null, seconds = 3600) {
-  if (!key) return null;
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(key, seconds);
-  if (error) return null;
-  return data?.signedUrl ?? null;
+  validado: boolean | null;       // se a tabela tiver esta coluna
 }
 
-/* ===================== Mensalidades ===================== */
+/** Util: converte qualquer unknown para string|null bonitinho */
+function asStr(v: any): string | null {
+  return typeof v === "string" ? v : v == null ? null : String(v);
+}
+function asBool(v: any): boolean | null {
+  return typeof v === "boolean" ? v : v == null ? null : Boolean(v);
+}
 
+/**
+ * Lista todos os pagamentos visíveis para o admin.
+ * - 1ª query: public.pagamentos (*)
+ * - 2ª query: nomes dos atletas (se houver atleta_id)
+ * - 3ª query: emails dos titulares (se houver user_id)
+ * - cria signedUrl a partir de comprovativo_url (bucket 'pagamentos')
+ */
 export async function listPagamentosAdmin(): Promise<AdminPagamento[]> {
-  // pagamentos (mensalidades/anuidades de atleta) – bucket 'pagamentos'
+  // 1) Pagamentos (pega em tudo para não falhar por colunas opcionais)
   const { data, error } = await supabase
     .from("pagamentos")
-    .select(
-      `
-      id,
-      atleta_id,
-      descricao,
-      comprovativo_url,
-      created_at,
-      validado,
-      atletas:atleta_id ( nome, user_id ),
-      titular:dados_pessoais!inner(user_id,email)
-    `
-    )
+    .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) throw error;
-
-  const out: AdminPagamento[] = [];
-  for (const r of (data as any[]) || []) {
-    out.push({
-      id: r.id,
-      nivel: "atleta",
-      descricao: r.descricao ?? null,
-      createdAt: r.created_at ?? null,
-      atletaId: r.atleta_id ?? null,
-      atletaNome: r.atletas?.nome ?? null,
-      titularUserId: r.titular?.user_id ?? null,
-      titularEmail: r.titular?.email ?? null,
-      storageKey: r.comprovativo_url ?? null,
-      validado: !!r.validado,
-      signedUrl: await signFromBucket("pagamentos", r.comprovativo_url ?? null),
-    });
+  if (error) {
+    throw error;
   }
-  return out;
-}
+  const rows = Array.isArray(data) ? data : [];
 
-/** Marca/desmarca um pagamento (mensalidade/trimestre/anuidade de atleta) como validado */
-export async function markPagamentoValidado(pagamentoId: string, ok: boolean): Promise<void> {
-  const { error } = await supabase
-    .from("pagamentos")
-    .update({ validado: ok })
-    .eq("id", pagamentoId);
-  if (error) throw error;
-}
+  // Coleta ids
+  const atletaIds: string[] = [];
+  const titularIds: string[] = [];
 
-/** Estado por atleta — (implementação simples) */
-export function computeEstadoByAtleta(rows: AdminPagamento[]): Map<
-  string,
-  { estado: EstadoMensalidades }
-> {
-  const m = new Map<string, { estado: EstadoMensalidades }>();
-  for (const r of rows) {
-    if (!r.atletaId) continue;
-    // heurística básica: se tem algum pago e validado => Regularizado; se tem comprovativo não validado => Pendente de validação
-    const prev = m.get(r.atletaId);
-    if (r.validado) {
-      m.set(r.atletaId, { estado: "Regularizado" });
-    } else if (!prev) {
-      m.set(r.atletaId, { estado: "Pendente de validação" });
+  for (const r of rows as any[]) {
+    if (r?.atleta_id && !atletaIds.includes(r.atleta_id)) atletaIds.push(r.atleta_id);
+    if ("user_id" in r && r.user_id && !titularIds.includes(r.user_id)) titularIds.push(r.user_id);
+  }
+
+  // 2) Atletas -> mapa id->nome
+  const atletasById = new Map<string, { nome: string }>();
+  if (atletaIds.length > 0) {
+    const { data: at, error: aerr } = await supabase
+      .from("atletas")
+      .select("id,nome")
+      .in("id", atletaIds);
+    if (aerr) throw aerr;
+    for (const a of at || []) {
+      atletasById.set((a as any).id, { nome: asStr((a as any).nome) || "" });
     }
   }
-  return m;
-}
 
-/* ===================== Inscrição — SÓCIO ===================== */
+  // 3) dados_pessoais -> mapa user_id->email
+  const emailByUser = new Map<string, string>();
+  if (titularIds.length > 0) {
+    const { data: dp, error: derr } = await supabase
+      .from("dados_pessoais")
+      .select("user_id,email")
+      .in("user_id", titularIds);
+    if (derr) throw derr;
+    for (const d of dp || []) {
+      const uid = asStr((d as any).user_id);
+      if (uid) emailByUser.set(uid, asStr((d as any).email) || "");
+    }
+  }
 
-const DOC_SOCIO = "Comprovativo de pagamento de sócio";
+  // 4) signed URLs para comprovativos
+  const out: AdminPagamento[] = [];
+  for (const r of rows as any[]) {
+    const id = asStr(r.id)!;
+    const atletaId = asStr(r.atleta_id);
+    const titularUserId = "user_id" in r ? asStr(r.user_id) : null;
 
-export async function listComprovativosSocio(): Promise<AdminDoc[]> {
-  const { data, error } = await supabase
-    .from("documentos")
-    .select(
-      `
-      id, user_id, atleta_id, doc_nivel, doc_tipo, page, object_path, uploaded_at, validado,
-      titular:dados_pessoais!inner(user_id,email)
-    `
-    )
-    .eq("doc_nivel", "socio")
-    .eq("doc_tipo", DOC_SOCIO)
-    .order("uploaded_at", { ascending: false });
+    // cria signed URL se houver caminho
+    let signedUrl: string | null = null;
+    const path = asStr(r.comprovativo_url);
+    if (path) {
+      const { data: signed, error: signErr } = await supabase
+        .storage
+        .from("pagamentos")
+        .createSignedUrl(path, 60 * 60); // 1h
 
-  if (error) throw error;
+      if (!signErr) signedUrl = signed?.signedUrl || null;
+    }
 
-  const out: AdminDoc[] = [];
-  for (const d of (data as any[]) || []) {
     out.push({
-      id: d.id,
-      userId: d.user_id ?? null,
-      atletaId: d.atleta_id ?? null,
-      docNivel: "socio",
-      docTipo: d.doc_tipo,
-      page: d.page ?? null,
-      objectPath: d.object_path ?? null,
-      uploadedAt: d.uploaded_at ?? null,
-      titularEmail: d.titular?.email ?? null,
-      atletaNome: null,
-      validadoDoc: !!d.validado,
-      inscricaoValidada: null,
-      signedUrl: await signFromBucket("documentos", d.object_path ?? null),
+      id,
+      descricao: asStr(r.descricao),
+      createdAt: asStr(r.created_at),
+      comprovativoUrl: path,
+      signedUrl,
+      atletaId,
+      atletaNome: atletaId ? (atletasById.get(atletaId)?.nome || null) : null,
+      titularUserId,
+      titularEmail: titularUserId ? (emailByUser.get(titularUserId) || null) : null,
+      validado: asBool((r as any).validado ?? null),
     });
   }
+
   return out;
 }
 
-/** Atualiza situação de tesouraria do titular (dados_pessoais) */
-export async function setTesourariaSocio(userId: string, status: string): Promise<void> {
+/**
+ * Marca um pagamento como (in)validado.
+ * Requer policy UPDATE para admins (ver SQL no comentário).
+ * Se a coluna "validado" não existir, devolve erro claro.
+ */
+export async function marcarPagamentoValidado(pagamentoId: string, valid: boolean): Promise<void> {
   const { error } = await supabase
-    .from("dados_pessoais")
-    .update({ situacao_tesouraria: status })
-    .eq("user_id", userId);
-  if (error) throw error;
-}
+    .from("pagamentos")
+    .update({ validado: valid } as any)
+    .eq("id", pagamentoId);
 
-/* ===================== Inscrição — ATLETA ===================== */
-
-const DOC_ATLETA_INSCR = "Comprovativo de pagamento de inscrição";
-
-export async function listComprovativosInscricaoAtleta(): Promise<AdminDoc[]> {
-  const { data, error } = await supabase
-    .from("documentos")
-    .select(
-      `
-      id, user_id, atleta_id, doc_nivel, doc_tipo, page, object_path, uploaded_at, validado,
-      atleta:atletas!inner(id, nome, inscricao_validada),
-      titular:dados_pessoais!inner(user_id, email)
-    `
-    )
-    .eq("doc_nivel", "atleta")
-    .eq("doc_tipo", DOC_ATLETA_INSCR)
-    .order("uploaded_at", { ascending: false });
-
-  if (error) throw error;
-
-  const out: AdminDoc[] = [];
-  for (const d of (data as any[]) || []) {
-    out.push({
-      id: d.id,
-      userId: d.user_id ?? null,
-      atletaId: d.atleta?.id ?? d.atleta_id ?? null,
-      docNivel: "atleta",
-      docTipo: d.doc_tipo,
-      page: d.page ?? null,
-      objectPath: d.object_path ?? null,
-      uploadedAt: d.uploaded_at ?? null,
-      titularEmail: d.titular?.email ?? null,
-      atletaNome: d.atleta?.nome ?? null,
-      validadoDoc: !!d.validado,
-      inscricaoValidada: typeof d.atleta?.inscricao_validada === "boolean" ? d.atleta.inscricao_validada : null,
-      signedUrl: await signFromBucket("documentos", d.object_path ?? null),
-    });
+  if (error) {
+    // Se a tabela ainda não tem esta coluna, explica o que falta
+    const msg = (error as any)?.message || "";
+    if (msg.includes('column "validado"') || (error as any)?.code === "42703") {
+      throw new Error(
+        "A coluna 'validado' não existe em public.pagamentos. Adiciona-a com:\n" +
+        "  alter table public.pagamentos add column if not exists validado boolean default false;"
+      );
+    }
+    throw error;
   }
-  return out;
 }
 
-/** Marca/reverte a inscrição validada (ATUALIZA AMBAS as tabelas) */
-export async function setInscricaoAtletaValidada(atletaId: string, ok: boolean): Promise<void> {
-  // 1) atletas.inscricao_validada
-  const { error: e1 } = await supabase
-    .from("atletas")
-    .update({ inscricao_validada: ok })
-    .eq("id", atletaId);
-  if (e1) throw e1;
+/* Opcional: helpers para recomputar estado de tesouraria por titular/atleta
+   (deixa comentado; ativa quando quiseres essa lógica no admin)
 
-  // 2) documentos.validado para os docs de inscrição desse atleta
-  const { error: e2 } = await supabase
-    .from("documentos")
-    .update({ validado: ok })
-    .eq("doc_nivel", "atleta")
-    .eq("doc_tipo", DOC_ATLETA_INSCR)
-    .eq("atleta_id", atletaId);
-  if (e2) throw e2;
+export async function recomputeTesourariaSocio(titularUserId: string): Promise<void> {
+  // Implementa a tua regra de negócio (contagem de comprovativos validados, etc.)
 }
+
+export async function recomputeTesourariaAtleta(atletaId: string): Promise<void> {
+  // Implementa a tua regra de negócio
+}
+*/

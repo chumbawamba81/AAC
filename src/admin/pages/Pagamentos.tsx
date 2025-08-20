@@ -1,353 +1,97 @@
 // src/admin/pages/Pagamentos.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Card } from "../../components/ui/card";
-import { Button } from "../../components/ui/button";
+import React, { useEffect, useState, useCallback } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import PaymentsTable, { type AdminPagamento } from "../PaymentsTable";
+import { RefreshCw } from "lucide-react";
+
+// ⚠️ Ajusta o caminho se a tua service estiver noutro sítio.
+// A service deve exportar: listPagamentosAdmin() e marcarPagamentoValidado(id, valid)
 import {
   listPagamentosAdmin,
-  computeEstadoByAtleta,
-  markPagamentoValidado,
-  listComprovativosSocio,
-  listComprovativosInscricaoAtleta,
-  setTesourariaSocio,
-  setInscricaoAtletaValidada,
-  type AdminPagamento,
-  type AdminDoc,
-  type EstadoMensalidades,
+  marcarPagamentoValidado,
 } from "../services/adminPagamentosService";
 
-/* -------------------------- UI helpers (pílulas) -------------------------- */
-
-function Pill({
-  tone,
-  children,
-}: {
-  tone: "gray" | "yellow" | "green" | "red" | "blue";
-  children: React.ReactNode;
-}) {
-  const tones: Record<string, string> = {
-    gray: "bg-gray-100 text-gray-800",
-    yellow: "bg-yellow-100 text-yellow-800",
-    green: "bg-green-100 text-green-800",
-    red: "bg-red-100 text-red-800",
-    blue: "bg-blue-100 text-blue-800",
-  };
+function ErrorBox({ msg }: { msg: string }) {
+  if (!msg) return null;
   return (
-    <span className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${tones[tone]}`}>
-      {children}
-    </span>
-  );
-}
-
-function EstadoBadge({ estado }: { estado: EstadoMensalidades | "Pendente de validação" | "—" }) {
-  if (estado === "Regularizado") return <Pill tone="green">Regularizado</Pill>;
-  if (estado === "Pendente de validação") return <Pill tone="yellow">Pendente de validação</Pill>;
-  if (estado === "Em atraso") return <Pill tone="red">Em atraso</Pill>;
-  if (estado === "—") return <Pill tone="gray">—</Pill>;
-  return <Pill tone="gray">{estado}</Pill>;
-}
-
-/* ----------------------------- Mensalidades ----------------------------- */
-
-function MensalidadesTable() {
-  const [rows, setRows] = useState<AdminPagamento[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      setLoading(true);
-      const data = await listPagamentosAdmin();
-      if (live) setRows(data.filter(r => r.nivel === "atleta"));
-      setLoading(false);
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const estadoByAth = useMemo(() => computeEstadoByAtleta(rows), [rows]);
-
-  async function toggleValid(r: AdminPagamento) {
-    await markPagamentoValidado(r.id, !r.validado);
-    const data = await listPagamentosAdmin();
-    setRows(data.filter(x => x.nivel === "atleta"));
-  }
-
-  return (
-    <Card className="p-4">
-      <h3 className="font-semibold mb-3">Mensalidades</h3>
-      {loading ? (
-        <p className="text-sm text-gray-500">A carregar…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-500">Sem registos de pagamentos.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-left">
-              <tr className="border-b">
-                <th className="py-2 pr-3">Atleta</th>
-                <th className="py-2 pr-3">Descrição</th>
-                <th className="py-2 pr-3">Validação</th>
-                <th className="py-2 pr-3">Estado (até hoje)</th>
-                <th className="py-2 pr-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const estat = r.atletaId ? estadoByAth.get(r.atletaId) : undefined;
-                return (
-                  <tr key={r.id} className="border-b align-middle">
-                    <td className="py-2 pr-3">{r.atletaNome ?? "—"}</td>
-                    <td className="py-2 pr-3">{r.descricao ?? "—"}</td>
-                    <td className="py-2 pr-3">
-                      {r.validado ? <Pill tone="green">Validado</Pill> : <Pill tone="gray">Pendente</Pill>}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <EstadoBadge estado={estat?.estado ?? "—"} />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
-                        {r.signedUrl && (
-                          <a className="underline text-sm" href={r.signedUrl} target="_blank" rel="noreferrer">
-                            Abrir
-                          </a>
-                        )}
-                        <Button onClick={() => toggleValid(r)}>{r.validado ? "Reverter" : "Validar"}</Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-/* --------------------------- Inscrição — Sócio --------------------------- */
-
-function InscricaoSocioTable() {
-  const [rows, setRows] = useState<AdminDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      setLoading(true);
-      const data = await listComprovativosSocio();
-      if (live) setRows(data);
-      setLoading(false);
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  async function validar(userId: string | null) {
-    if (!userId) return;
-    await setTesourariaSocio(userId, "Regularizado");
-    const data = await listComprovativosSocio();
-    setRows(data);
-  }
-  async function reverter(userId: string | null) {
-    if (!userId) return;
-    await setTesourariaSocio(userId, "Pendente");
-    const data = await listComprovativosSocio();
-    setRows(data);
-  }
-
-  // agrupar por titular
-  const byUser = useMemo(() => {
-    const m = new Map<string, AdminDoc[]>();
-    for (const d of rows) {
-      const key = d.userId ?? `sem-user-${d.id}`;
-      m.set(key, [...(m.get(key) || []), d]);
-    }
-    return m;
-  }, [rows]);
-
-  return (
-    <Card className="p-4">
-      <h3 className="font-semibold mb-3">Inscrição Sócio</h3>
-      {loading ? (
-        <p className="text-sm text-gray-500">A carregar…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-500">Sem comprovativos.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-left">
-              <tr className="border-b">
-                <th className="py-2 pr-3">Titular (email)</th>
-                <th className="py-2 pr-3">Validação</th>
-                <th className="py-2 pr-3">Estado (até hoje)</th>
-                <th className="py-2 pr-3">Comprovativo</th>
-                <th className="py-2 pr-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from(byUser.entries()).map(([key, docs]) => {
-                const any = docs[0];
-                const estado: "Pendente de validação" | "—" = docs.length > 0 ? "Pendente de validação" : "—";
-                const userId = any.userId ?? null;
-                const email = any.titularEmail ?? "—";
-                const firstUrl = docs.find(d => !!d.signedUrl)?.signedUrl ?? null;
-
-                return (
-                  <tr key={key} className="border-b align-middle">
-                    <td className="py-2 pr-3">{email}</td>
-                    <td className="py-2 pr-3"><Pill tone="gray">Pendente</Pill></td>
-                    <td className="py-2 pr-3"><EstadoBadge estado={estado} /></td>
-                    <td className="py-2 pr-3">
-                      {firstUrl ? <a className="underline" href={firstUrl} target="_blank" rel="noreferrer">Abrir</a> : "—"}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
-                        <Button onClick={() => validar(userId)}>Validar</Button>
-                        <Button variant="secondary" onClick={() => reverter(userId)}>Reverter</Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-/* ---------------------------- Inscrição (Atleta) --------------------------- */
-
-function InscricaoAtletaTable() {
-  const [rows, setRows] = useState<AdminDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  async function refresh() {
-    const data = await listComprovativosInscricaoAtleta();
-    setRows(data);
-  }
-
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      setLoading(true);
-      await refresh();
-      if (live) setLoading(false);
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  async function validar(atletaId: string | null) {
-    if (!atletaId) return;
-    await setInscricaoAtletaValidada(atletaId, true);
-    await refresh();
-  }
-  async function reverter(atletaId: string | null) {
-    if (!atletaId) return;
-    await setInscricaoAtletaValidada(atletaId, false);
-    await refresh();
-  }
-
-  return (
-    <Card className="p-4">
-      <h3 className="font-semibold mb-3">Inscrição</h3>
-      {loading ? (
-        <p className="text-sm text-gray-500">A carregar…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-500">Sem comprovativos.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-left">
-              <tr className="border-b">
-                <th className="py-2 pr-3">Atleta</th>
-                <th className="py-2 pr-3">Titular (email)</th>
-                <th className="py-2 pr-3">Validação</th>
-                <th className="py-2 pr-3">Estado (até hoje)</th>
-                <th className="py-2 pr-3">Comprovativo</th>
-                <th className="py-2 pr-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((d) => {
-                const isValid = !!d.inscricaoValidada && !!d.validadoDoc;
-                const estado = d.objectPath && !isValid ? "Pendente de validação" : "—";
-                return (
-                  <tr key={d.id} className="border-b align-middle">
-                    <td className="py-2 pr-3">{d.atletaNome ?? "—"}</td>
-                    <td className="py-2 pr-3">{d.titularEmail ?? "—"}</td>
-                    <td className="py-2 pr-3">
-                      {isValid ? <Pill tone="green">Validado</Pill> : <Pill tone="gray">Pendente</Pill>}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <EstadoBadge estado={estado as any} />
-                    </td>
-                    <td className="py-2 pr-3">
-                      {d.signedUrl ? (
-                        <a className="underline" href={d.signedUrl} target="_blank" rel="noreferrer">
-                          Abrir
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
-                        <Button onClick={() => validar(d.atletaId)}>Validar</Button>
-                        <Button variant="secondary" onClick={() => reverter(d.atletaId)}>Reverter</Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <p className="mt-3 text-xs text-gray-500">
-        A validação marca <code>documentos.validado</code> e <code>atletas.inscricao_validada</code>.
-      </p>
-    </Card>
-  );
-}
-
-/* ---------------------------------- Page ---------------------------------- */
-
-export default function PagamentosPage() {
-  const [tab, setTab] = useState<"mensal" | "socio" | "atl">("mensal");
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <button
-          className={`px-3 py-1.5 rounded-lg text-sm ${tab === "mensal" ? "bg-black text-white" : "bg-gray-100"}`}
-          onClick={() => setTab("mensal")}
-        >
-          Mensalidades
-        </button>
-        <button
-          className={`px-3 py-1.5 rounded-lg text-sm ${tab === "socio" ? "bg-black text-white" : "bg-gray-100"}`}
-          onClick={() => setTab("socio")}
-        >
-          Inscrição Sócio
-        </button>
-        <button
-          className={`px-3 py-1.5 rounded-lg text-sm ${tab === "atl" ? "bg-black text-white" : "bg-gray-100"}`}
-          onClick={() => setTab("atl")}
-        >
-          Inscrição
-        </button>
-      </div>
-
-      {tab === "mensal" && <MensalidadesTable />}
-      {tab === "socio" && <InscricaoSocioTable />}
-      {tab === "atl" && <InscricaoAtletaTable />}
+    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2 text-sm">
+      <div className="font-medium">Erro ao carregar:</div>
+      <div className="whitespace-pre-wrap">{msg}</div>
     </div>
+  );
+}
+
+export default function PagamentosAdminPage() {
+  const [rows, setRows] = useState<AdminPagamento[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await listPagamentosAdmin();
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      // Mostra a mensagem real no ecrã para diagnosticar RLS/policies
+      const msg =
+        e?.message ||
+        e?.error_description ||
+        e?.error ||
+        "Falha desconhecida a carregar pagamentos.";
+      setError(msg);
+      setRows([]); // evita ficar preso no loading
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Carregamento inicial
+    void load();
+  }, [load]);
+
+  async function onValidate(row: AdminPagamento, valid: boolean) {
+    try {
+      setLoading(true);
+      setError("");
+      await marcarPagamentoValidado(row.id, valid);
+      await load();
+    } catch (e: any) {
+      const msg =
+        e?.message ||
+        e?.error_description ||
+        e?.error ||
+        "Não foi possível atualizar a validação.";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex items-center justify-between">
+        <CardTitle>Tesouraria · Pagamentos (Admin)</CardTitle>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={load} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+            Recarregar
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <ErrorBox msg={error} />
+        {loading ? (
+          <div className="text-sm text-gray-600 flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            A carregar pagamentos...
+          </div>
+        ) : (
+          <PaymentsTable rows={rows} onValidate={onValidate} />
+        )}
+      </CardContent>
+    </Card>
   );
 }
