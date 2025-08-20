@@ -1,4 +1,3 @@
-// src/admin/AdminApp.tsx
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import AdminGate from "./AdminGate";
@@ -44,7 +43,6 @@ export default function AdminApp() {
             <Route path="/admin/socios" element={<SociosPage />} />
             <Route path="/admin/atletas" element={<AtletasPage />} />
             <Route path="/admin/pagamentos" element={<PagamentosPage />} />
-            {/* fallback */}
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </Layout>
