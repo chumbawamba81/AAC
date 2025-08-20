@@ -227,3 +227,25 @@ export async function listPagamentosByAtleta(atletaId: string) {
   const rows = asType<PagamentoRow[]>(data ?? []);
   return attachSignedUrls<PagamentoRow>("pagamentos", rows, "comprovativo_url");
 }
+
+/** ------- Tesouraria por atleta (view) ------- */
+/**
+ * Lê a view `v_tesouraria_atleta` e devolve um mapa { atleta_id -> situacao }.
+ * Espera valores como: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso".
+ */
+export async function getTesourariaForAtletas(atletaIds: string[]): Promise<Record<string, string>> {
+  if (!atletaIds?.length) return {};
+  const { data, error } = await supabase
+    .from("v_tesouraria_atleta")
+    .select("atleta_id, situacao_tesouraria_atleta")
+    .in("atleta_id", atletaIds);
+
+  if (error) throw error;
+
+  const out: Record<string, string> = {};
+  for (const r of data || []) {
+    // @ts-ignore - tipagem dinâmica da view
+    out[r.atleta_id] = (r as any).situacao_tesouraria_atleta as string;
+  }
+  return out;
+}
