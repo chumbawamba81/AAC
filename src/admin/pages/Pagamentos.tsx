@@ -1,201 +1,344 @@
 // src/admin/pages/Pagamentos.tsx
 import React, { useEffect, useMemo, useState } from "react";
-
-// UI da app pública
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { RefreshCw, CheckCircle2, XCircle, Link as LinkIcon } from "lucide-react";
 
-// Serviço de admin (este ficheiro é o da secção anterior)
 import {
   listPagamentosAdmin,
   markPagamentoValidado,
   recomputeTesourariaSocio,
   recomputeTesourariaAtleta,
+  listComprovativosSocio,
+  setTesourariaSocio,
   type AdminPagamento,
+  type AdminSocioDoc,
   type NivelPagamento,
 } from "../services/adminPagamentosService";
 
-export default function PagamentosAdminPage() {
-  const [rows, setRows] = useState<AdminPagamento[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
+type View = "pagamentos" | "inscricao";
 
-  // filtros
+export default function PagamentosAdminPage() {
+  const [view, setView] = useState<View>("pagamentos");
+
+  // Pagamentos (tabela pagamentos)
+  const [rows, setRows] = useState<AdminPagamento[]>([]);
   const [nivel, setNivel] = useState<"all" | NivelPagamento>("all");
   const [q, setQ] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Comprovativos de inscrição (tabela documentos)
+  const [docs, setDocs] = useState<AdminSocioDoc[]>([]);
+  const [qd, setQd] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function refresh() {
     setLoading(true);
     try {
-      const data = await listPagamentosAdmin();
-      setRows(data);
+      if (view === "pagamentos") {
+        const data = await listPagamentosAdmin();
+        setRows(data);
+      } else {
+        const data = await listComprovativosSocio();
+        setDocs(data);
+      }
     } catch (e) {
-      console.error("[Admin/Pagamentos] listPagamentosAdmin", e);
-      alert("Falha a carregar pagamentos.");
+      console.error("[Admin/Pagamentos] refresh", e);
+      alert("Falha a carregar dados.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    refresh();
-  }, []);
+  useEffect(() => { refresh(); }, [view]);
 
-  const filtered = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const text = q.trim().toLowerCase();
     return rows
-      .filter((r) => (nivel === "all" ? true : r.nivel === nivel))
-      .filter((r) => {
+      .filter(r => (nivel === "all" ? true : r.nivel === nivel))
+      .filter(r => {
         if (!text) return true;
-        const hay = [
-          r.titularEmail || "",
-          r.descricao || "",
-          r.atletaNome || "",
-          r.comprovativoUrl || "",
-        ]
-          .join(" ")
-          .toLowerCase();
+        const hay = [r.titularEmail || "", r.descricao || "", r.atletaNome || "", r.comprovativoUrl || ""]
+          .join(" ").toLowerCase();
         return hay.includes(text);
       })
-      .sort(
-        (a, b) =>
-          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-      );
+      .sort((a,b)=> new Date(b.created_at||0).getTime() - new Date(a.created_at||0).getTime());
   }, [rows, nivel, q]);
 
-  async function toggleValidacao(row: AdminPagamento, value: boolean) {
+  const filteredDocs = useMemo(() => {
+    const text = qd.trim().toLowerCase();
+    return docs
+      .filter(d => {
+        if (!text) return true;
+        const hay = [d.titularEmail || "", d.docTipo || ""].join(" ").toLowerCase();
+        return hay.includes(text);
+      })
+      .sort((a,b)=> new Date(b.uploaded_at||0).getTime() - new Date(a.uploaded_at||0).getTime());
+  }, [docs, qd]);
+
+  /* --------------------------- ações (pagamentos) -------------------------- */
+
+  async function validarPagamento(row: AdminPagamento) {
+    if (!confirm("Validar este pagamento?")) return;
     setBusyId(row.id);
     try {
-      await markPagamentoValidado(row.id, value);
-
+      await markPagamentoValidado(row.id, true);
       if (row.nivel === "socio" && row.titularUserId) {
         await recomputeTesourariaSocio(row.titularUserId);
       } else if (row.nivel === "atleta" && row.atletaId) {
         await recomputeTesourariaAtleta(row.atletaId);
       }
-
       await refresh();
-    } catch (e: any) {
-      console.error("[Admin/Pagamentos] toggleValidacao", e);
-      alert(e?.message || "Falha a atualizar validação.");
-    } finally {
-      setBusyId(null);
+    } catch (e:any) {
+      console.error("[Admin/Pagamentos] validarPagamento", e);
+      alert(e?.message || "Falha a validar.");
+    } finally { setBusyId(null); }
+  }
+
+  async function anularPagamento(row: AdminPagamento) {
+    if (!confirm("Anular validação deste pagamento?")) return;
+    setBusyId(row.id);
+    try {
+      await markPagamentoValidado(row.id, false);
+      if (row.nivel === "socio" && row.titularUserId) {
+        await recomputeTesourariaSocio(row.titularUserId);
+      } else if (row.nivel === "atleta" && row.atletaId) {
+        await recomputeTesourariaAtleta(row.atletaId);
+      }
+      await refresh();
+    } catch (e:any) {
+      console.error("[Admin/Pagamentos] anularPagamento", e);
+      alert(e?.message || "Falha a anular.");
+    } finally { setBusyId(null); }
+  }
+
+  /* --------------------- ações (comprovativos de inscrição) -------------------- */
+
+  async function validarInscricao(userId: string) {
+    if (!confirm("Validar a inscrição deste sócio/EE?")) return;
+    try {
+      await setTesourariaSocio(userId, "Regularizado");
+      await refresh();
+    } catch (e:any) {
+      console.error("[Admin/Pagamentos] validarInscricao", e);
+      alert(e?.message || "Falha a validar inscrição.");
     }
   }
 
+  async function marcarPendente(userId: string) {
+    if (!confirm("Marcar a inscrição como pendente?")) return;
+    try {
+      await setTesourariaSocio(userId, "Pendente");
+      await refresh();
+    } catch (e:any) {
+      console.error("[Admin/Pagamentos] marcarPendente", e);
+      alert(e?.message || "Falha a atualizar situação.");
+    }
+  }
+
+  /* --------------------------------- render -------------------------------- */
+
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Tesouraria — Pagamentos
-            {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
-            <div className="flex gap-2">
-              <select
-                className="border rounded-lg px-3 py-2 text-sm"
-                value={nivel}
-                onChange={(e) => setNivel(e.target.value as any)}
-              >
-                <option value="all">Todos</option>
-                <option value="socio">Sócio</option>
-                <option value="atleta">Atleta</option>
-              </select>
+      <div className="flex items-center gap-2">
+        <Button variant={view==="pagamentos"?"secondary":"outline"} onClick={()=>setView("pagamentos")}>
+          Pagamentos (tabela)
+        </Button>
+        <Button variant={view==="inscricao"?"secondary":"outline"} onClick={()=>setView("inscricao")}>
+          Inscrição Sócio (comprovativos)
+        </Button>
+        <Button variant="outline" onClick={refresh}>
+          <RefreshCw className="h-4 w-4 mr-1" />
+          Atualizar
+        </Button>
+      </div>
+
+      {view === "pagamentos" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Tesouraria — Pagamentos
+              {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+              <div className="flex gap-2">
+                <select
+                  className="border rounded-lg px-3 py-2 text-sm"
+                  value={nivel}
+                  onChange={(e) => setNivel(e.target.value as any)}
+                >
+                  <option value="all">Todos</option>
+                  <option value="socio">Sócio</option>
+                  <option value="atleta">Atleta</option>
+                </select>
+              </div>
+              <div className="w-full md:w-80">
+                <Input
+                  placeholder="Pesquisar (email, atleta, descrição)…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="overflow-auto border rounded-xl">
+              <table className="min-w-[980px] w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr className="text-left">
+                    <th className="px-3 py-2">Data</th>
+                    <th className="px-3 py-2">Nível</th>
+                    <th className="px-3 py-2">Titular (email)</th>
+                    <th className="px-3 py-2">Atleta</th>
+                    <th className="px-3 py-2">Descrição</th>
+                    <th className="px-3 py-2">Comprovativo</th>
+                    <th className="px-3 py-2">Estado</th>
+                    <th className="px-3 py-2">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
+                        Sem registos.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRows.map((r) => (
+                      <tr key={r.id} className="border-t">
+                        <td className="px-3 py-2">
+                          {r.created_at ? new Date(r.created_at).toLocaleString("pt-PT") : "—"}
+                        </td>
+                        <td className="px-3 py-2 capitalize">{r.nivel}</td>
+                        <td className="px-3 py-2">{r.titularEmail || "—"}</td>
+                        <td className="px-3 py-2">{r.atletaNome || "—"}</td>
+                        <td className="px-3 py-2">{r.descricao || "—"}</td>
+                        <td className="px-3 py-2">
+                          {r.signedUrl ? (
+                            <a href={r.signedUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
+                              <LinkIcon className="h-4 w-4" /> Abrir
+                            </a>
+                          ) : (
+                            <span className="text-gray-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.validado ? (
+                            <span className="inline-flex items-center gap-1 text-green-700">
+                              <CheckCircle2 className="h-4 w-4" /> Validado
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-gray-600">
+                              <XCircle className="h-4 w-4" /> Pendente
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            {!r.validado ? (
+                              <Button onClick={() => validarPagamento(r)} disabled={busyId === r.id}>
+                                <CheckCircle2 className="h-4 w-4 mr-1" />
+                                Validar
+                              </Button>
+                            ) : (
+                              <Button variant="outline" onClick={() => anularPagamento(r)} disabled={busyId === r.id}>
+                                <XCircle className="h-4 w-4 mr-1" />
+                                Anular
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="text-xs text-gray-500">{filteredRows.length} registo(s) mostrado(s).</div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              Inscrição de Sócio — Comprovativos (documentos)
+              {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-full md:w-80">
+                <Input
+                  placeholder="Pesquisar por email ou tipo de doc…"
+                  value={qd}
+                  onChange={(e) => setQd(e.target.value)}
+                />
+              </div>
               <Button variant="outline" onClick={refresh}>
                 <RefreshCw className="h-4 w-4 mr-1" />
                 Atualizar
               </Button>
             </div>
-            <div className="w-full md:w-80">
-              <Input
-                placeholder="Pesquisar (email, atleta, descrição)…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
-          </div>
 
-          <div className="overflow-auto border rounded-xl">
-            <table className="min-w-[900px] w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">Data</th>
-                  <th className="px-3 py-2">Nível</th>
-                  <th className="px-3 py-2">Titular (email)</th>
-                  <th className="px-3 py-2">Atleta</th>
-                  <th className="px-3 py-2">Descrição</th>
-                  <th className="px-3 py-2">Comprovativo</th>
-                  <th className="px-3 py-2">Validado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
-                      Sem registos.
-                    </td>
+            <div className="overflow-auto border rounded-xl">
+              <table className="min-w-[900px] w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr className="text-left">
+                    <th className="px-3 py-2">Data</th>
+                    <th className="px-3 py-2">Titular (email)</th>
+                    <th className="px-3 py-2">Tipo</th>
+                    <th className="px-3 py-2">Página</th>
+                    <th className="px-3 py-2">Ficheiro</th>
+                    <th className="px-3 py-2">Ações</th>
                   </tr>
-                ) : (
-                  filtered.map((r) => (
-                    <tr key={r.id} className="border-t">
-                      <td className="px-3 py-2">
-                        {r.created_at
-                          ? new Date(r.created_at).toLocaleString("pt-PT")
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-2 capitalize">{r.nivel}</td>
-                      <td className="px-3 py-2">{r.titularEmail || "—"}</td>
-                      <td className="px-3 py-2">{r.atletaNome || "—"}</td>
-                      <td className="px-3 py-2">{r.descricao || "—"}</td>
-                      <td className="px-3 py-2">
-                        {r.signedUrl ? (
-                          <a
-                            href={r.signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 underline"
-                          >
-                            <LinkIcon className="h-4 w-4" />
-                            Abrir
-                          </a>
-                        ) : (
-                          <span className="text-gray-500">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant={r.validado ? "secondary" : "outline"}
-                            disabled={busyId === r.id}
-                            onClick={() => toggleValidacao(r, !r.validado)}
-                          >
-                            {r.validado ? (
-                              <>
-                                <CheckCircle2 className="h-4 w-4 mr-1" /> Validado
-                              </>
-                            ) : (
-                              <>
-                                <XCircle className="h-4 w-4 mr-1" /> Pendente
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </td>
+                </thead>
+                <tbody>
+                  {filteredDocs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6 text-center text-gray-500">Sem comprovativos.</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    filteredDocs.map((d) => (
+                      <tr key={d.id} className="border-t">
+                        <td className="px-3 py-2">
+                          {d.uploaded_at ? new Date(d.uploaded_at).toLocaleString("pt-PT") : "—"}
+                        </td>
+                        <td className="px-3 py-2">{d.titularEmail || "—"}</td>
+                        <td className="px-3 py-2">{d.docTipo}</td>
+                        <td className="px-3 py-2">{d.page ?? "—"}</td>
+                        <td className="px-3 py-2">
+                          {d.signedUrl ? (
+                            <a href={d.signedUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
+                              <LinkIcon className="h-4 w-4" /> Abrir
+                            </a>
+                          ) : (
+                            <span className="text-gray-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <Button onClick={() => validarInscricao(d.userId)}>
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Validar inscrição
+                            </Button>
+                            <Button variant="outline" onClick={() => marcarPendente(d.userId)}>
+                              <XCircle className="h-4 w-4 mr-1" /> Marcar pendente
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-          <div className="text-xs text-gray-500">{filtered.length} registo(s) mostrado(s).</div>
-        </CardContent>
-      </Card>
+            <div className="text-xs text-gray-500">{filteredDocs.length} comprovativo(s) mostrado(s).</div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
