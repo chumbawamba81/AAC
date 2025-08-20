@@ -1,7 +1,18 @@
 // src/admin/PaymentsTable.tsx
 import React from "react";
 import { Button } from "../components/ui/button";
-import type { AdminPagamento } from "../services/adminPagamentosService";
+
+// Tipo mínimo usado pela tabela (evita problemas de import)
+export type AdminPagamento = {
+  id: string;
+  descricao: string | null;
+  signedUrl?: string | null;
+  validado?: boolean | null;
+  createdAt?: string | null;
+  // Se a service fornecer estes, usamos; senão calculamos fallback
+  estadoCode?: "regularizado" | "pendente_validacao" | "em_atraso" | string;
+  estadoLabel?: string;
+};
 
 type Props = {
   rows: AdminPagamento[];
@@ -12,7 +23,7 @@ function fmtDate(iso?: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(); // usa locale do browser
+  return d.toLocaleString();
 }
 
 function Badge({
@@ -36,18 +47,14 @@ function Badge({
   );
 }
 
-// Deriva o estado visual a partir da linha (ou usa o que vier da service)
-function getEstado(r: AdminPagamento): { label: string; color: "green"|"yellow"|"red"|"gray" } {
-  // Se a tua service já calcula:
-  const code = (r as any).estadoCode as string | undefined;
-  const label = (r as any).estadoLabel as string | undefined;
-  if (code && label) {
-    if (code === "regularizado") return { label, color: "green" };
-    if (code === "pendente_validacao") return { label, color: "yellow" };
-    if (code === "em_atraso") return { label, color: "red" };
-    return { label, color: "gray" };
+// Deriva o estado visual (ou usa o que vier da service)
+function getEstado(r: AdminPagamento): { label: string; color: "green" | "yellow" | "red" | "gray" } {
+  if (r.estadoCode && r.estadoLabel) {
+    if (r.estadoCode === "regularizado") return { label: r.estadoLabel, color: "green" };
+    if (r.estadoCode === "pendente_validacao") return { label: r.estadoLabel, color: "yellow" };
+    if (r.estadoCode === "em_atraso") return { label: r.estadoLabel, color: "red" };
+    return { label: r.estadoLabel, color: "gray" };
   }
-  // Fallback simples
   if (r.validado) return { label: "Regularizado", color: "green" };
   if (r.signedUrl) return { label: "Pendente de validação", color: "yellow" };
   return { label: "Pendente", color: "gray" };
@@ -90,12 +97,7 @@ export default function PaymentsTable({ rows, onValidate }: Props) {
                 <td className="px-3 py-2">{r.descricao || "—"}</td>
                 <td className="px-3 py-2">
                   {r.signedUrl ? (
-                    <a
-                      className="underline text-blue-700"
-                      href={r.signedUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a className="underline text-blue-700" href={r.signedUrl} target="_blank" rel="noreferrer">
                       Abrir
                     </a>
                   ) : (
@@ -103,11 +105,7 @@ export default function PaymentsTable({ rows, onValidate }: Props) {
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  {isValidado ? (
-                    <Badge color="green">Validado</Badge>
-                  ) : (
-                    <Badge>Pendente</Badge>
-                  )}
+                  {isValidado ? <Badge color="green">Validado</Badge> : <Badge>Pendente</Badge>}
                 </td>
                 <td className="px-3 py-2">
                   <Badge color={estado.color}>{estado.label}</Badge>
@@ -120,9 +118,7 @@ export default function PaymentsTable({ rows, onValidate }: Props) {
                           Invalidar
                         </Button>
                       ) : (
-                        <Button onClick={() => onValidate(r, true)}>
-                          Validar
-                        </Button>
+                        <Button onClick={() => onValidate(r, true)}>Validar</Button>
                       )}
                     </div>
                   )}
