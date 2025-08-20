@@ -26,10 +26,16 @@ export interface AdminPagamento {
   atletaId: string | null;
   atletaNome: string | null;
 
+  // novos campos do atleta (para as novas colunas)
+  atletaEscalao: string | null;
+  atletaGenero: string | null;
+  atletaPlano: string | null;
+
+  // comprovativo
   filePath: string | null;    // pode ser URL absoluto ou caminho de storage
   signedUrl: string | null;   // URL para abrir
 
-  // extras presentes no schema (mantidos para contexto/filtragem)
+  // extras para contexto/filtragem
   tipo?: string | null;
   devidoEm?: string | null;
   validadoEm?: string | null;
@@ -129,13 +135,21 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
     }
   }
 
-  // atletas
+  // atletas (nome, escalao, genero, plano)
   const atletaIds = Array.from(new Set(filtered.map((r) => r.atleta_id).filter(Boolean)));
-  const atletaById: Record<string, string> = {};
+  const atletaById: Record<string, { nome: string | null; escalao: string | null; genero: string | null; plano: string | null }> = {};
   if (atletaIds.length) {
-    const { data: atletas } = await supabase.from("atletas").select("id, nome").in("id", atletaIds);
+    const { data: atletas } = await supabase
+      .from("atletas")
+      .select("id, nome, escalao, genero, opcao_pagamento")
+      .in("id", atletaIds);
     for (const a of (atletas ?? [])) {
-      atletaById[(a as any).id] = (a as any).nome ?? "—";
+      atletaById[(a as any).id] = {
+        nome: (a as any).nome ?? "—",
+        escalao: (a as any).escalao ?? null,
+        genero: (a as any).genero ?? null,
+        plano: (a as any).opcao_pagamento ?? null,
+      };
     }
   }
 
@@ -149,6 +163,8 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
 
       const { filePath, signedUrl } = await resolveSignedUrl(r.comprovativo_url ?? null);
 
+      const at = r.atleta_id ? (atletaById[r.atleta_id] ?? { nome: "—", escalao: null, genero: null, plano: null }) : null;
+
       return {
         id: r.id,
         nivel: r.atleta_id ? "atleta" : "socio",
@@ -159,7 +175,10 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
         titularUserId: r.user_id,
         titularName: titularByUser[r.user_id] ?? "—",
         atletaId: r.atleta_id ?? null,
-        atletaNome: r.atleta_id ? (atletaById[r.atleta_id] ?? "—") : null,
+        atletaNome: r.atleta_id ? (at?.nome ?? "—") : null,
+        atletaEscalao: at?.escalao ?? null,
+        atletaGenero: at?.genero ?? null,
+        atletaPlano: at?.plano ?? null,
         filePath,
         signedUrl,
         tipo: r.tipo ?? null,
@@ -213,6 +232,8 @@ export async function marcarPagamentoValidado(pagamentoId: string, next: boolean
   });
   const { filePath, signedUrl } = await resolveSignedUrl(data.comprovativo_url ?? null);
 
+  // NOTA: para devolver também escalao/genero/plano nesta resposta sem novo round-trip,
+  // o parent faz sempre refresh via listPagamentosAdmin(). Aqui devolvemos placeholders.
   return {
     id: data.id,
     nivel: data.atleta_id ? "atleta" : "socio",
@@ -224,6 +245,9 @@ export async function marcarPagamentoValidado(pagamentoId: string, next: boolean
     titularName: "—",
     atletaId: data.atleta_id ?? null,
     atletaNome: data.atleta_id ? "—" : null,
+    atletaEscalao: null,
+    atletaGenero: null,
+    atletaPlano: null,
     filePath,
     signedUrl,
     tipo: data.tipo ?? null,
