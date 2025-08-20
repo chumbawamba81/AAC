@@ -1,4 +1,6 @@
+// src/App.tsx
 import React, { useEffect, useState, useCallback } from "react";
+
 // Serviços (Supabase) de autenticação e dados
 import { signIn, signUp, signOut } from "./services/authService";
 import { getMyProfile, upsertMyProfile } from "./services/profileService";
@@ -8,6 +10,7 @@ import {
   deleteAtleta as removeAtleta,
 } from "./services/atletasService";
 
+// UI
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
@@ -17,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
 
+// Ícones
 import {
   AlertCircle,
   CheckCircle2,
@@ -37,9 +41,14 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 
+// Tipos
 import type { PessoaDados } from "./types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "./types/Atleta";
+
+// Utils
 import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
+
+// Componentes
 import AtletaFormCompleto from "./components/AtletaFormCompleto";
 import UploadDocsSection from "./components/UploadDocsSection";
 import FilePickerButton from "./components/FilePickerButton";
@@ -64,10 +73,8 @@ const DOCS_ATLETA = [
   "Exame médico",
   "Comprovativo de pagamento de inscrição",
 ] as const;
-type DocAtleta = (typeof DOCS_ATLETA)[number];
 
 const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
-type DocSocio = (typeof DOCS_SOCIO)[number];
 
 type Conta = { email: string };
 type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
@@ -76,8 +83,8 @@ type State = {
   conta: Conta | null;
   perfil: PessoaDados | null;
   atletas: Atleta[];
-  docsSocio: Partial<Record<DocSocio, UploadMeta>>;
-  docsAtleta: Record<string, Partial<Record<DocAtleta, UploadMeta>>>;
+  docsSocio: Partial<Record<(typeof DOCS_SOCIO)[number], UploadMeta>>;
+  docsAtleta: Record<string, Partial<Record<(typeof DOCS_ATLETA)[number], UploadMeta>>>;
   pagamentos: Record<string, Array<UploadMeta | null>>; // legado (mantido por compat)
   tesouraria?: string;
   noticias?: string;
@@ -134,7 +141,8 @@ function isFutureISODate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(s + "T00:00:00");
   if (Number.isNaN(d.getTime())) return false;
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   return d.getTime() > today.getTime();
 }
 
@@ -158,7 +166,6 @@ function loadState(): State {
     const s = JSON.parse(raw);
     const conta: Conta | null =
       s?.conta && typeof s.conta.email === "string" ? { email: s.conta.email } : null;
-
     const perfil: PessoaDados | null = s?.perfil ? normalizePessoaDados(s.perfil, conta?.email) : null;
 
     return {
@@ -244,7 +251,9 @@ function ContaSection({
         onLogged();
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []); // eslint-disable-line
 
   async function submit(ev: React.FormEvent) {
@@ -253,9 +262,15 @@ function ContaSection({
     setInfo(undefined);
 
     if (mode === "register") {
-      if (password !== confirmPassword) { setError("As palavras-passe não coincidem."); return; }
+      if (password !== confirmPassword) {
+        setError("As palavras-passe não coincidem.");
+        return;
+      }
       const chk = isPasswordStrong(password);
-      if (!chk.ok) { setError("A palavra-passe não cumpre os requisitos."); return; }
+      if (!chk.ok) {
+        setError("A palavra-passe não cumpre os requisitos.");
+        return;
+      }
       try {
         setLoading(true);
         await signUp(email, password);
@@ -265,7 +280,9 @@ function ContaSection({
         setInfo("Registo efetuado. Verifique o seu email para validar a conta.");
       } catch (e: any) {
         setError(e.message || "Erro no registo");
-      } finally { setLoading(false); }
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -275,11 +292,14 @@ function ContaSection({
       await supabase.auth.getSession(); // pequena “espera” para a sessão ficar disponível
       if (!data?.session?.access_token) throw new Error("Sessão inválida. Verifique o email de confirmação.");
       const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
-      setState(next); saveState(next);
+      setState(next);
+      saveState(next);
       onLogged();
     } catch (e: any) {
       setError(e.message || "Erro de autenticação");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function submitForgot(ev: React.FormEvent) {
@@ -311,57 +331,83 @@ function ContaSection({
           </div>
         )}
         <form className="space-y-4" onSubmit={submit}>
-          <div className="space-y-1"><Label>Email</Label><Input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required/></div>
           <div className="space-y-1">
-            <Label>Palavra-passe {mode==="register" && <span className="text-xs text-gray-500">(requisitos abaixo)</span>}</Label>
-            <Input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required/>
-            {mode==="register"&&<PasswordChecklist pass={password}/>}
+            <Label>Email</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label>
+              Palavra-passe {mode === "register" && <span className="text-xs text-gray-500">(requisitos abaixo)</span>}
+            </Label>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {mode === "register" && <PasswordChecklist pass={password} />}
           </div>
 
           {mode === "register" && (
             <div className="space-y-1">
               <Label>Repetir palavra-passe *</Label>
-              <Input type="password" value={confirmPassword} onChange={(e)=>setConfirmPassword(e.target.value)} required/>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
             </div>
           )}
 
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={remember} onChange={(e)=>setRemember(e.target.checked)} />
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               Manter sessão iniciada
             </label>
-            <button type="button" className="text-sm underline" onClick={()=>{ setForgotEmail(email); setForgotOpen(true); }}>
+            <button
+              type="button"
+              className="text-sm underline"
+              onClick={() => {
+                setForgotEmail(email);
+                setForgotOpen(true);
+              }}
+            >
               Recuperar palavra-passe
             </button>
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           {info && <p className="text-sm text-green-700">{info}</p>}
           <div className="flex items-center justify-between">
-            <Button type="submit" disabled={loading}>{loading?"Aguarde...":(mode==="register"?"Registar":"Entrar")}</Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Aguarde..." : mode === "register" ? "Registar" : "Entrar"}
+            </Button>
             <Button
               type="button"
               variant="secondary"
-              onClick={()=>{
-                setMode(m=>m==="register"?"login":"register");
+              onClick={() => {
+                setMode((m) => (m === "register" ? "login" : "register"));
                 setConfirmPassword("");
               }}
             >
-              {mode==="register"?"Já tenho conta":"Criar conta"}
+              {mode === "register" ? "Já tenho conta" : "Criar conta"}
             </Button>
           </div>
-          <div className="mt-2 text-xs text-gray-500 flex items-start gap-2"><Shield className="h-4 w-4 mt-[2px]"/><p>Produção: hash Argon2id, cookies httpOnly, sessão, rate limiting, MFA.</p></div>
+          <div className="mt-2 text-xs text-gray-500 flex items-start gap-2">
+            <Shield className="h-4 w-4 mt-[2px]" />
+            <p>Produção: hash Argon2id, cookies httpOnly, sessão, rate limiting, MFA.</p>
+          </div>
         </form>
 
         <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle>Recuperar palavra-passe</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Recuperar palavra-passe</DialogTitle>
+            </DialogHeader>
             <form className="space-y-3" onSubmit={submitForgot}>
               <div className="space-y-1">
                 <Label>Email</Label>
-                <Input type="email" value={forgotEmail} onChange={e=>setForgotEmail(e.target.value)} required />
+                <Input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={()=>setForgotOpen(false)}>Cancelar</Button>
+                <Button type="button" variant="secondary" onClick={() => setForgotOpen(false)}>
+                  Cancelar
+                </Button>
                 <Button type="submit">Enviar link</Button>
               </div>
             </form>
@@ -386,36 +432,37 @@ function DadosPessoaisSection({
   setState: React.Dispatch<React.SetStateAction<State>>;
   onAfterSave: () => void;
 }) {
-  function formatPostal(v: string){
-    const d = v.replace(/\D/g, '').slice(0,7);
+  function formatPostal(v: string) {
+    const d = v.replace(/\D/g, "").slice(0, 7);
     if (d.length <= 4) return d;
-    return d.slice(0,4) + '-' + d.slice(4);
+    return d.slice(0, 4) + "-" + d.slice(4);
   }
 
   const basePerfil = state.perfil ? normalizePessoaDados(state.perfil, state.conta?.email) : null;
 
   const [editMode, setEditMode] = useState<boolean>(!basePerfil);
-  const [form, setForm] = useState<PessoaDadosWithVal>(() =>
-    (basePerfil as PessoaDadosWithVal) || {
-      nomeCompleto: "",
-      tipoSocio: "Não pretendo ser sócio",
-      dataNascimento: "",
-      morada: "",
-      codigoPostal: "",
-      tipoDocumento: "Cartão de cidadão",
-      numeroDocumento: "",
-      nif: "",
-      telefone: "",
-      email: state.conta?.email || "",
-      profissao: "",
-      dataValidadeDocumento: "",
-    }
+  const [form, setForm] = useState<PessoaDadosWithVal>(
+    () =>
+      (basePerfil as PessoaDadosWithVal) || {
+        nomeCompleto: "",
+        tipoSocio: "Não pretendo ser sócio",
+        dataNascimento: "",
+        morada: "",
+        codigoPostal: "",
+        tipoDocumento: "Cartão de cidadão",
+        numeroDocumento: "",
+        nif: "",
+        telefone: "",
+        email: state.conta?.email || "",
+        profissao: "",
+        dataValidadeDocumento: "",
+      }
   );
 
   // 👉 Quando o perfil chegar do Supabase depois do login, preenche o form e sai do modo edição
   useEffect(() => {
     if (basePerfil) {
-      setForm(prev => ({ ...prev, ...(basePerfil as PessoaDadosWithVal) }));
+      setForm((prev) => ({ ...prev, ...(basePerfil as PessoaDadosWithVal) }));
       setEditMode(false);
     }
   }, [state.perfil]); // eslint-disable-line
@@ -435,7 +482,10 @@ function DadosPessoaisSection({
       if (!mounted) return;
       setUserId(data?.user?.id ?? null);
     });
-    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+    return () => {
+      mounted = false;
+      sub.data.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -454,7 +504,7 @@ function DadosPessoaisSection({
         .is("atleta_id", null);
 
       const socioSet = new Set<string>((socioSel.data || []).map((r: any) => r.doc_tipo));
-      const socioMiss = DOCS_SOCIO.filter(t => !socioSet.has(t)).length;
+      const socioMiss = DOCS_SOCIO.filter((t) => !socioSet.has(t)).length;
       setSocioMissingCount(socioMiss);
 
       // -- Atletas
@@ -480,7 +530,7 @@ function DadosPessoaisSection({
     }
 
     fetchDocCounters().catch((e) => console.error("[fetchDocCounters]", e));
-  }, [userId, state.atletas.map(a=>a.id).join(",")]);
+  }, [userId, state.atletas.map((a) => a.id).join(",")]);
 
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
@@ -501,12 +551,16 @@ function DadosPessoaisSection({
         errs.push("A validade do cartão de cidadão deve ser futura");
       }
     }
-    if (errs.length) { alert(errs.join("\n")); return; }
+    if (errs.length) {
+      alert(errs.join("\n"));
+      return;
+    }
 
     try {
       const savedPerfil = await upsertMyProfile(form as PessoaDados);
       const next: State = { ...state, perfil: normalizePessoaDados(savedPerfil, state.conta?.email) };
-      setState(next); saveState(next);
+      setState(next);
+      saveState(next);
       setEditMode(false);
       onAfterSave();
     } catch (e: any) {
@@ -524,7 +578,9 @@ function DadosPessoaisSection({
           <div className="flex items-center justify-between">
             <div>
               <div className="font-semibold">{basePerfil.nomeCompleto}</div>
-              <div className="text-xs text-gray-500">{basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}</div>
+              <div className="text-xs text-gray-500">
+                {basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}
+              </div>
             </div>
             <div className="text-right">
               <div className="text-sm">Situação de Tesouraria:</div>
@@ -535,19 +591,23 @@ function DadosPessoaisSection({
           </div>
           <div className="mt-2 flex gap-3 text-sm">
             <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3"/> Sócio: {socioMissing} documento(s) em falta
+              <FileUp className="h-3 w-3" /> Sócio: {socioMissing} documento(s) em falta
             </div>
             <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3"/> Atletas: {missingAthDocs} documento(s) em falta
+              <FileUp className="h-3 w-3" /> Atletas: {missingAthDocs} documento(s) em falta
             </div>
           </div>
           <div className="mt-3">
-            <Button variant="outline" onClick={()=>setEditMode(true)}><PencilLine className="h-4 w-4 mr-1"/> Editar dados</Button>
+            <Button variant="outline" onClick={() => setEditMode(true)}>
+              <PencilLine className="h-4 w-4 mr-1" /> Editar dados
+            </Button>
           </div>
         </div>
 
         <Card>
-          <CardHeader><CardTitle>Notícias da Secção de Basquetebol</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Notícias da Secção de Basquetebol</CardTitle>
+          </CardHeader>
           <CardContent>
             {state.noticias ? (
               <div className="prose prose-sm max-w-none">{state.noticias}</div>
@@ -562,56 +622,112 @@ function DadosPessoaisSection({
 
   return (
     <Card>
-      <CardHeader><CardTitle>Dados Pessoais</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Dados Pessoais</CardTitle>
+      </CardHeader>
       <CardContent>
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
-          <div className="space-y-1"><Label>Nome Completo *</Label><Input value={form.nomeCompleto} onChange={e=>setForm({...form,nomeCompleto:e.target.value})} required/></div>
           <div className="space-y-1">
-  <Label className="flex items-center gap-2">
-    Tipo de sócio *
-    <ImagesDialog
-      title="Tabela de Preços — Sócios"
-      images={[{ src: "/precos/socios-2025.png", alt: "Tabela de preços de sócios" }]}
-      triggerText="Tabela de Preços"
-    />
-  </Label>
-  <select
-    className="w-full rounded-xl border px-3 py-2 text-sm"
-    value={form.tipoSocio}
-    onChange={(e)=>setForm({...form, tipoSocio: e.target.value as PessoaDados["tipoSocio"]})}
-  >
-    <option>Sócio Pro</option>
-    <option>Sócio Família</option>
-    <option>Sócio Geral Renovação</option>
-    <option>Sócio Geral Novo</option>
-    <option>Não pretendo ser sócio</option>
-  </select>
-</div>
+            <Label>Nome Completo *</Label>
+            <Input value={form.nomeCompleto} onChange={(e) => setForm({ ...form, nomeCompleto: e.target.value })} required />
+          </div>
 
-          <div className="space-y-1"><Label>Data de Nascimento *</Label><Input type="date" value={form.dataNascimento} onChange={e=>setForm({...form,dataNascimento:e.target.value})} required/></div>
-          <div className="space-y-1 md:col-span-2"><Label>Morada *</Label><Input value={form.morada} onChange={e=>setForm({...form,morada:e.target.value})} required/></div>
-          <div className="space-y-1"><Label>Código Postal *</Label><Input value={form.codigoPostal} onChange={e=>setForm({...form,codigoPostal:formatPostal(e.target.value)})} placeholder="0000-000" required/></div>
+          <div className="space-y-1">
+            <Label className="flex items-center gap-2">
+              Tipo de sócio *
+              <ImagesDialog
+                title="Tabela de Preços — Sócios"
+                images={[{ src: "/precos/socios-2025.png", alt: "Tabela de preços de sócios" }]}
+                triggerText="Tabela de Preços"
+              />
+            </Label>
+            <select
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              value={form.tipoSocio}
+              onChange={(e) => setForm({ ...form, tipoSocio: e.target.value as PessoaDados["tipoSocio"] })}
+            >
+              <option>Sócio Pro</option>
+              <option>Sócio Família</option>
+              <option>Sócio Geral Renovação</option>
+              <option>Sócio Geral Novo</option>
+              <option>Não pretendo ser sócio</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Data de Nascimento *</Label>
+            <Input type="date" value={form.dataNascimento} onChange={(e) => setForm({ ...form, dataNascimento: e.target.value })} required />
+          </div>
+
+          <div className="space-y-1 md:col-span-2">
+            <Label>Morada *</Label>
+            <Input value={form.morada} onChange={(e) => setForm({ ...form, morada: e.target.value })} required />
+          </div>
+
+          <div className="space-y-1">
+            <Label>Código Postal *</Label>
+            <Input
+              value={form.codigoPostal}
+              onChange={(e) => setForm({ ...form, codigoPostal: formatPostal(e.target.value) })}
+              placeholder="0000-000"
+              required
+            />
+          </div>
+
           <div className="space-y-1">
             <Label>Tipo de documento *</Label>
-            <select className="w-full rounded-xl border px-3 py-2 text-sm" value={form.tipoDocumento} onChange={e=>setForm({...form,tipoDocumento:e.target.value as PessoaDados["tipoDocumento"]})}>
+            <select
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              value={form.tipoDocumento}
+              onChange={(e) => setForm({ ...form, tipoDocumento: e.target.value as PessoaDados["tipoDocumento"] })}
+            >
               <option>Cartão de cidadão</option>
               <option>Passaporte</option>
               <option>Título de Residência</option>
             </select>
           </div>
-          <div className="space-y-1"><Label>Nº documento *</Label><Input value={form.numeroDocumento} onChange={e=>setForm({...form,numeroDocumento:e.target.value})} required/></div>
-          <div className="space-y-1"><Label>NIF *</Label><Input value={form.nif} onChange={e=>setForm({...form,nif:e.target.value})} required/></div>
-          <div className="space-y-1"><Label>Contacto telefónico *</Label><Input value={form.telefone} onChange={e=>setForm({...form,telefone:e.target.value})} required/></div>
-          <div className="space-y-1"><Label>Endereço eletrónico *</Label><Input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required/></div>
+
+          <div className="space-y-1">
+            <Label>Nº documento *</Label>
+            <Input value={form.numeroDocumento} onChange={(e) => setForm({ ...form, numeroDocumento: e.target.value })} required />
+          </div>
+
+          <div className="space-y-1">
+            <Label>NIF *</Label>
+            <Input value={form.nif} onChange={(e) => setForm({ ...form, nif: e.target.value })} required />
+          </div>
+
+          <div className="space-y-1">
+            <Label>Contacto telefónico *</Label>
+            <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} required />
+          </div>
+
+          <div className="space-y-1">
+            <Label>Endereço eletrónico *</Label>
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+          </div>
+
           {form.tipoDocumento === "Cartão de cidadão" && (
             <div className="space-y-1">
               <Label>Validade do Cartão de Cidadão *</Label>
-              <Input type="date" value={form.dataValidadeDocumento || ""} onChange={e=>setForm({...form, dataValidadeDocumento: e.target.value})} required/>
+              <Input
+                type="date"
+                value={form.dataValidadeDocumento || ""}
+                onChange={(e) => setForm({ ...form, dataValidadeDocumento: e.target.value })}
+                required
+              />
             </div>
           )}
-          <div className="space-y-1 md:col-span-2"><Label>Profissão (opcional)</Label><Input value={form.profissao||""} onChange={e=>setForm({...form,profissao:e.target.value})}/></div>
+
+          <div className="space-y-1 md:col-span-2">
+            <Label>Profissão (opcional)</Label>
+            <Input value={form.profissao || ""} onChange={(e) => setForm({ ...form, profissao: e.target.value })} />
+          </div>
+
           <div className="md:col-span-2 flex justify-end gap-2">
-            <Button type="submit"><Shield className="h-4 w-4 mr-1"/> Guardar</Button>
+            <Button type="submit">
+              <Shield className="h-4 w-4 mr-1" /> Guardar
+            </Button>
           </div>
         </form>
       </CardContent>
@@ -652,7 +768,10 @@ function PagamentosSection({ state }: { state: State }) {
       if (!mounted) return;
       setUserId(data?.user?.id ?? null);
     });
-    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+    return () => {
+      mounted = false;
+      sub.data.subscription.unsubscribe();
+    };
   }, []);
 
   const refreshPayments = useCallback(async () => {
@@ -682,7 +801,9 @@ function PagamentosSection({ state }: { state: State }) {
     setPayments(next);
   }, [userId, state.atletas]);
 
-  useEffect(() => { refreshPayments(); }, [refreshPayments]);
+  useEffect(() => {
+    refreshPayments();
+  }, [refreshPayments]);
 
   useEffect(() => {
     const channel = supabase
@@ -698,11 +819,16 @@ function PagamentosSection({ state }: { state: State }) {
         }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [state.atletas, refreshPayments]);
 
   async function handleUpload(athlete: Atleta, idx: number, file: File) {
-    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
+    if (!userId || !file) {
+      alert("Sessão ou ficheiro em falta");
+      return;
+    }
     setBusy(true);
     try {
       const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
@@ -712,7 +838,9 @@ function PagamentosSection({ state }: { state: State }) {
     } catch (e: any) {
       console.error("[Pagamentos] upload/replace", e);
       alert(e?.message || "Falha no upload");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleDelete(athlete: Atleta, idx: number) {
@@ -726,14 +854,20 @@ function PagamentosSection({ state }: { state: State }) {
     } catch (e: any) {
       console.error("[Pagamentos] delete", e);
       alert(e?.message || "Falha a remover");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (state.atletas.length === 0) {
     return (
       <Card>
-        <CardHeader><CardTitle>Pagamentos</CardTitle></CardHeader>
-        <CardContent><p className="text-sm text-gray-500">Crie primeiro um atleta.</p></CardContent>
+        <CardHeader>
+          <CardTitle>Pagamentos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-gray-500">Crie primeiro um atleta.</p>
+        </CardContent>
       </Card>
     );
   }
@@ -756,7 +890,8 @@ function PagamentosSection({ state }: { state: State }) {
               <div className="flex items-center justify-between mb-2">
                 <div className="font-medium">{a.nomeCompleto}</div>
                 <div className="text-xs text-gray-500">
-                  Plano: {planoEfetivo}{isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
+                  Plano: {planoEfetivo}
+                  {isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
                 </div>
               </div>
               <div className="grid md:grid-cols-2 gap-3">
@@ -772,13 +907,20 @@ function PagamentosSection({ state }: { state: State }) {
                             <span className="inline-flex items-center gap-2">
                               Comprovativo carregado
                               {meta.signedUrl && (
-                                <a className="underline inline-flex items-center gap-1" href={meta.signedUrl} target="_blank" rel="noreferrer">
+                                <a
+                                  className="underline inline-flex items-center gap-1"
+                                  href={meta.signedUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
                                   <LinkIcon className="h-3 w-3" />
                                   Abrir
                                 </a>
                               )}
                             </span>
-                          ) : ("Comprovativo em falta")}
+                          ) : (
+                            "Comprovativo em falta"
+                          )}
                         </div>
                       </div>
 
@@ -817,11 +959,11 @@ function AtletasSection({
   state,
   setState,
   onOpenForm,
-}:{
+}: {
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
   onOpenForm: (a?: Atleta) => void;
-}){
+}) {
   // missing por atleta calculado do Supabase + Realtime
   const [userId, setUserId] = useState<string | null>(null);
   const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
@@ -836,7 +978,10 @@ function AtletasSection({
       if (!mounted) return;
       setUserId(data?.user?.id ?? null);
     });
-    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+    return () => {
+      mounted = false;
+      sub.data.subscription.unsubscribe();
+    };
   }, []);
 
   async function recomputeMissing(currentUserId: string) {
@@ -846,7 +991,10 @@ function AtletasSection({
       .eq("user_id", currentUserId)
       .eq("doc_nivel", "atleta");
 
-    if (error) { console.error("[AtletasSection] SELECT documentos:", error.message); return; }
+    if (error) {
+      console.error("[AtletasSection] SELECT documentos:", error.message);
+      return;
+    }
 
     const byAth: Map<string, Set<string>> = new Map();
     for (const r of (data || []) as any[]) {
@@ -869,7 +1017,7 @@ function AtletasSection({
   useEffect(() => {
     if (!userId) return;
     recomputeMissing(userId);
-  }, [userId, state.atletas.map(a => a.id).join(",")]); // eslint-disable-line
+  }, [userId, state.atletas.map((a) => a.id).join(",")]); // eslint-disable-line
 
   useEffect(() => {
     if (!userId) return;
@@ -878,10 +1026,14 @@ function AtletasSection({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "documentos", filter: `user_id=eq.${userId}` },
-        () => { recomputeMissing(userId); }
+        () => {
+          recomputeMissing(userId);
+        }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [userId]); // eslint-disable-line
 
   function isAnuidadeObrigatoria(escalao: string | undefined) {
@@ -890,14 +1042,15 @@ function AtletasSection({
     return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
   }
 
-  async function remove(id: string){
+  async function remove(id: string) {
     if (!confirm("Remover o atleta?")) return;
     try {
       await removeAtleta(id);
-      const next: State = { ...state, atletas: state.atletas.filter(x=>x.id!==id) };
+      const next: State = { ...state, atletas: state.atletas.filter((x) => x.id !== id) };
       delete next.docsAtleta[id];
       delete next.pagamentos[id];
-      setState(next); saveState(next);
+      setState(next);
+      saveState(next);
     } catch (e: any) {
       alert(e.message || "Falha ao remover o atleta");
     }
@@ -907,35 +1060,43 @@ function AtletasSection({
     <Card>
       <CardHeader className="flex items-center justify-between">
         <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5"/> Inscrição de Atletas
+          <Users className="h-5 w-5" /> Inscrição de Atletas
         </CardTitle>
-        <Button onClick={()=>onOpenForm(undefined)}>
-          <Plus className="h-4 w-4 mr-1"/> Novo atleta
+        <Button onClick={() => onOpenForm(undefined)}>
+          <Plus className="h-4 w-4 mr-1" /> Novo atleta
         </Button>
       </CardHeader>
       <CardContent>
-        {state.atletas.length===0 && <p className="text-sm text-gray-500">Sem atletas. Clique em "Novo atleta".</p>}
+        {state.atletas.length === 0 && <p className="text-sm text-gray-500">Sem atletas. Clique em "Novo atleta".</p>}
         <div className="grid gap-3">
-          {state.atletas.map(a=>{
+          {state.atletas.map((a) => {
             const missing = missingByAth[a.id] ?? DOCS_ATLETA.length;
             return (
               <div key={a.id} className="border rounded-xl p-3 flex items-center justify-between">
                 <div>
                   <div className="font-medium flex items-center gap-2">
                     {a.nomeCompleto}
-                    {missing>0
-                      ? <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700"><AlertCircle className="h-3 w-3"/> {missing} doc(s) em falta</span>
-                      : <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700"><CheckCircle2 className="h-3 w-3"/> Documentação completa</span>
-                    }
+                    {missing > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
+                        <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
+                        <CheckCircle2 className="h-3 w-3" /> Documentação completa
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-500">{a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento: {isAnuidadeObrigatoria(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}</div>
+                  <div className="text-xs text-gray-500">
+                    {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento:{" "}
+                    {isAnuidadeObrigatoria(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}
+                  </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={()=>onOpenForm(a)}>
-                    <PencilLine className="h-4 w-4 mr-1"/> Editar
+                  <Button variant="outline" onClick={() => onOpenForm(a)}>
+                    <PencilLine className="h-4 w-4 mr-1" /> Editar
                   </Button>
-                  <Button variant="destructive" onClick={()=>remove(a.id)}>
-                    <Trash2 className="h-4 w-4 mr-1"/> Remover
+                  <Button variant="destructive" onClick={() => remove(a.id)}>
+                    <Trash2 className="h-4 w-4 mr-1" /> Remover
                   </Button>
                 </div>
               </div>
@@ -949,7 +1110,7 @@ function AtletasSection({
 
 /* ----------------------------------- App ---------------------------------- */
 
-export default function App(){
+export default function App() {
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
   const [postSavePrompt, setPostSavePrompt] = useState(false);
@@ -963,9 +1124,9 @@ export default function App(){
   const doSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const [perfilDb, atletasDb] = await Promise.all([ getMyProfile(), listAtletas() ]);
-      setState(prev => {
-        const email = (perfilDb?.email || prev.conta?.email || "");
+      const [perfilDb, atletasDb] = await Promise.all([getMyProfile(), listAtletas()]);
+      setState((prev) => {
+        const email = perfilDb?.email || prev.conta?.email || "";
         return {
           ...prev,
           conta: email ? { email } : prev.conta,
@@ -982,22 +1143,27 @@ export default function App(){
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) doSync(); else setSyncing(false);
+      if (data.session) doSync();
+      else setSyncing(false);
     });
     const sub = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session) void doSync();
     });
-    return () => { sub.data.subscription.unsubscribe(); };
+    return () => {
+      sub.data.subscription.unsubscribe();
+    };
   }, [doSync]);
 
   // persistência local
-  useEffect(() => { saveState(state); }, [state]);
+  useEffect(() => {
+    saveState(state);
+  }, [state]);
 
   const hasPerfil = !!state.perfil;
   const hasAtletas = state.atletas.length > 0;
   const mainTabLabel = hasPerfil ? "Página Inicial" : "Dados Pessoais";
 
-  function afterSavePerfil(){
+  function afterSavePerfil() {
     setPostSavePrompt(true);
     setActiveTab("home");
   }
@@ -1011,15 +1177,14 @@ export default function App(){
   // Guardar do formulário (modal global)
   const handleAthSave = async (novo: Atleta) => {
     try {
-      // grava e usa SEMPRE o objeto devolvido (com id UUID)
-      const saved = await saveAtleta(novo);
+      const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
 
       const wasEditingId = athEditing?.id; // id antigo (pode ser local)
       const nextAtletas = wasEditingId
-        ? state.atletas.map(x => x.id === wasEditingId ? saved : x)
+        ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
         : [saved, ...state.atletas];
 
-      setState(prev => ({ ...prev, atletas: nextAtletas }));
+      setState((prev) => ({ ...prev, atletas: nextAtletas }));
       saveState({ ...state, atletas: nextAtletas });
 
       setAthModalOpen(false);
@@ -1029,24 +1194,24 @@ export default function App(){
     }
   };
 
-
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2"><Users className="h-6 w-6"/><h1 className="text-2xl font-bold">AAC-SB</h1></div>
+        <div className="flex items-center gap-2">
+          <Users className="h-6 w-6" />
+          <h1 className="text-2xl font-bold">AAC-SB</h1>
+        </div>
         <AuthButton />
       </header>
 
-      <AuthGate
-        fallback={<ContaSection state={state} setState={setState} onLogged={()=>setActiveTab("home")} />}
-      >
+      <AuthGate fallback={<ContaSection state={state} setState={setState} onLogged={() => setActiveTab("home")} />}>
         {syncing ? (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
           </div>
         ) : (
           // Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab
-          <Tabs key={activeTab} defaultValue={activeTab}>
+          <Tabs key={activeTab} defaultValue={activeTab} onValueChange={setActiveTab as any}>
             <TabsList>
               <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
               {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
@@ -1055,7 +1220,7 @@ export default function App(){
             </TabsList>
 
             <TabsContent value="home">
-              <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil}/>
+              <DadosPessoaisSection state={state} setState={setState} onAfterSave={afterSavePerfil} />
             </TabsContent>
 
             {hasPerfil && (
@@ -1066,9 +1231,9 @@ export default function App(){
 
             {hasPerfil && (
               <TabsContent value="docs">
-                {/* prop setState como função simples */}
-				<TemplatesDownloadSection />
-                <UploadDocsSection state={state} setState={(s: State)=>setState(s)} />
+                <TemplatesDownloadSection />
+                {/* setState como função simples para compatibilidade do componente */}
+                <UploadDocsSection state={state} setState={(s: State) => setState(s)} />
               </TabsContent>
             )}
 
@@ -1084,17 +1249,19 @@ export default function App(){
       {/* Modal global do Atleta — fica fora das Tabs, não desmonta ao trocar separador */}
       <Dialog open={athModalOpen} onOpenChange={setAthModalOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{athEditing ? "Editar atleta" : "Novo atleta"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{athEditing ? "Editar atleta" : "Novo atleta"}</DialogTitle>
+          </DialogHeader>
           <AtletaFormCompleto
             initial={athEditing}
             dadosPessoais={{
               morada: state.perfil?.morada,
               codigoPostal: state.perfil?.codigoPostal,
               telefone: state.perfil?.telefone,
-              email: state.perfil?.email
+              email: state.perfil?.email,
             }}
-		    tipoSocio={state.perfil?.tipoSocio || "Não pretendo ser sócio"} /* novo */
-            onCancel={()=>setAthModalOpen(false)}
+            tipoSocio={state.perfil?.tipoSocio ?? "Não pretendo ser sócio"}
+            onCancel={() => setAthModalOpen(false)}
             onSave={handleAthSave}
           />
         </DialogContent>
@@ -1102,19 +1269,42 @@ export default function App(){
 
       <Dialog open={postSavePrompt} onOpenChange={setPostSavePrompt}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Deseja inscrever um atleta agora?</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Deseja inscrever um atleta agora?</DialogTitle>
+          </DialogHeader>
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={()=>setPostSavePrompt(false)}>Agora não</Button>
-            <Button onClick={()=>{ setPostSavePrompt(false); setActiveTab("atletas"); }}>Sim, inscrever</Button>
+            <Button variant="secondary" onClick={() => setPostSavePrompt(false)}>
+              Agora não
+            </Button>
+            <Button
+              onClick={() => {
+                setPostSavePrompt(false);
+                setActiveTab("atletas");
+              }}
+            >
+              Sim, inscrever
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <div className="flex items-center justify-center gap-4 pt-6">
-        <a href="https://www.facebook.com/basketacademica" target="_blank" rel="noreferrer" aria-label="Facebook AAC Basquetebol" className="opacity-80 hover:opacity-100">
+        <a
+          href="https://www.facebook.com/basketacademica"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Facebook AAC Basquetebol"
+          className="opacity-80 hover:opacity-100"
+        >
           <Facebook className="h-6 w-6" />
         </a>
-        <a href="https://www.instagram.com/academicabasket/" target="_blank" rel="noreferrer" aria-label="Instagram AAC Basquetebol" className="opacity-80 hover:opacity-100">
+        <a
+          href="https://www.instagram.com/academicabasket/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Instagram AAC Basquetebol"
+          className="opacity-80 hover:opacity-100"
+        >
           <Instagram className="h-6 w-6" />
         </a>
         <a href="mailto:basquetebol@academica.pt" aria-label="Email AAC Basquetebol" className="opacity-80 hover:opacity-100">
@@ -1135,12 +1325,20 @@ function AuthButton() {
       setLogged(!!session);
     });
     supabase.auth.getSession().then(({ data }) => setLogged(!!data.session));
-    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+    return () => {
+      mounted = false;
+      sub.data.subscription.unsubscribe();
+    };
   }, []);
 
   if (!logged) return null;
   return (
-    <Button variant="outline" onClick={() => { signOut().catch(() => {}); }}>
+    <Button
+      variant="outline"
+      onClick={() => {
+        signOut().catch(() => {});
+      }}
+    >
       <LogOut className="h-4 w-4 mr-1" /> Sair
     </Button>
   );
@@ -1156,7 +1354,10 @@ function AuthGate({ children, fallback }: { children: React.ReactNode; fallback:
       setReady(session ? "in" : "out");
     });
     supabase.auth.getSession().then(({ data }) => setReady(data.session ? "in" : "out"));
-    return () => { mounted = false; sub.data.subscription.unsubscribe(); };
+    return () => {
+      mounted = false;
+      sub.data.subscription.unsubscribe();
+    };
   }, []);
   if (ready === "checking") return <div className="text-sm text-gray-500">A verificar sessão...</div>;
   if (ready === "out") return <>{fallback}</>;

@@ -1,152 +1,174 @@
 // src/services/atletasService.ts
 import { supabase } from "../supabaseClient";
-import type { Atleta } from "../types/Atleta";
+import type { Atleta, PlanoPagamento } from "../types/Atleta";
 
-/** ----------------------- helpers ----------------------- */
-function isUuid(v?: string) {
-  return !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+function isUUID(s: string | undefined | null) {
+  return !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 }
 
-/** Espelho da tabela public.atletas (colunas que partilhaste) */
-type Row = {
-  id: string;
-  dados_pessoais_id: string | null;
-  nome: string;
-  data_nascimento: string; // date
-  escalao: string | null;
-  alergias: string;
-  opcao_pagamento: string | null;
-  created_at: string | null;
-  morada: string | null;
-  codigo_postal: string | null;
-  contactos_urgencia: string | null;
-  emails_preferenciais: string | null;
-  genero: string | null;
-  user_id: string | null;
-
-  nacionalidade: string | null;
-  nacionalidade_outra: string | null;
-  tipo_doc: string | null;
-  num_doc: string | null;
-  validade_doc: string | null;
-  nif: string | null;
-  nome_pai: string | null;
-  nome_mae: string | null;
-  telefone_opc: string | null;
-  email_opc: string | null;
-  escola: string | null;
-  ano_escolaridade: string | null;
-  encarregado_educacao: string | null;
-  parentesco_outro: string | null;
-  observacoes: string | null;
-};
-
-/** Row -> Atleta (objeto de UI) */
-function fromRow(r: Row): Atleta {
+/** DB -> App */
+function rowToAtleta(r: any): Atleta {
   return {
     id: r.id,
-    nomeCompleto: r.nome,
-    dataNascimento: r.data_nascimento,
-    genero: (r.genero as Atleta["genero"]) || "Feminino",
-    nacionalidade: (r.nacionalidade as any) || "Portuguesa",
-    nacionalidadeOutra: r.nacionalidade_outra || undefined,
-    tipoDoc: (r.tipo_doc as any) || "Cartão de cidadão",
-    numDoc: r.num_doc || "",
-    validadeDoc: r.validade_doc || "",
-    nif: r.nif || "",
-    nomePai: r.nome_pai || "",
-    nomeMae: r.nome_mae || "",
-    morada: r.morada || "",
-    codigoPostal: r.codigo_postal || "",
-    telefoneOpc: r.telefone_opc || undefined,
-    emailOpc: r.email_opc || undefined,
-    escola: r.escola || "",
-    anoEscolaridade: r.ano_escolaridade || "",
-    alergias: r.alergias || "",
-    encarregadoEducacao: (r.encarregado_educacao as any) || undefined,
-    parentescoOutro: r.parentesco_outro || undefined,
-    contactosUrgencia: r.contactos_urgencia || "",
-    emailsPreferenciais: r.emails_preferenciais || "",
-    escalao: (r.escalao as any) || "Fora de escalões",
-    planoPagamento: (r.opcao_pagamento as any) || "Mensal",
-    observacoes: r.observacoes || undefined,
+    nomeCompleto: r.nome ?? "",
+    dataNascimento: r.data_nascimento ?? "",
+    genero: r.genero ?? "Feminino",
+    escalao: r.escalao ?? "Fora de escalões",
+    planoPagamento: (r.opcao_pagamento as PlanoPagamento) ?? "Mensal",
+
+    nacionalidade: r.nacionalidade ?? "Portuguesa",
+    nacionalidadeOutra: r.nacionalidade_outra ?? undefined,
+    tipoDoc: r.tipo_doc ?? "Cartão de cidadão",
+    numDoc: r.num_doc ?? "",
+    validadeDoc: r.validade_doc ?? "",
+    nif: r.nif ?? "",
+    nomePai: r.nome_pai ?? "",
+    nomeMae: r.nome_mae ?? "",
+
+    morada: r.morada ?? "",
+    codigoPostal: r.codigo_postal ?? "",
+    telefoneOpc: r.telefone_opc ?? undefined,
+    emailOpc: r.email_opc ?? undefined,
+
+    escola: r.escola ?? "",
+    anoEscolaridade: r.ano_escolaridade ?? "",
+    alergias: r.alergias ?? "",
+    encarregadoEducacao: r.encarregado_educacao ?? undefined,
+    parentescoOutro: r.parentesco_outro ?? undefined,
+
+    contactosUrgencia: r.contactos_urgencia ?? "",
+    emailsPreferenciais: r.emails_preferenciais ?? "",
+    observacoes: r.observacoes ?? undefined,
   };
 }
 
-/** Atleta (UI) -> payload JSON para RPC/tabela */
-function toPayload(a: Atleta) {
+/** App -> DB */
+function atletaToRow(a: Atleta, userId: string) {
   return {
-    nome: a.nomeCompleto,
-    data_nascimento: a.dataNascimento,
-    escalao: a.escalao,
-    alergias: a.alergias,
-    opcao_pagamento: a.planoPagamento,
-    morada: a.morada,
-    codigo_postal: a.codigoPostal,
-    contactos_urgencia: a.contactosUrgencia,
-    emails_preferenciais: a.emailsPreferenciais,
-    genero: a.genero,
+    user_id: userId,
+    id: isUUID(a.id) ? a.id : undefined, // deixa o DB gerar se não for uuid
+    nome: a.nomeCompleto ?? "",
+    data_nascimento: a.dataNascimento ?? "",
+    genero: a.genero ?? null,
+    escalao: a.escalao ?? null,
+    opcao_pagamento: a.planoPagamento ?? null,
 
-    nacionalidade: a.nacionalidade,
+    nacionalidade: a.nacionalidade ?? null,
     nacionalidade_outra: a.nacionalidadeOutra ?? null,
-    tipo_doc: a.tipoDoc,
-    num_doc: a.numDoc,
-    validade_doc: a.validadeDoc,
-    nif: a.nif,
-    nome_pai: a.nomePai,
-    nome_mae: a.nomeMae,
+    tipo_doc: a.tipoDoc ?? null,
+    num_doc: a.numDoc ?? null,
+    validade_doc: a.validadeDoc ?? null,
+    nif: a.nif ?? null,
+    nome_pai: a.nomePai ?? null,
+    nome_mae: a.nomeMae ?? null,
+
+    morada: a.morada ?? null,
+    codigo_postal: a.codigoPostal ?? null,
     telefone_opc: a.telefoneOpc ?? null,
     email_opc: a.emailOpc ?? null,
-    escola: a.escola,
-    ano_escolaridade: a.anoEscolaridade,
+
+    escola: a.escola ?? null,
+    ano_escolaridade: a.anoEscolaridade ?? null,
+    alergias: a.alergias ?? null,
     encarregado_educacao: a.encarregadoEducacao ?? null,
     parentesco_outro: a.parentescoOutro ?? null,
-    observacoes: a.observacoes ?? null,
 
-    // Se tiveres o id do perfil e quiseres associar:
-    // dados_pessoais_id: '<uuid>'  // ou deixa omitido
-  } as Record<string, any>;
+    contactos_urgencia: a.contactosUrgencia ?? null,
+    emails_preferenciais: a.emailsPreferenciais ?? null,
+    observacoes: a.observacoes ?? null,
+  };
 }
 
-/** ----------------------- API ----------------------- */
 export async function listAtletas(): Promise<Atleta[]> {
+  const { data: u } = await supabase.auth.getUser();
+  const userId = u?.user?.id;
+  if (!userId) return [];
+
   const { data, error } = await supabase
     .from("atletas")
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  if (error) throw new Error(error.message);
-  return (data as Row[] | null)?.map(fromRow) ?? [];
-}
-
-export async function upsertAtleta(a: Atleta): Promise<Atleta> {
-  // Garante que o pedido leva JWT (evita chamadas “a seco”)
-  const { data: s } = await supabase.auth.getSession();
-  if (!s.session?.access_token) {
-    throw new Error("Sessão em falta. Entre novamente.");
-  }
-
-  if (isUuid(a.id)) {
-    // UPDATE via RPC (valida ownership no servidor)
-    const payload = toPayload(a);
-    const { data, error } = await supabase.rpc("rpc_update_atleta", {
-      p_id: a.id,
-      p: payload as any,
-    });
-    if (error) throw new Error(error.message);
-    return fromRow(data as Row);
-  } else {
-    // INSERT via RPC SECURITY DEFINER (carimba user_id = auth.uid())
-    const payload = toPayload(a);
-    const { data, error } = await supabase.rpc("rpc_create_atleta", {
-      p: payload as any,
-    });
-    if (error) throw new Error(error.message);
-    return fromRow(data as Row);
-  }
+  if (error) throw error;
+  return (data ?? []).map(rowToAtleta);
 }
 
 export async function deleteAtleta(id: string): Promise<void> {
   const { error } = await supabase.from("atletas").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw error;
+}
+
+/**
+ * Cria/atualiza atleta.
+ * - Se mudar o plano (Mensal/Trimestral/Anual) chamamos a função para re-semear
+ *   as mensalidades (apaga e recria os slots).
+ * - Após inserir um novo atleta, também semeamos.
+ */
+export async function upsertAtleta(a: Atleta): Promise<Atleta> {
+  const { data: u } = await supabase.auth.getUser();
+  const userId = u?.user?.id;
+  if (!userId) throw new Error("Sessão inválida");
+
+  const row = atletaToRow(a, userId);
+
+  // Descobrir plano atual (se existir registo) para saber se mudou
+  let previousPlano: string | null = null;
+  if (isUUID(a.id)) {
+    const { data: prev } = await supabase
+      .from("atletas")
+      .select("opcao_pagamento")
+      .eq("id", a.id)
+      .maybeSingle();
+    previousPlano = prev?.opcao_pagamento ?? null;
+  }
+
+  const isUpdate = isUUID(a.id) && previousPlano !== null;
+
+  if (isUpdate) {
+    const { data, error } = await supabase
+      .from("atletas")
+      .update(row)
+      .eq("id", a.id)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    const saved = rowToAtleta(data);
+
+    // Se plano mudou, re-seed mensalidades
+    if (previousPlano !== saved.planoPagamento) {
+      await seedMensalidades(saved.id, saved.planoPagamento);
+    }
+    return saved;
+  } else {
+    // INSERT (deixa o DB gerar id)
+    const insertRow = { ...row };
+    delete (insertRow as any).id;
+
+    const { data, error } = await supabase
+      .from("atletas")
+      .insert(insertRow)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+    const saved = rowToAtleta(data);
+
+    // Novo atleta => semear mensalidades consoante o plano
+    await seedMensalidades(saved.id, saved.planoPagamento);
+
+    return saved;
+  }
+}
+
+/** Chama a função SQL que apaga e recria os slots de mensalidades */
+export async function seedMensalidades(atletaId: string, plano: PlanoPagamento) {
+  const { error } = await supabase.rpc("seed_pagamentos_for_atleta", {
+    p_atleta_id: atletaId,
+    p_plano: plano,
+    p_epoca: "2025/26",
+    p_reset: true,
+  });
+  if (error) throw error;
 }
