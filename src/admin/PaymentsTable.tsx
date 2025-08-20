@@ -1,7 +1,7 @@
 // src/admin/PaymentsTable.tsx
 import React from "react";
 import { Button } from "../components/ui/button";
-import type { AdminPagamento } from "./services/adminPagamentosService";
+import type { AdminPagamento } from "../services/adminPagamentosService";
 
 type Props = {
   rows: AdminPagamento[];
@@ -12,7 +12,7 @@ function fmtDate(iso?: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(); // PT locale no browser
+  return d.toLocaleString(); // usa locale do browser
 }
 
 function Badge({
@@ -36,10 +36,26 @@ function Badge({
   );
 }
 
+// Deriva o estado visual a partir da linha (ou usa o que vier da service)
+function getEstado(r: AdminPagamento): { label: string; color: "green"|"yellow"|"red"|"gray" } {
+  // Se a tua service já calcula:
+  const code = (r as any).estadoCode as string | undefined;
+  const label = (r as any).estadoLabel as string | undefined;
+  if (code && label) {
+    if (code === "regularizado") return { label, color: "green" };
+    if (code === "pendente_validacao") return { label, color: "yellow" };
+    if (code === "em_atraso") return { label, color: "red" };
+    return { label, color: "gray" };
+  }
+  // Fallback simples
+  if (r.validado) return { label: "Regularizado", color: "green" };
+  if (r.signedUrl) return { label: "Pendente de validação", color: "yellow" };
+  return { label: "Pendente", color: "gray" };
+}
+
 export default function PaymentsTable({ rows, onValidate }: Props) {
   const sorted = [...rows].sort(
-    (a, b) =>
-      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );
 
   return (
@@ -63,19 +79,10 @@ export default function PaymentsTable({ rows, onValidate }: Props) {
               </td>
             </tr>
           )}
+
           {sorted.map((r) => {
             const isValidado = !!r.validado;
-            // Estado agregado (se a tua service já calcular, podes trocar por r.estadoLabel/r.estadoCode)
-            const estadoBadge =
-              r.status === "regularizado" ? (
-                <Badge color="green">Regularizado</Badge>
-              ) : r.status === "em_atraso" ? (
-                <Badge color="red">Em atraso</Badge>
-              ) : r.status === "pendente_validacao" ? (
-                <Badge color="yellow">Pendente de validação</Badge>
-              ) : (
-                <Badge>Pendente</Badge>
-              );
+            const estado = getEstado(r);
 
             return (
               <tr key={r.id} className="border-t">
@@ -102,15 +109,14 @@ export default function PaymentsTable({ rows, onValidate }: Props) {
                     <Badge>Pendente</Badge>
                   )}
                 </td>
-                <td className="px-3 py-2">{estadoBadge}</td>
+                <td className="px-3 py-2">
+                  <Badge color={estado.color}>{estado.label}</Badge>
+                </td>
                 <td className="px-3 py-2">
                   {onValidate && (
                     <div className="flex gap-2">
                       {isValidado ? (
-                        <Button
-                          variant="secondary"
-                          onClick={() => onValidate(r, false)}
-                        >
+                        <Button variant="secondary" onClick={() => onValidate(r, false)}>
                           Invalidar
                         </Button>
                       ) : (
