@@ -1,131 +1,72 @@
 // src/admin/PaymentsTable.tsx
 import React from "react";
 import { Button } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
+import type { AdminPagamento } from "./services/adminPagamentosService";
 
-// Tipo mínimo usado pela tabela (evita problemas de import)
-export type AdminPagamento = {
-  id: string;
-  descricao: string | null;
-  signedUrl?: string | null;
-  validado?: boolean | null;
-  createdAt?: string | null;
-  // Se a service fornecer estes, usamos; senão calculamos fallback
-  estadoCode?: "regularizado" | "pendente_validacao" | "em_atraso" | string;
-  estadoLabel?: string;
-};
-
-type Props = {
-  rows: AdminPagamento[];
-  onValidate?: (row: AdminPagamento, valid: boolean) => void | Promise<void>;
-};
-
-function fmtDate(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString();
-}
-
-function Badge({
-  children,
-  color = "gray",
+export default function PaymentsTable({
+  rows,
+  onValidate,
 }: {
-  children: React.ReactNode;
-  color?: "gray" | "green" | "yellow" | "red" | "blue";
+  rows: AdminPagamento[];
+  onValidate: (row: AdminPagamento, next: boolean) => void;
 }) {
-  const map: Record<string, string> = {
-    gray: "bg-gray-100 text-gray-700",
-    green: "bg-green-100 text-green-700",
-    yellow: "bg-yellow-100 text-yellow-800",
-    red: "bg-red-100 text-red-700",
-    blue: "bg-blue-100 text-blue-700",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${map[color]}`}>
-      {children}
-    </span>
-  );
-}
-
-// Deriva o estado visual (ou usa o que vier da service)
-function getEstado(r: AdminPagamento): { label: string; color: "green" | "yellow" | "red" | "gray" } {
-  if (r.estadoCode && r.estadoLabel) {
-    if (r.estadoCode === "regularizado") return { label: r.estadoLabel, color: "green" };
-    if (r.estadoCode === "pendente_validacao") return { label: r.estadoLabel, color: "yellow" };
-    if (r.estadoCode === "em_atraso") return { label: r.estadoLabel, color: "red" };
-    return { label: r.estadoLabel, color: "gray" };
+  if (!rows.length) {
+    return (
+      <Card>
+        <CardContent>
+          <p className="text-sm text-gray-500">Sem registos para os filtros aplicados.</p>
+        </CardContent>
+      </Card>
+    );
   }
-  if (r.validado) return { label: "Regularizado", color: "green" };
-  if (r.signedUrl) return { label: "Pendente de validação", color: "yellow" };
-  return { label: "Pendente", color: "gray" };
-}
-
-export default function PaymentsTable({ rows, onValidate }: Props) {
-  const sorted = [...rows].sort(
-    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-  );
 
   return (
     <div className="overflow-x-auto border rounded-xl">
       <table className="min-w-full text-sm">
-        <thead className="bg-gray-50 text-gray-600">
-          <tr>
-            <th className="px-3 py-2 text-left">Data</th>
-            <th className="px-3 py-2 text-left">Descrição</th>
-            <th className="px-3 py-2 text-left">Comprovativo</th>
-            <th className="px-3 py-2 text-left">Validação</th>
-            <th className="px-3 py-2 text-left">Estado (até hoje)</th>
-            <th className="px-3 py-2 text-left">Ações</th>
+        <thead className="bg-gray-50">
+          <tr className="text-left">
+            <th className="px-3 py-2">Titular/EE</th>
+            <th className="px-3 py-2">Atleta</th>
+            <th className="px-3 py-2">Descrição</th>
+            <th className="px-3 py-2">Tipo</th>
+            <th className="px-3 py-2">Comprovativo</th>
+            <th className="px-3 py-2">Validado</th>
+            <th className="px-3 py-2"></th>
           </tr>
         </thead>
         <tbody>
-          {sorted.length === 0 && (
-            <tr>
-              <td className="px-3 py-4 text-gray-500" colSpan={6}>
-                Sem registos.
+          {rows.map((r) => (
+            <tr key={r.id} className="border-t">
+              <td className="px-3 py-2">{r.titularNome || "—"}</td>
+              <td className="px-3 py-2">{r.atletaNome || "—"}</td>
+              <td className="px-3 py-2">{r.descricao}</td>
+              <td className="px-3 py-2 capitalize">{r.tipo}</td>
+              <td className="px-3 py-2">
+                {r.signedUrl ? (
+                  <a className="underline" href={r.signedUrl} target="_blank" rel="noreferrer">
+                    Abrir
+                  </a>
+                ) : (
+                  <span className="text-gray-500">—</span>
+                )}
+              </td>
+              <td className="px-3 py-2">
+                {r.validado ? (
+                  <span className="inline-flex items-center gap-1 text-green-700">✔ Validado</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-red-700">• Pendente</span>
+                )}
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex gap-2">
+                  <Button variant={r.validado ? "secondary" : "outline"} onClick={() => onValidate(r, !r.validado)}>
+                    {r.validado ? "Desvalidar" : "Validar"}
+                  </Button>
+                </div>
               </td>
             </tr>
-          )}
-
-          {sorted.map((r) => {
-            const isValidado = !!r.validado;
-            const estado = getEstado(r);
-
-            return (
-              <tr key={r.id} className="border-t">
-                <td className="px-3 py-2">{fmtDate(r.createdAt)}</td>
-                <td className="px-3 py-2">{r.descricao || "—"}</td>
-                <td className="px-3 py-2">
-                  {r.signedUrl ? (
-                    <a className="underline text-blue-700" href={r.signedUrl} target="_blank" rel="noreferrer">
-                      Abrir
-                    </a>
-                  ) : (
-                    <span className="text-gray-500">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {isValidado ? <Badge color="green">Validado</Badge> : <Badge>Pendente</Badge>}
-                </td>
-                <td className="px-3 py-2">
-                  <Badge color={estado.color}>{estado.label}</Badge>
-                </td>
-                <td className="px-3 py-2">
-                  {onValidate && (
-                    <div className="flex gap-2">
-                      {isValidado ? (
-                        <Button variant="secondary" onClick={() => onValidate(r, false)}>
-                          Invalidar
-                        </Button>
-                      ) : (
-                        <Button onClick={() => onValidate(r, true)}>Validar</Button>
-                      )}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+          ))}
         </tbody>
       </table>
     </div>
