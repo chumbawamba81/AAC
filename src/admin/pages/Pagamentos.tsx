@@ -9,6 +9,7 @@ import {
   listComprovativosSocio,
   listComprovativosInscricaoAtleta,
   setTesourariaSocio,
+  setInscricaoAtletaValidada,
   type AdminPagamento,
   type AdminDoc,
   type EstadoMensalidades,
@@ -68,7 +69,6 @@ function MensalidadesTable() {
 
   async function toggleValid(r: AdminPagamento) {
     await markPagamentoValidado(r.id, !r.validado);
-    // refetch rápido
     const data = await listPagamentosAdmin();
     setRows(data.filter(x => x.nivel === "atleta"));
   }
@@ -100,11 +100,7 @@ function MensalidadesTable() {
                     <td className="py-2 pr-3">{r.atletaNome ?? "—"}</td>
                     <td className="py-2 pr-3">{r.descricao ?? "—"}</td>
                     <td className="py-2 pr-3">
-                      {r.validado ? (
-                        <Pill tone="green">Validado</Pill>
-                      ) : (
-                        <Pill tone="gray">Pendente</Pill>
-                      )}
+                      {r.validado ? <Pill tone="green">Validado</Pill> : <Pill tone="gray">Pendente</Pill>}
                     </td>
                     <td className="py-2 pr-3">
                       <EstadoBadge estado={estat?.estado ?? "—"} />
@@ -112,18 +108,11 @@ function MensalidadesTable() {
                     <td className="py-2 pr-3">
                       <div className="flex items-center gap-2">
                         {r.signedUrl && (
-                          <a
-                            className="underline text-sm"
-                            href={r.signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                          <a className="underline text-sm" href={r.signedUrl} target="_blank" rel="noreferrer">
                             Abrir
                           </a>
                         )}
-                        <Button onClick={() => toggleValid(r)}>
-                          {r.validado ? "Reverter" : "Validar"}
-                        </Button>
+                        <Button onClick={() => toggleValid(r)}>{r.validado ? "Reverter" : "Validar"}</Button>
                       </div>
                     </td>
                   </tr>
@@ -169,7 +158,7 @@ function InscricaoSocioTable() {
     setRows(data);
   }
 
-  // agrupar por titular (cada titular pode ter 1..n páginas/ficheiros)
+  // agrupar por titular
   const byUser = useMemo(() => {
     const m = new Map<string, AdminDoc[]>();
     for (const d of rows) {
@@ -200,11 +189,8 @@ function InscricaoSocioTable() {
             </thead>
             <tbody>
               {Array.from(byUser.entries()).map(([key, docs]) => {
-                // heurística de estado: se há doc => "Pendente de validação"
-                // (a confirmação real é a situação de tesouraria, que validas com o botão)
                 const any = docs[0];
-                const estado: "Pendente de validação" | "—" =
-                  docs.length > 0 ? "Pendente de validação" : "—";
+                const estado: "Pendente de validação" | "—" = docs.length > 0 ? "Pendente de validação" : "—";
                 const userId = any.userId ?? null;
                 const email = any.titularEmail ?? "—";
                 const firstUrl = docs.find(d => !!d.signedUrl)?.signedUrl ?? null;
@@ -212,27 +198,15 @@ function InscricaoSocioTable() {
                 return (
                   <tr key={key} className="border-b align-middle">
                     <td className="py-2 pr-3">{email}</td>
+                    <td className="py-2 pr-3"><Pill tone="gray">Pendente</Pill></td>
+                    <td className="py-2 pr-3"><EstadoBadge estado={estado} /></td>
                     <td className="py-2 pr-3">
-                      <Pill tone="gray">Pendente</Pill>
-                    </td>
-                    <td className="py-2 pr-3">
-                      <EstadoBadge estado={estado} />
-                    </td>
-                    <td className="py-2 pr-3">
-                      {firstUrl ? (
-                        <a className="underline" href={firstUrl} target="_blank" rel="noreferrer">
-                          Abrir
-                        </a>
-                      ) : (
-                        "—"
-                      )}
+                      {firstUrl ? <a className="underline" href={firstUrl} target="_blank" rel="noreferrer">Abrir</a> : "—"}
                     </td>
                     <td className="py-2 pr-3">
                       <div className="flex items-center gap-2">
                         <Button onClick={() => validar(userId)}>Validar</Button>
-                        <Button variant="secondary" onClick={() => reverter(userId)}>
-                          Reverter
-                        </Button>
+                        <Button variant="secondary" onClick={() => reverter(userId)}>Reverter</Button>
                       </div>
                     </td>
                   </tr>
@@ -242,10 +216,6 @@ function InscricaoSocioTable() {
           </table>
         </div>
       )}
-      <p className="mt-3 text-xs text-gray-500">
-        A validação marca a situação de tesouraria do titular como <strong>Regularizado</strong>.
-        “Reverter” volta para <strong>Pendente</strong>.
-      </p>
     </Card>
   );
 }
@@ -256,18 +226,33 @@ function InscricaoAtletaTable() {
   const [rows, setRows] = useState<AdminDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
+  async function refresh() {
+    const data = await listComprovativosInscricaoAtleta();
+    setRows(data);
+  }
+
   useEffect(() => {
     let live = true;
     (async () => {
       setLoading(true);
-      const data = await listComprovativosInscricaoAtleta();
-      if (live) setRows(data);
-      setLoading(false);
+      await refresh();
+      if (live) setLoading(false);
     })();
     return () => {
       live = false;
     };
   }, []);
+
+  async function validar(atletaId: string | null) {
+    if (!atletaId) return;
+    await setInscricaoAtletaValidada(atletaId, true);
+    await refresh();
+  }
+  async function reverter(atletaId: string | null) {
+    if (!atletaId) return;
+    await setInscricaoAtletaValidada(atletaId, false);
+    await refresh();
+  }
 
   return (
     <Card className="p-4">
@@ -283,37 +268,50 @@ function InscricaoAtletaTable() {
               <tr className="border-b">
                 <th className="py-2 pr-3">Atleta</th>
                 <th className="py-2 pr-3">Titular (email)</th>
+                <th className="py-2 pr-3">Validação</th>
+                <th className="py-2 pr-3">Estado (até hoje)</th>
                 <th className="py-2 pr-3">Comprovativo</th>
-                <th className="py-2 pr-3">Estado</th>
+                <th className="py-2 pr-3">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((d) => (
-                <tr key={d.id} className="border-b align-middle">
-                  <td className="py-2 pr-3">{d.atletaNome ?? "—"}</td>
-                  <td className="py-2 pr-3">{d.titularEmail ?? "—"}</td>
-                  <td className="py-2 pr-3">
-                    {d.signedUrl ? (
-                      <a className="underline" href={d.signedUrl} target="_blank" rel="noreferrer">
-                        Abrir
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="py-2 pr-3">
-                    {/* Sem “validado” persistente para atleta; apenas indicativo */}
-                    <Pill tone="yellow">Recebido</Pill>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((d) => {
+                const isValid = !!d.inscricaoValidada && !!d.validadoDoc;
+                const estado = d.objectPath && !isValid ? "Pendente de validação" : "—";
+                return (
+                  <tr key={d.id} className="border-b align-middle">
+                    <td className="py-2 pr-3">{d.atletaNome ?? "—"}</td>
+                    <td className="py-2 pr-3">{d.titularEmail ?? "—"}</td>
+                    <td className="py-2 pr-3">
+                      {isValid ? <Pill tone="green">Validado</Pill> : <Pill tone="gray">Pendente</Pill>}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <EstadoBadge estado={estado as any} />
+                    </td>
+                    <td className="py-2 pr-3">
+                      {d.signedUrl ? (
+                        <a className="underline" href={d.signedUrl} target="_blank" rel="noreferrer">
+                          Abrir
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <div className="flex items-center gap-2">
+                        <Button onClick={() => validar(d.atletaId)}>Validar</Button>
+                        <Button variant="secondary" onClick={() => reverter(d.atletaId)}>Reverter</Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
       <p className="mt-3 text-xs text-gray-500">
-        Este separador lista os comprovativos de inscrição dos atletas. Não existe (ainda) um estado
-        de “validado” persistente para atleta — se quiseres guardá-lo, criamos um campo específico.
+        A validação marca <code>documentos.validado</code> e <code>atletas.inscricao_validada</code>.
       </p>
     </Card>
   );
@@ -328,25 +326,19 @@ export default function PagamentosPage() {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <button
-          className={`px-3 py-1.5 rounded-lg text-sm ${
-            tab === "mensal" ? "bg-black text-white" : "bg-gray-100"
-          }`}
+          className={`px-3 py-1.5 rounded-lg text-sm ${tab === "mensal" ? "bg-black text-white" : "bg-gray-100"}`}
           onClick={() => setTab("mensal")}
         >
           Mensalidades
         </button>
         <button
-          className={`px-3 py-1.5 rounded-lg text-sm ${
-            tab === "socio" ? "bg-black text-white" : "bg-gray-100"
-          }`}
+          className={`px-3 py-1.5 rounded-lg text-sm ${tab === "socio" ? "bg-black text-white" : "bg-gray-100"}`}
           onClick={() => setTab("socio")}
         >
           Inscrição Sócio
         </button>
         <button
-          className={`px-3 py-1.5 rounded-lg text-sm ${
-            tab === "atl" ? "bg-black text-white" : "bg-gray-100"
-          }`}
+          className={`px-3 py-1.5 rounded-lg text-sm ${tab === "atl" ? "bg-black text-white" : "bg-gray-100"}`}
           onClick={() => setTab("atl")}
         >
           Inscrição
