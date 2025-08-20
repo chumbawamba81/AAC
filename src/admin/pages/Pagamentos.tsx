@@ -1,159 +1,148 @@
 // src/admin/pages/Pagamentos.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import PaymentsTable from "../PaymentsTable";
 import {
-  listPagamentos,
-  validarEAtualizar,
-  recomputeTesourariaForUser,
+  listAdminPagamentos,
+  openComprovativo,
+  recomputeTesourariaSocio,
   type AdminPagamento,
+  type NivelPagamento,
 } from "../services/adminPagamentosService";
 
-function Pill({ children, color }: { children: React.ReactNode; color: "green" | "yellow" | "gray" }) {
-  const map = {
-    green: "bg-green-100 text-green-800",
-    yellow: "bg-yellow-100 text-yellow-800",
-    gray: "bg-gray-100 text-gray-800",
-  } as const;
-  return <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${map[color]}`}>{children}</span>;
-}
+type Filtro = {
+  nivel: "todos" | NivelPagamento;
+  texto: string;
+};
+
+const STATUS = ["Regularizado", "Pendente", "Isento"] as const;
+type StatusTesouraria = typeof STATUS[number];
 
 export default function PagamentosPage() {
   const [rows, setRows] = useState<AdminPagamento[]>([]);
-  const [search, setSearch] = useState("");
-  const [estado, setEstado] = useState<"all" | "val" | "pend" | "sem">("all");
-  const [order, setOrder] = useState<"recentes" | "antigos">("recentes");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [filtro, setFiltro] = useState<Filtro>({ nivel: "todos", texto: "" });
+  const [statusAfter, setStatusAfter] = useState<StatusTesouraria>("Regularizado");
+  const [targetUser, setTargetUser] = useState<string>("");
 
   async function refresh() {
-    setBusy(true);
-    setErr(null);
+    setLoading(true);
     try {
-      const data = await listPagamentos({ search, estado, order });
+      const data = await listAdminPagamentos();
       setRows(data);
-    } catch (e: any) {
-      setErr(e?.message || "Falha a carregar pagamentos");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
-  useEffect(() => { const t = setTimeout(refresh, 250); return () => clearTimeout(t); /* eslint-disable-line */ }, [search, estado, order]);
+  useEffect(() => {
+    refresh().catch(() => {});
+  }, []);
 
-  async function toggleValidado(r: AdminPagamento) {
-    if (!r.id) return;
-    setBusy(true);
+  const filtered = useMemo(() => {
+    const t = filtro.texto.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (filtro.nivel !== "todos" && r.nivel !== filtro.nivel) return false;
+      if (!t) return true;
+      const hay =
+        (r.atletaNome || "").toLowerCase() +
+        " " +
+        (r.descricao || "").toLowerCase() +
+        " " +
+        (r.atletaId || "") +
+        " " +
+        (r.titularUserId || "");
+      return hay.includes(t);
+    });
+  }, [rows, filtro]);
+
+  async function aplicarStatus() {
+    if (!targetUser) {
+      alert("Indique o user_id do titular para atualizar a situação de tesouraria.");
+      return;
+    }
     try {
-      const { status } = await validarEAtualizar(r.id, !(r.validado === true));
-      // atualiza localmente
-      setRows(prev => prev.map(x => x.id === r.id ? { ...x, validado: !(r.validado === true) } : x));
-      // opcional: feedback
-      alert(`Pagamento ${!(r.validado === true) ? "validado" : "anulado"}. Situação do titular: ${status}.`);
+      await recomputeTesourariaSocio(targetUser, statusAfter);
+      alert("Situação de tesouraria atualizada.");
+      setTargetUser("");
     } catch (e: any) {
-      alert(e?.message || "Falha ao atualizar");
-    } finally { setBusy(false); }
+      alert(e?.message || "Falha ao atualizar a tesouraria.");
+    }
   }
-
-  async function handleRecompute(userId: string | null) {
-    if (!userId) return;
-    setBusy(true);
-    try {
-      const status = await recomputeTesourariaForUser(userId);
-      alert(`Situação de tesouraria atualizada para: ${status}`);
-    } catch (e: any) {
-      alert(e?.message || "Falha ao atualizar tesouraria");
-    } finally { setBusy(false); }
-  }
-
-  const empty = rows.length === 0;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Tesouraria · Pagamentos</h2>
+      <div className="text-xl font-semibold">Tesouraria · Pagamentos</div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          className="border rounded-xl px-3 py-2 text-sm"
-          placeholder="Pesquisar (titular, atleta, descrição)…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select className="border rounded-xl px-3 py-2 text-sm" value={estado} onChange={(e)=>setEstado(e.target.value as any)}>
-          <option value="all">Todos</option>
-          <option value="val">Validados</option>
-          <option value="pend">Pendentes</option>
-          <option value="sem">Sem estado</option>
-        </select>
-        <select className="border rounded-xl px-3 py-2 text-sm" value={order} onChange={(e)=>setOrder(e.target.value as any)}>
-          <option value="recentes">Mais recentes primeiro</option>
-          <option value="antigos">Mais antigos primeiro</option>
-        </select>
-        <button className="ml-auto border rounded-xl px-3 py-2 text-sm" onClick={refresh} disabled={busy}>
-          {busy ? "Aguarde…" : "Atualizar"}
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="space-y-1">
+          <div className="text-xs text-gray-600">Nível</div>
+          <select
+            className="border rounded px-2 py-1"
+            value={filtro.nivel}
+            onChange={(e) => setFiltro((f) => ({ ...f, nivel: e.target.value as Filtro["nivel"] }))}
+          >
+            <option value="todos">Todos</option>
+            <option value="socio">Sócio/EE</option>
+            <option value="atleta">Atleta</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-xs text-gray-600">Pesquisar</div>
+          <input
+            className="border rounded px-2 py-1"
+            placeholder="atleta / descrição / ids…"
+            value={filtro.texto}
+            onChange={(e) => setFiltro((f) => ({ ...f, texto: e.target.value }))}
+          />
+        </div>
+
+        <button
+          className="ml-auto px-3 py-1.5 rounded border hover:bg-gray-50"
+          onClick={refresh}
+          disabled={loading}
+        >
+          {loading ? "A atualizar…" : "Atualizar"}
         </button>
       </div>
 
-      {err && <div className="text-sm text-red-600">{err}</div>}
+      <PaymentsTable rows={filtered} onOpen={openComprovativo} />
 
-      <div className="overflow-x-auto bg-white rounded-xl border">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-gray-600">
-              <th className="text-left p-2">Data</th>
-              <th className="text-left p-2">Titular</th>
-              <th className="text-left p-2">Atleta</th>
-              <th className="text-left p-2">Descrição</th>
-              <th className="text-left p-2">Estado</th>
-              <th className="text-left p-2">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {empty ? (
-              <tr><td colSpan={6} className="p-6 text-center text-gray-500">Sem resultados.</td></tr>
-            ) : rows.map(r => {
-              const d = r.created_at ? new Date(r.created_at) : null;
-              const statePill = r.validado === true
-                ? <Pill color="green">Validado</Pill>
-                : (r.validado === false ? <Pill color="yellow">Pendente</Pill> : <Pill color="gray">—</Pill>);
-              return (
-                <tr key={r.id} className="border-t">
-                  <td className="p-2 whitespace-nowrap">{d ? d.toLocaleString("pt-PT") : "—"}</td>
-                  <td className="p-2 whitespace-nowrap">{r.titular_nome || "—"}</td>
-                  <td className="p-2 whitespace-nowrap">{r.atleta_nome || "—"}</td>
-                  <td className="p-2">{r.descricao}</td>
-                  <td className="p-2">{statePill}</td>
-                  <td className="p-2">
-                    <div className="flex flex-wrap gap-2">
-                      <a
-                        className={`px-2 py-1 rounded-xl border ${r.signedUrl ? "hover:bg-gray-50" : "opacity-50 pointer-events-none"}`}
-                        href={r.signedUrl ?? undefined}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Ver
-                      </a>
-                      <button
-                        className="px-2 py-1 rounded-xl border hover:bg-gray-50"
-                        onClick={() => toggleValidado(r)}
-                        disabled={busy}
-                      >
-                        {r.validado === true ? "Anular" : "Validar"}
-                      </button>
-                      <button
-                        className="px-2 py-1 rounded-xl border hover:bg-gray-50"
-                        onClick={() => handleRecompute(r.titular_user_id)}
-                        disabled={busy || !r.titular_user_id}
-                        title="Recalcular situação de tesouraria do titular"
-                      >
-                        Atualizar tesouraria
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="mt-6 border rounded-lg p-3 bg-white">
+        <div className="font-medium mb-2">Atualizar situação de tesouraria do titular</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">user_id do titular</div>
+            <input
+              className="border rounded px-2 py-1 w-full"
+              placeholder="UUID do titular (dados_pessoais.user_id)"
+              value={targetUser}
+              onChange={(e) => setTargetUser(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">Nova situação</div>
+            <select
+              className="border rounded px-2 py-1 w-full"
+              value={statusAfter}
+              onChange={(e) => setStatusAfter(e.target.value as StatusTesouraria)}
+            >
+              {STATUS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button className="px-3 py-2 rounded bg-black text-white" onClick={aplicarStatus}>
+              Aplicar
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Dica: para pagamentos de atletas, o <code>user_id</code> é o do titular do atleta (coluna <code>atletas.user_id</code>).
+        </p>
       </div>
     </div>
   );
