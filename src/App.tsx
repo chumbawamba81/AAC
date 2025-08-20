@@ -21,7 +21,6 @@ import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
 import { ensureScheduleForAtleta } from "./services/pagamentosService";
 
-
 // Ícones
 import {
   AlertCircle,
@@ -610,7 +609,7 @@ function DadosPessoaisSection({
           <CardHeader>
             <CardTitle>Notícias da Secção de Basquetebol</CardTitle>
           </CardHeader>
-        <CardContent>
+          <CardContent>
             {state.noticias ? (
               <div className="prose prose-sm max-w-none">{state.noticias}</div>
             ) : (
@@ -786,6 +785,7 @@ function PagamentosSection({ state }: { state: State }) {
       const rows = await listPagamentosByAtleta(a.id);
       const rowsWithUrl = await withSignedUrlsPagamentos(rows);
 
+      // Agrupar por descrição
       const byDesc = new Map<string, PagamentoRowWithUrl[]>();
       for (const r of rowsWithUrl) {
         const arr = byDesc.get(r.descricao) || [];
@@ -793,11 +793,18 @@ function PagamentosSection({ state }: { state: State }) {
         byDesc.set(r.descricao, arr);
       }
 
+      // Para cada slot, **só** consideramos linhas com comprovativo_url
       next[a.id] = labels.map((lab) => {
         const arr = byDesc.get(lab) || [];
-        if (arr.length === 0) return null;
-        arr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-        return arr[0];
+        const withFile = arr.filter(
+          (x) => !!(x.comprovativo_url && x.comprovativo_url.trim() !== "")
+        );
+        if (withFile.length === 0) return null;
+        withFile.sort(
+          (x, y) =>
+            new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime()
+        );
+        return withFile[0];
       });
     }
     setPayments(next);
@@ -847,7 +854,9 @@ function PagamentosSection({ state }: { state: State }) {
 
   async function handleDelete(athlete: Atleta, idx: number) {
     const row = payments[athlete.id]?.[idx];
-    if (!row) return;
+    const hasFile = !!(row?.comprovativo_url && row.comprovativo_url.trim() !== "");
+    if (!row || !hasFile) return;
+
     if (!confirm("Remover este comprovativo?")) return;
     setBusy(true);
     try {
@@ -900,15 +909,16 @@ function PagamentosSection({ state }: { state: State }) {
                 {Array.from({ length: slots }).map((_, i) => {
                   const meta = rows[i];
                   const label = getPagamentoLabel(planoEfetivo, i);
+                  const hasFile = !!(meta?.comprovativo_url && meta.comprovativo_url.trim() !== "");
                   return (
                     <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
                       <div>
                         <div className="font-medium">{label}</div>
                         <div className="text-xs text-gray-500">
-                          {meta ? (
+                          {hasFile ? (
                             <span className="inline-flex items-center gap-2">
                               Comprovativo carregado
-                              {meta.signedUrl && (
+                              {meta?.signedUrl && (
                                 <a
                                   className="underline inline-flex items-center gap-1"
                                   href={meta.signedUrl}
@@ -928,15 +938,15 @@ function PagamentosSection({ state }: { state: State }) {
 
                       <div className="flex items-center gap-2">
                         <FilePickerButton
-                          variant={meta ? "secondary" : "outline"}
+                          variant={hasFile ? "secondary" : "outline"}
                           accept="image/*,application/pdf"
                           onFiles={(files) => handleUpload(a, i, files[0])}
                         >
                           <Upload className="h-4 w-4 mr-1" />
-                          {meta ? "Substituir" : "Carregar"}
+                          {hasFile ? "Substituir" : "Carregar"}
                         </FilePickerButton>
 
-                        {meta && (
+                        {hasFile && (
                           <Button variant="destructive" onClick={() => handleDelete(a, i)}>
                             <Trash2 className="h-4 w-4 mr-1" />
                             Remover
@@ -1178,37 +1188,37 @@ export default function App() {
 
   // Guardar do formulário (modal global)
   const handleAthSave = async (novo: Atleta) => {
-  // valores anteriores (se estiveres a editar)
-  const wasEditingId = athEditing?.id;
-  const planoAntes = athEditing?.planoPagamento;
-  const escalaoAntes = athEditing?.escalao;
+    // valores anteriores (se estiveres a editar)
+    const wasEditingId = athEditing?.id;
+    const planoAntes = athEditing?.planoPagamento;
+    const escalaoAntes = athEditing?.escalao;
 
-  try {
-    const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
+    try {
+      const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
 
-    // Atualiza estado local
-    const nextAtletas = wasEditingId
-      ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
-      : [saved, ...state.atletas];
+      // Atualiza estado local
+      const nextAtletas = wasEditingId
+        ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
+        : [saved, ...state.atletas];
 
-    setState((prev) => ({ ...prev, atletas: nextAtletas }));
-    saveState({ ...state, atletas: nextAtletas });
+      setState((prev) => ({ ...prev, atletas: nextAtletas }));
+      saveState({ ...state, atletas: nextAtletas });
 
-    // Gerar/ajustar calendário desta época
-    const force =
-      !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
+      // Gerar/ajustar calendário desta época
+      const force =
+        !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
-    await ensureScheduleForAtleta(
-      { id: saved.id, escalao: saved.escalao, planoPagamento: saved.planoPagamento },
-      { forceRebuild: force }
-    );
+      await ensureScheduleForAtleta(
+        { id: saved.id, escalao: saved.escalao, planoPagamento: saved.planoPagamento },
+        { forceRebuild: force }
+      );
 
-    setAthModalOpen(false);
-    setAthEditing(undefined);
-  } catch (e: any) {
-    alert(e.message || "Falha ao guardar o atleta");
-  }
-};
+      setAthModalOpen(false);
+      setAthEditing(undefined);
+    } catch (e: any) {
+      alert(e.message || "Falha ao guardar o atleta");
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
