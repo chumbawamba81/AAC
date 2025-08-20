@@ -1,57 +1,51 @@
 // src/admin/services/adminPagamentosService.ts
 import { supabase } from "../../supabaseClient";
 
-/** Linha de pagamentos para a área de administração */
+export type NivelPagamento = "socio" | "atleta";
+
 export type AdminPagamento = {
   id: string;
+  nivel: NivelPagamento;
+  user_id: string | null;       // titular se 'socio'; no 'atleta' é o dono do atleta
   atleta_id: string | null;
   descricao: string;
   comprovativo_url: string | null;
   created_at: string | null;
   validado: boolean | null;
 
-  // Joins
+  // Joins/derivados
   atleta_nome: string | null;
-  titular_user_id: string | null;
   titular_nome: string | null;
 
-  // URL assinada para ver o ficheiro (se existir)
   signedUrl?: string | null;
 };
 
-/** Assina uma key do bucket 'pagamentos' (se já for http(s), devolve tal e qual) */
 async function signUrlIfNeeded(key: string | null): Promise<string | null> {
   if (!key) return null;
   if (/^https?:\/\//i.test(key)) return key;
   const { data, error } = await supabase.storage
     .from("pagamentos")
-    .createSignedUrl(key, 60 * 60); // 1h
-
-  if (error) {
-    console.warn("[adminPagamentos] createSignedUrl error:", error.message);
-  }
+    .createSignedUrl(key, 60 * 60);
+  if (error) console.warn("[adminPagamentos] sign error:", error.message);
   return data?.signedUrl ?? null;
 }
 
-/**
- * Lista pagamentos com filtros simples.
- * NOTA: sem aliases no `.from()` para evitar “Could not find the table … as p”.
- * Fazemos:
- *  1) SELECT pagamentos + join a atletas (para obter user_id e nome do atleta)
- *  2) SELECT a dados_pessoais com todos os user_id únicos (para obter nome do titular)
- */
+/** Lê pagamentos; podes filtrar por nível, estado, busca e ordenação */
 export async function listPagamentos(opts?: {
   search?: string;
-  estado?: "all" | "val" | "pend" | "sem"; // validado / pendente(false) / sem(null)
+  estado?: "all" | "val" | "pend" | "sem"; // true / false / null
+  nivel?: "all" | NivelPagamento;
   order?: "recentes" | "antigos";
 }): Promise<AdminPagamento[]> {
   const o = opts || {};
 
-  // 1) Pagamentos + atleta (LEFT JOIN). A relação deve existir: pagamentos.atleta_id -> atletas.id
+  // SELECT pagamentos + join opcional a atletas (para nome e user)
   const { data, error } = await supabase
     .from("pagamentos")
     .select(`
       id,
+      nivel,
+      user_id,
       atleta_id,
       descricao,
       comprovativo_url,
@@ -66,147 +60,142 @@ export async function listPagamentos(opts?: {
 
   if (error) throw error;
 
-  const base: AdminPagamento[] = (data || []).map((r: any) => ({
+  let list: AdminPagamento[] = (data || []).map((r: any) => ({
     id: r.id,
-    atleta_id: r.atleta_id ?? r?.atletas?.id ?? null,
+    nivel: r.nivel as NivelPagamento,
+    user_id: r.user_id ?? r?.atletas?.user_id ?? null,
+    atleta_id: r.atleta_id ?? null,
     descricao: r.descricao,
     comprovativo_url: r.comprovativo_url ?? null,
     created_at: r.created_at ?? null,
     validado: r.validado ?? null,
     atleta_nome: r?.atletas?.nome ?? null,
-    titular_user_id: r?.atletas?.user_id ?? null,
     titular_nome: null,
   }));
 
-  // 2) Buscar nomes dos titulares em lote (dados_pessoais por user_id)
-  const userIds = Array.from(
-    new Set(base.map((r) => r.titular_user_id).filter(Boolean)) as Set<string>
-  );
-  if (userIds.length > 0) {
+  // Buscar nomes dos titulares em lote
+  const uids = Array.from(new Set(list.map(x => x.user_id).filter(Boolean)) as Set<string>);
+  if (uids.length > 0) {
     const { data: titulares, error: e2 } = await supabase
       .from("dados_pessoais")
       .select("user_id,nome_completo")
-      .in("user_id", userIds);
-
+      .in("user_id", uids);
     if (e2) throw e2;
-
-    const mapTit = new Map<string, string>();
-    for (const t of titulares || []) {
-      mapTit.set((t as any).user_id, (t as any).nome_completo);
-    }
-    for (const r of base) {
-      if (r.titular_user_id && mapTit.has(r.titular_user_id)) {
-        r.titular_nome = mapTit.get(r.titular_user_id)!;
-      }
-    }
+    const map = new Map<string, string>();
+    (titulares || []).forEach((t: any) => map.set(t.user_id, t.nome_completo));
+    list.forEach(r => { if (r.user_id && map.has(r.user_id)) r.titular_nome = map.get(r.user_id)!; });
   }
 
-  // filtros
-  let list = base;
+  // Filtros (nível, estado, busca)
+  if (o.nivel && o.nivel !== "all") list = list.filter(x => x.nivel === o.nivel);
   if (o.estado && o.estado !== "all") {
-    if (o.estado === "val") list = list.filter((x) => x.validado === true);
-    if (o.estado === "pend") list = list.filter((x) => x.validado === false);
-    if (o.estado === "sem") list = list.filter((x) => x.validado == null);
+    if (o.estado === "val")  list = list.filter(x => x.validado === true);
+    if (o.estado === "pend") list = list.filter(x => x.validado === false);
+    if (o.estado === "sem")  list = list.filter(x => x.validado == null);
   }
   if (o.search && o.search.trim()) {
     const t = o.search.trim().toLowerCase();
-    list = list.filter(
-      (x) =>
-        (x.descricao || "").toLowerCase().includes(t) ||
-        (x.atleta_nome || "").toLowerCase().includes(t) ||
-        (x.titular_nome || "").toLowerCase().includes(t)
+    list = list.filter(x =>
+      (x.descricao || "").toLowerCase().includes(t) ||
+      (x.atleta_nome || "").toLowerCase().includes(t) ||
+      (x.titular_nome || "").toLowerCase().includes(t)
     );
   }
 
-  // ordenar
-  list.sort((a, b) => {
+  // Ordenação
+  list.sort((a,b) => {
     const ta = new Date(a.created_at || 0).getTime();
     const tb = new Date(b.created_at || 0).getTime();
     return (o.order || "recentes") === "recentes" ? tb - ta : ta - tb;
   });
 
-  // assinar URLs
-  await Promise.all(
-    list.map(async (r) => {
-      r.signedUrl = await signUrlIfNeeded(r.comprovativo_url);
-    })
-  );
+  // Assinar URLs
+  await Promise.all(list.map(async r => { r.signedUrl = await signUrlIfNeeded(r.comprovativo_url); }));
 
   return list;
 }
 
-/** Marca um pagamento como validado (true/false) */
-export async function setPagamentoValidado(pagamentoId: string, value: boolean): Promise<void> {
-  const { error } = await supabase
-    .from("pagamentos")
-    .update({ validado: value })
-    .eq("id", pagamentoId);
-
-  if (error) {
-    console.error("[adminPagamentos] setPagamentoValidado error:", error.message);
-    throw error;
-  }
+/** Marca pagamento validado SIM/NÃO */
+export async function setPagamentoValidado(pagamentoId: string, valor: boolean): Promise<void> {
+  const { error } = await supabase.from("pagamentos").update({ validado: valor }).eq("id", pagamentoId);
+  if (error) throw error;
 }
 
-/**
- * Recalcula e escreve a situação de tesouraria do titular:
- * 'Regularizado' se não existirem pagamentos pendentes (validado != true)
- * 'Pendente' caso contrário.
- */
-export async function recomputeTesourariaForUser(
-  userId: string
-): Promise<"Regularizado" | "Pendente"> {
-  const { data, error } = await supabase
-    .from("pagamentos")
-    .select("id, validado, atletas!inner(user_id)")
-    .eq("atletas.user_id", userId);
-
-  if (error) {
-    console.error("[adminPagamentos] read for recompute error:", error.message);
-    throw error;
-  }
-
-  const hasPending = (data || []).some((r: any) => r.validado !== true);
-  const status: "Regularizado" | "Pendente" = hasPending ? "Pendente" : "Regularizado";
-
-  const { error: updErr } = await supabase
+/** Recalcula situação do SÓCIO: 'N/A' se tipo_socio = 'Não pretendo ser sócio' */
+export async function recomputeTesourariaSocio(userId: string): Promise<"Regularizado"|"Pendente"|"N/A"> {
+  // 1) ver tipo_socio
+  const { data: dp, error: e1 } = await supabase
     .from("dados_pessoais")
-    .update({ situacao_tesouraria: status })
-    .eq("user_id", userId);
+    .select("tipo_socio")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (e1) throw e1;
 
-  if (updErr) {
-    console.error("[adminPagamentos] update tesouraria error:", updErr.message);
-    throw updErr;
+  const tipo = (dp?.tipo_socio || "").toString();
+  if (tipo === "Não pretendo ser sócio") {
+    await supabase.from("dados_pessoais").update({ situacao_tesouraria_socio: "N/A" }).eq("user_id", userId);
+    return "N/A";
   }
 
+  // 2) ver pagamentos nível 'socio'
+  const { data: pays, error: e2 } = await supabase
+    .from("pagamentos")
+    .select("id,validado")
+    .eq("nivel", "socio")
+    .eq("user_id", userId);
+  if (e2) throw e2;
+
+  const pend = (pays || []).some(p => p.validado !== true);
+  const status = pend ? "Pendente" : "Regularizado";
+  const { error: e3 } = await supabase
+    .from("dados_pessoais")
+    .update({ situacao_tesouraria_socio: status })
+    .eq("user_id", userId);
+  if (e3) throw e3;
   return status;
 }
 
-/**
- * Conveniência: valida/anula um pagamento e atualiza a situação do titular
- */
-export async function validarEAtualizar(pagamentoId: string, valor: boolean): Promise<{
-  status: "Regularizado" | "Pendente";
-  titularUserId: string | null;
-}> {
-  // Descobrir o titular do pagamento
-  const { data: pay, error: errPay } = await supabase
+/** Recalcula situação do ATLETA */
+export async function recomputeTesourariaAtleta(atletaId: string): Promise<"Regularizado"|"Pendente"> {
+  const { data, error } = await supabase
     .from("pagamentos")
-    .select("id, atleta_id, atletas!inner(user_id)")
+    .select("id,validado")
+    .eq("nivel", "atleta")
+    .eq("atleta_id", atletaId);
+  if (error) throw error;
+  const pend = (data || []).some(p => p.validado !== true);
+  const status: "Regularizado" | "Pendente" = pend ? "Pendente" : "Regularizado";
+  const { error: e2 } = await supabase
+    .from("atletas")
+    .update({ situacao_tesouraria: status })
+    .eq("id", atletaId);
+  if (e2) throw e2;
+  return status;
+}
+
+/** Atalho: valida/anula e atualiza a situação correta (sócio ou atleta) */
+export async function validarEAtualizar(pagamentoId: string, valor: boolean): Promise<{
+  nivel: NivelPagamento;
+  titularUserId: string | null;
+  atletaId: string | null;
+  statusAfter: string;
+}> {
+  // Ler pagamento para saber o nível
+  const { data: p, error } = await supabase
+    .from("pagamentos")
+    .select("id,nivel,user_id,atleta_id")
     .eq("id", pagamentoId)
     .maybeSingle();
+  if (error) throw error;
+  if (!p) throw new Error("Pagamento não encontrado");
 
-  if (errPay) throw errPay;
-  const titularUserId: string | null = (pay as any)?.atletas?.user_id ?? null;
-
-  // Atualizar o pagamento
   await setPagamentoValidado(pagamentoId, valor);
 
-  // Recalcular situação (se soubermos o titular)
-  let status: "Regularizado" | "Pendente" = "Pendente";
-  if (titularUserId) {
-    status = await recomputeTesourariaForUser(titularUserId);
+  if (p.nivel === "socio") {
+    const status = p.user_id ? await recomputeTesourariaSocio(p.user_id) : "Pendente";
+    return { nivel: "socio", titularUserId: p.user_id, atletaId: null, statusAfter: status };
+  } else {
+    const status = p.atleta_id ? await recomputeTesourariaAtleta(p.atleta_id) : "Pendente";
+    return { nivel: "atleta", titularUserId: p.user_id ?? null, atletaId: p.atleta_id ?? null, statusAfter: status };
   }
-
-  return { status, titularUserId };
 }
