@@ -78,7 +78,7 @@ function TableView({
         <thead className="bg-gray-50 text-gray-700">
           <tr>
             <th className="text-left px-3 py-2">Submissão</th>
-            {/* Vencimento removido */}
+            {/* coluna Vencimento removida */}
             <th className="text-left px-3 py-2">Titular/EE</th>
             <th className="text-left px-3 py-2">Atleta</th>
             <th className="text-left px-3 py-2">Descrição</th>
@@ -90,7 +90,7 @@ function TableView({
           {rows.map((r) => (
             <tr key={r.id} className="hover:bg-gray-50">
               <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
-              {/* coluna Vencimento removida */}
+              {/* Vencimento removido */}
               <td className="px-3 py-2">{r.titularName || "—"}</td>
               <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
               <td className="px-3 py-2">{r.descricao}</td>
@@ -99,7 +99,7 @@ function TableView({
               </td>
               <td className="px-3 py-2">
                 <div className="flex items-center gap-2 justify-end">
-                  {r.signedUrl && (
+                  {r.signedUrl ? (
                     <a
                       className="px-2 py-1 rounded-lg border hover:bg-gray-100"
                       href={r.signedUrl}
@@ -108,7 +108,7 @@ function TableView({
                     >
                       Abrir comprovativo
                     </a>
-                  )}
+                  ) : null}
 
                   <button
                     className="px-2 py-1 rounded-lg border hover:bg-gray-100"
@@ -121,4 +121,59 @@ function TableView({
                     <button
                       disabled={busyId === r.id}
                       className={`px-2 py-1 text-xs ${r.validado ? "bg-white" : "bg-green-600 text-white hover:bg-green-700"}`}
-                      onClick={() => toggle(
+                      onClick={() => toggle(r, true)}
+                    >
+                      Validar
+                    </button>
+                    <button
+                      disabled={busyId === r.id}
+                      className={`px-2 py-1 text-xs ${!r.validado ? "bg-white" : "bg-red-600 text-white hover:bg-red-700"}`}
+                      onClick={() => toggle(r, false)}
+                    >
+                      Anular
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function PaymentsTable({ rows, tab, onTabChange, onOpen, onChanged }: Props) {
+  const { inscricoes, mensalidades } = useMemo(() => {
+    const insc: AdminPagamento[] = [];
+    const mens: AdminPagamento[] = [];
+    for (const r of rows ?? []) {
+      (isInscricao(r) ? insc : mens).push(r);
+    }
+    return { inscricoes: insc, mensalidades: mens };
+  }, [rows]);
+
+  const current = tab === "inscricao" ? inscricoes : mensalidades;
+
+  return (
+    <div className="space-y-3">
+      {/* Separador (tabs controladas pelo parent) */}
+      <div className="inline-flex rounded-xl border overflow-hidden">
+        <button
+          onClick={() => onTabChange("inscricao")}
+          className={`px-4 py-2 text-sm ${tab === "inscricao" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
+        >
+          Inscrições ({inscricoes.length})
+        </button>
+        <button
+          onClick={() => onTabChange("mensalidades")}
+          className={`px-4 py-2 text-sm ${tab === "mensalidades" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
+        >
+          Mensalidades ({mensalidades.length})
+        </button>
+      </div>
+
+      <TableView rows={current} onOpen={onOpen} onChanged={onChanged} />
+    </div>
+  );
+}
