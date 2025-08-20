@@ -1,13 +1,13 @@
 // src/admin/pages/Pagamentos.tsx
 import React, { useEffect, useMemo, useState } from "react";
 
-// UI (reutilizamos os componentes da app pública)
+// UI da app pública
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { RefreshCw, CheckCircle2, XCircle, Link as LinkIcon } from "lucide-react";
 
-// Serviços específicos de admin
+// Serviço de admin (este ficheiro é o da secção anterior)
 import {
   listPagamentosAdmin,
   markPagamentoValidado,
@@ -50,16 +50,15 @@ export default function PagamentosAdminPage() {
       .filter((r) => {
         if (!text) return true;
         const hay = [
-          r.titular_email || "",
+          r.titularEmail || "",
           r.descricao || "",
-          r.atleta_nome || "",
-          r.comprovativo_url || "",
+          r.atletaNome || "",
+          r.comprovativoUrl || "",
         ]
           .join(" ")
           .toLowerCase();
         return hay.includes(text);
       })
-      // mais recentes primeiro
       .sort(
         (a, b) =>
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
@@ -71,11 +70,10 @@ export default function PagamentosAdminPage() {
     try {
       await markPagamentoValidado(row.id, value);
 
-      // Recalcular situação de tesouraria conforme o nível
-      if (row.nivel === "socio" && row.titular_user_id) {
-        await recomputeTesourariaSocio(row.titular_user_id);
-      } else if (row.nivel === "atleta" && row.atleta_id) {
-        await recomputeTesourariaAtleta(row.atleta_id);
+      if (row.nivel === "socio" && row.titularUserId) {
+        await recomputeTesourariaSocio(row.titularUserId);
+      } else if (row.nivel === "atleta" && row.atletaId) {
+        await recomputeTesourariaAtleta(row.atletaId);
       }
 
       await refresh();
@@ -151,13 +149,13 @@ export default function PagamentosAdminPage() {
                           : "—"}
                       </td>
                       <td className="px-3 py-2 capitalize">{r.nivel}</td>
-                      <td className="px-3 py-2">{r.titular_email || "—"}</td>
-                      <td className="px-3 py-2">{r.atleta_nome || "—"}</td>
+                      <td className="px-3 py-2">{r.titularEmail || "—"}</td>
+                      <td className="px-3 py-2">{r.atletaNome || "—"}</td>
                       <td className="px-3 py-2">{r.descricao || "—"}</td>
                       <td className="px-3 py-2">
-                        {r.signed_url ? (
+                        {r.signedUrl ? (
                           <a
-                            href={r.signed_url}
+                            href={r.signedUrl}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center gap-1 underline"
@@ -195,9 +193,7 @@ export default function PagamentosAdminPage() {
             </table>
           </div>
 
-          <div className="text-xs text-gray-500">
-            {filtered.length} registo(s) mostrado(s).
-          </div>
+          <div className="text-xs text-gray-500">{filtered.length} registo(s) mostrado(s).</div>
         </CardContent>
       </Card>
     </div>
