@@ -4,7 +4,7 @@ import { supabase } from "../../supabaseClient";
 /** Nível do pagamento: inscrição/quotas de sócio vs atleta (mensalidades/inscrição atleta) */
 export type NivelPagamento = "socio" | "atleta";
 
-/** Estado básico (podes expandir depois se tiveres "em_atraso", etc.) */
+/** Estado básico (derivado de `validado`) */
 export type StatusPagamento = "pendente" | "validado";
 
 /** Linha que a tabela de Tesouraria apresenta */
@@ -13,11 +13,11 @@ export interface AdminPagamento {
   nivel: NivelPagamento;
   descricao: string;          // ex.: "Pagamento - 1º Mês" ou "Inscrição de Sócio"
   createdAt: string | null;   // ISO ou null
-  status: StatusPagamento;    // 'pendente' | 'validado'
-  validado: boolean;          // conveniência
+  status: StatusPagamento;    // 'pendente' | 'validado' (← DERIVADO)
+  validado: boolean;          // valor real na BD
 
   titularUserId: string;      // user_id do titular/EE
-  titularName: string;        // nome no dados_pessoais (ou "—" se faltar)
+  titularName: string;        // nome em dados_pessoais (ou "—" se faltar)
 
   atletaId: string | null;    // null quando nivel='socio'
   atletaNome: string | null;  // null quando nivel='socio'
@@ -30,12 +30,10 @@ export interface AdminPagamento {
 async function getSignedUrl(path: string | null): Promise<string | null> {
   if (!path) return null;
   try {
-    // Ajusta o nome do bucket se o teu for diferente
-    const { data, error } = await supabase
+    const { data } = await supabase
       .storage
-      .from("pagamentos")
+      .from("pagamentos") // ajusta se o bucket tiver outro nome
       .createSignedUrl(path, 60 * 60);
-    if (error) return null;
     return data?.signedUrl ?? null;
   } catch {
     return null;
@@ -49,12 +47,14 @@ type Filtro = "todos" | "inscricao" | "mensalidades";
  * - nome do titular/EE
  * - nome do atleta (se aplicável)
  * - signed URL do comprovativo (se existir)
+ *
+ * NOTA: NÃO seleciona 'status' da BD (essa coluna não existe). 'status' é derivado de 'validado'.
  */
 export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<AdminPagamento[]> {
-  // 1) Ler pagamentos crus
+  // 1) Ler pagamentos crus (sem 'status')
   const { data: pays, error } = await supabase
     .from("pagamentos")
-    .select("id, created_at, status, validado, nivel, descricao, user_id, atleta_id, file_path")
+    .select("id, created_at, validado, nivel, descricao, user_id, atleta_id, file_path")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -70,7 +70,7 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
   const userIds = Array.from(new Set(filtered.map((r: any) => r.user_id).filter(Boolean)));
   const atletaIds = Array.from(new Set(filtered.map((r: any) => r.atleta_id).filter(Boolean)));
 
-  // 4) Ler nomes de titulares
+  // 4) Ler nomes de titulares (dados_pessoais)
   const titularByUser: Record<string, string> = {};
   if (userIds.length > 0) {
     const { data: titulares, error: tErr } = await supabase
@@ -84,7 +84,7 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
     }
   }
 
-  // 5) Ler nomes de atletas
+  // 5) Ler nomes de atletas (coluna 'nome' conforme o teu código antigo)
   const atletaById: Record<string, string> = {};
   if (atletaIds.length > 0) {
     const { data: atletas, error: aErr } = await supabase
@@ -100,9 +100,8 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
   // 6) Montar resultado e assinar URLs (em paralelo)
   const out: AdminPagamento[] = await Promise.all(
     filtered.map(async (r: any): Promise<AdminPagamento> => {
-      const status: StatusPagamento =
-        (r.status as StatusPagamento) ??
-        (r.validado ? "validado" : "pendente");
+      const validado = !!r.validado;
+      const status: StatusPagamento = validado ? "validado" : "pendente"; // ← derivado aqui
 
       return {
         id: r.id,
@@ -110,7 +109,7 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
         descricao: r.descricao ?? "",
         createdAt: r.created_at ?? null,
         status,
-        validado: !!r.validado,
+        validado,
         titularUserId: r.user_id,
         titularName: titularByUser[r.user_id] ?? "—",
         atletaId: r.atleta_id ?? null,
@@ -124,29 +123,34 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
   return out;
 }
 
-/** Alterna validação (true/false) e devolve a linha atualizada. */
+/**
+ * Alterna validação (true/false) e devolve a linha atualizada.
+ *
+ * NOTA: NÃO escreve 'status' na tabela (não existe). Apenas atualiza 'validado'.
+ * O 'status' será derivado no retorno.
+ */
 export async function marcarPagamentoValidado(pagamentoId: string, next: boolean): Promise<AdminPagamento | null> {
   const { data, error } = await supabase
     .from("pagamentos")
-    .update({
-      validado: next,
-      status: next ? "validado" : "pendente",
-    })
+    .update({ validado: next }) // ← não tenta escrever 'status'
     .eq("id", pagamentoId)
-    .select("id, created_at, status, validado, nivel, descricao, user_id, atleta_id, file_path")
+    .select("id, created_at, validado, nivel, descricao, user_id, atleta_id, file_path")
     .maybeSingle();
 
   if (error) throw error;
   if (!data) return null;
 
-  // Enriquecer minimamente (sem outro round-trip)
+  const validado = !!data.validado;
+  const status: StatusPagamento = validado ? "validado" : "pendente";
+
+  // Enriquecer minimamente (nomes virão completos após refresh da lista)
   return {
     id: data.id,
     nivel: (data.nivel as NivelPagamento) ?? (data.atleta_id ? "atleta" : "socio"),
     descricao: data.descricao ?? "",
     createdAt: data.created_at ?? null,
-    status: (data.status as StatusPagamento) ?? (data.validado ? "validado" : "pendente"),
-    validado: !!data.validado,
+    status,
+    validado,
     titularUserId: data.user_id,
     titularName: "—", // será re-hidratado quando fizeres refresh via listPagamentosAdmin()
     atletaId: data.atleta_id ?? null,
