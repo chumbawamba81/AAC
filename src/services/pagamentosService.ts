@@ -186,3 +186,143 @@ export async function deletePagamento(row: PagamentoRow): Promise<void> {
   const { error } = await supabase.from("pagamentos").delete().eq("id", row.id);
   if (error) throw new Error(`Falha a apagar pagamento: ${error.message}`);
 }
+
+
+/* ----------------- Helpers de plano/época (Setembro–Junho ----------------- */
+// === ) ===
+type PlanoPagamentoLocal = "Mensal" | "Trimestral" | "Anual";
+
+function isAnuidadeObrigatoria(escalao?: string | null) {
+  if (!escalao) return false;
+  const s = escalao.toLowerCase();
+  return (
+    s.includes("masters") ||
+    s.includes("sub 23") ||
+    s.includes("sub-23") ||
+    s.includes("seniores sub 23") ||
+    s.includes("seniores sub-23")
+  );
+}
+
+// Setembro é mês 8 (0-based). Época começa sempre a 8 de setembro.
+function currentSeasonStartYear(ref = new Date()) {
+  const m = ref.getMonth(); // 0=Jan ... 11=Dez
+  const y = ref.getFullYear();
+  return m >= 8 ? y : y - 1;
+}
+function seasonStartDate(seasonStartYear: number) {
+  return new Date(seasonStartYear, 8, 8); // 8 de setembro
+}
+function seasonEndDate(seasonStartYear: number) {
+  return new Date(seasonStartYear + 1, 5, 30); // 30 de junho
+}
+function ymd(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function getPagamentoLabel(plano: PlanoPagamentoLocal, idx: number) {
+  if (plano === "Anual") return "Pagamento da anuidade";
+  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
+  return `Pagamento - ${idx + 1}º Mês`;
+}
+
+function buildScheduleForPlano(plano: PlanoPagamentoLocal, seasonStartYear: number) {
+  const start = seasonStartDate(seasonStartYear);
+  if (plano === "Anual") {
+    return [{ tipo: "Anual", descricao: getPagamentoLabel("Anual", 0), devidoEm: ymd(start) }];
+  }
+  if (plano === "Trimestral") {
+    const offsets = [0, 3, 6]; // Set, Dez, Mar
+    return offsets.map((k, i) => {
+      const d = new Date(start.getFullYear(), start.getMonth() + k, 8);
+      return { tipo: "Trimestral", descricao: getPagamentoLabel("Trimestral", i), devidoEm: ymd(d) };
+    });
+  }
+  // Mensal: 10 meses, Set–Jun, dia 8
+  return Array.from({ length: 10 }, (_, i) => {
+    const d = new Date(start.getFullYear(), start.getMonth() + i, 8);
+    return { tipo: "Mensal", descricao: getPagamentoLabel("Mensal", i), devidoEm: ymd(d) };
+  });
+}
+
+function inThisSeason(dateISO: string, seasonStartYear: number) {
+  const d = new Date(dateISO);
+  return d >= seasonStartDate(seasonStartYear) && d <= seasonEndDate(seasonStartYear);
+}
+
+type MinimalAtleta = {
+  id: string;
+  escalao?: string | null;
+  // nesta app o nome costuma ser "planoPagamento"; ajusta se fores usar outro
+  planoPagamento?: "Mensal" | "Trimestral" | "Anual" | null;
+};
+
+/**
+ * Garante que existem as linhas do calendário de pagamentos do atleta para a época corrente.
+ * - Gera Set–Jun (Mensal 10x, Trimestral 3x, Anual 1x), sempre com devido_em no dia 8
+ * - Respeita Anuidade obrigatória para Masters/Sénior Sub-23
+ * - Se forceRebuild=true: apaga da época apenas as linhas não validadas e sem comprovativo, e volta a gerar
+ */
+export async function ensureScheduleForAtleta(
+  atleta: MinimalAtleta,
+  opts?: { seasonStartYear?: number; forceRebuild?: boolean }
+) {
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth?.user?.id;
+  if (!userId) throw new Error("Sessão não encontrada.");
+
+  const seasonY = opts?.seasonStartYear ?? currentSeasonStartYear(new Date());
+
+  const basePlano = (atleta.planoPagamento as PlanoPagamentoLocal | undefined) ?? "Mensal";
+  const planoEfetivo: PlanoPagamentoLocal = isAnuidadeObrigatoria(atleta.escalao) ? "Anual" : basePlano;
+
+  const schedule = buildScheduleForPlano(planoEfetivo, seasonY);
+
+  // Ler existentes do atleta (filtrar por época em memória)
+  const { data: existing, error: exErr } = await supabase
+    .from("pagamentos")
+    .select("id, descricao, devido_em, validado, comprovativo_url")
+    .eq("atleta_id", atleta.id);
+
+  if (exErr) throw new Error(`Falha a ler pagamentos existentes: ${exErr.message}`);
+
+  const seasonExisting = (existing ?? []).filter((r: any) => r.devido_em && inThisSeason(r.devido_em, seasonY));
+
+  // Se rebuild, apaga o que ainda não foi submetido/validado
+  if (opts?.forceRebuild && seasonExisting.length) {
+    const deletables = seasonExisting.filter(
+      (e: any) => !e.validado && (!e.comprovativo_url || e.comprovativo_url.trim() === "")
+    );
+    if (deletables.length) {
+      const { error: delErr } = await supabase
+        .from("pagamentos")
+        .delete()
+        .in("id", deletables.map((d: any) => d.id));
+      if (delErr) throw new Error(`Falha a limpar calendário: ${delErr.message}`);
+    }
+  }
+
+  // Determinar quais faltam (por descricao)
+  const have = new Set(seasonExisting.map((e: any) => e.descricao));
+  const toInsert = schedule.filter((s) => !have.has(s.descricao));
+
+  if (!toInsert.length) return;
+
+  const payload = toInsert.map((s) => ({
+    atleta_id: atleta.id,
+    user_id: userId,
+    descricao: s.descricao,
+    tipo: s.tipo,
+    devido_em: s.devidoEm, // YYYY-MM-DD
+    validado: false,
+  }));
+
+  const { error: insErr } = await supabase.from("pagamentos").insert(payload);
+  // Se criaste o índice único (atleta_id, descricao), uma corrida simultânea pode dar 23505 — ignorável
+  if (insErr && insErr.code !== "23505") {
+    throw new Error(`Falha a gerar calendário: ${insErr.message}`);
+  }
+}

@@ -19,6 +19,8 @@ import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
+import { ensureScheduleForAtleta } from "./services/pagamentosService";
+
 
 // Ícones
 import {
@@ -1176,23 +1178,37 @@ export default function App() {
 
   // Guardar do formulário (modal global)
   const handleAthSave = async (novo: Atleta) => {
-    try {
-      const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
+  // valores anteriores (se estiveres a editar)
+  const wasEditingId = athEditing?.id;
+  const planoAntes = athEditing?.planoPagamento;
+  const escalaoAntes = athEditing?.escalao;
 
-      const wasEditingId = athEditing?.id; // id antigo (pode ser local)
-      const nextAtletas = wasEditingId
-        ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
-        : [saved, ...state.atletas];
+  try {
+    const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
 
-      setState((prev) => ({ ...prev, atletas: nextAtletas }));
-      saveState({ ...state, atletas: nextAtletas });
+    // Atualiza estado local
+    const nextAtletas = wasEditingId
+      ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
+      : [saved, ...state.atletas];
 
-      setAthModalOpen(false);
-      setAthEditing(undefined);
-    } catch (e: any) {
-      alert(e.message || "Falha ao guardar o atleta");
-    }
-  };
+    setState((prev) => ({ ...prev, atletas: nextAtletas }));
+    saveState({ ...state, atletas: nextAtletas });
+
+    // Gerar/ajustar calendário desta época
+    const force =
+      !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
+
+    await ensureScheduleForAtleta(
+      { id: saved.id, escalao: saved.escalao, planoPagamento: saved.planoPagamento },
+      { forceRebuild: force }
+    );
+
+    setAthModalOpen(false);
+    setAthEditing(undefined);
+  } catch (e: any) {
+    alert(e.message || "Falha ao guardar o atleta");
+  }
+};
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
