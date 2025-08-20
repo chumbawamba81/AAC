@@ -3,10 +3,14 @@ import React, { useMemo, useState } from "react";
 import type { AdminPagamento } from "./services/adminPagamentosService";
 import { marcarPagamentoValidado } from "./services/adminPagamentosService";
 
+type Tab = "inscricao" | "mensalidades";
+
 type Props = {
   rows: AdminPagamento[];
+  tab: Tab;                            // ← tab controlada pelo parent
+  onTabChange: (t: Tab) => void;       // ← setter vindo do parent
   onOpen: (row: AdminPagamento) => void;
-  onChanged?: () => void;
+  onChanged?: () => void;              // pedir ao parent para recarregar a lista
 };
 
 function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
@@ -33,14 +37,14 @@ function fmtDate(d: string | null | undefined, withTime = true) {
 
 /** Heurística local para separar inscrição vs mensalidades */
 function isInscricao(row: AdminPagamento): boolean {
-  // Se tiver "nivel" socio, geralmente é inscrição/quotas
+  // Se o nível é 'socio', tipicamente trata-se de inscrição/quotas
   if (row.nivel === "socio") return true;
 
-  // Se tiver `tipo` (quando presente no serviço), aproveita
+  // Se existir o campo "tipo" (opcional no serviço), aproveita
   const t = (row.tipo ?? "").toLowerCase();
   if (t.includes("inscri")) return true;
 
-  // Caso contrário, usa descrição
+  // Caso contrário, usar descrição
   const d = (row.descricao ?? "").toLowerCase();
   return d.includes("inscri");
 }
@@ -143,9 +147,7 @@ function TableView({
   );
 }
 
-export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
-  const [tab, setTab] = useState<"inscricao" | "mensalidades">("inscricao");
-
+export default function PaymentsTable({ rows, tab, onTabChange, onOpen, onChanged }: Props) {
   const { inscricoes, mensalidades } = useMemo(() => {
     const insc: AdminPagamento[] = [];
     const mens: AdminPagamento[] = [];
@@ -159,16 +161,16 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
 
   return (
     <div className="space-y-3">
-      {/* Separador (tabs simples) */}
+      {/* Separador (tabs controladas pelo parent) */}
       <div className="inline-flex rounded-xl border overflow-hidden">
         <button
-          onClick={() => setTab("inscricao")}
+          onClick={() => onTabChange("inscricao")}
           className={`px-4 py-2 text-sm ${tab === "inscricao" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
         >
           Inscrições ({inscricoes.length})
         </button>
         <button
-          onClick={() => setTab("mensalidades")}
+          onClick={() => onTabChange("mensalidades")}
           className={`px-4 py-2 text-sm ${tab === "mensalidades" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
         >
           Mensalidades ({mensalidades.length})
