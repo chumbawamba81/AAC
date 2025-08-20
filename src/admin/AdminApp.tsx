@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import AdminGate from "./AdminGate";
 import SociosPage from "./pages/Socios";
 import AtletasPage from "./pages/Atletas";
+import PagamentosPage from "./pages/Pagamentos";
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -33,18 +34,6 @@ function Dashboard() {
   return <div className="text-sm text-gray-700">Bem-vindo à área de administração.</div>;
 }
 
-function Atletas() {
-  return <div className="text-sm text-gray-700">Tabela de atletas com filtros e ordenação (em breve).</div>;
-}
-
-function Pagamentos() {
-  return (
-    <div className="text-sm text-gray-700">
-      Gestão de tesouraria — validação de comprovativos e atualização da situação de tesouraria (em breve).
-    </div>
-  );
-}
-
 export default function AdminApp() {
   return (
     <AdminGate>
@@ -53,9 +42,8 @@ export default function AdminApp() {
           <Routes>
             <Route path="/admin" element={<Dashboard />} />
             <Route path="/admin/socios" element={<SociosPage />} />
-            <Route path="/admin/atletas" element={<Atletas />} />
-			<Route path="atletas" element={<AtletasPage />} />
-            <Route path="/admin/pagamentos" element={<Pagamentos />} />
+            <Route path="/admin/atletas" element={<AtletasPage />} />
+            <Route path="/admin/pagamentos" element={<PagamentosPage />} />
             {/* fallback */}
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
