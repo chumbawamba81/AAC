@@ -11,15 +11,25 @@ type Props = {
 };
 
 function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
-  const map: Record<string, string> = {
+  const map: Record<AdminPagamento["status"], string> = {
     validado: "bg-green-100 text-green-800",
     pendente: "bg-yellow-100 text-yellow-800",
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || "bg-gray-100 text-gray-800"}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
       {status === "validado" ? "Validado" : "Pendente"}
     </span>
   );
+}
+
+function fmtDate(d: string | null | undefined, withTime = true) {
+  if (!d) return "—";
+  const date = new Date(d);
+  try {
+    return withTime ? date.toLocaleString() : date.toLocaleDateString();
+  } catch {
+    return withTime ? date.toISOString() : date.toISOString().slice(0, 10);
+  }
 }
 
 export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
@@ -46,10 +56,12 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
       <table className="min-w-full text-sm">
         <thead className="bg-gray-50 text-gray-700">
           <tr>
-            <th className="text-left px-3 py-2">Data submissão</th>
+            <th className="text-left px-3 py-2">Submissão</th>
+            <th className="text-left px-3 py-2">Vencimento</th>
             <th className="text-left px-3 py-2">Titular/EE</th>
             <th className="text-left px-3 py-2">Atleta</th>
             <th className="text-left px-3 py-2">Descrição</th>
+            <th className="text-left px-3 py-2">Tipo</th>
             <th className="text-left px-3 py-2">Estado</th>
             <th className="text-right px-3 py-2">Ações</th>
           </tr>
@@ -57,13 +69,15 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
         <tbody className="divide-y">
           {rows.map((r) => (
             <tr key={r.id} className="hover:bg-gray-50">
-              <td className="px-3 py-2 whitespace-nowrap">
-                {r.createdAt ? new Date(r.createdAt).toLocaleString() : "—"}
-              </td>
+              <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+              <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.devidoEm ?? null, false)}</td>
               <td className="px-3 py-2">{r.titularName || "—"}</td>
               <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
               <td className="px-3 py-2">{r.descricao}</td>
-              <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
+              <td className="px-3 py-2">{r.tipo ?? "—"}</td>
+              <td className="px-3 py-2">
+                <StatusBadge status={r.status} />
+              </td>
               <td className="px-3 py-2">
                 <div className="flex items-center gap-2 justify-end">
                   {r.signedUrl && (
@@ -73,15 +87,17 @@ export default function PaymentsTable({ rows, onOpen, onChanged }: Props) {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Abrir
+                      Abrir comprovativo
                     </a>
                   )}
+
                   <button
                     className="px-2 py-1 rounded-lg border hover:bg-gray-100"
                     onClick={() => onOpen(r)}
                   >
                     Detalhes
                   </button>
+
                   <div className="inline-flex rounded-lg overflow-hidden border">
                     <button
                       disabled={busyId === r.id}
