@@ -54,6 +54,7 @@ export default function AdminApp() {
             <Route path="/admin" element={<Dashboard />} />
             <Route path="/admin/socios" element={<SociosPage />} />
             <Route path="/admin/atletas" element={<Atletas />} />
+			<Route path="atletas" element={<AtletasPage />} />
             <Route path="/admin/pagamentos" element={<Pagamentos />} />
             {/* fallback */}
             <Route path="*" element={<Navigate to="/admin" replace />} />
