@@ -15,6 +15,7 @@ import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import ImagesDialog from "./components/ImagesDialog";
+import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
 
 import {
   AlertCircle,
@@ -1066,6 +1067,7 @@ export default function App(){
             {hasPerfil && (
               <TabsContent value="docs">
                 {/* prop setState como função simples */}
+				<TemplatesDownloadSection />
                 <UploadDocsSection state={state} setState={(s: State)=>setState(s)} />
               </TabsContent>
             )}
