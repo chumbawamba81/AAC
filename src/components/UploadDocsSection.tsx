@@ -301,7 +301,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
 
   /* ======================= Diagnóstico opcional ======================= */
 
-  async function testStorage() {
+  /* async function testStorage() {
     try {
       setDiagMsg('A testar Storage…');
       const { data: u } = await supabase.auth.getUser();
@@ -350,7 +350,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
       alert(`Tabela FAIL ❌: ${e?.message || e}`);
     }
   }
-
+*/
   /* ======================= Render ======================= */
 
   return (
