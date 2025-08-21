@@ -76,37 +76,15 @@ function choosePrices(band: BandKey, tipoSocio?: string | null, numAtletasAgrega
       if (pro) return twoPlus ? PRO2_SUBS : PRO1_SUBS;
       return NS_SUBS;
     case "SUB23":
-      return { mensal10: 0, trimestre3: 0, anual1: SUB23_ANUIDADE, taxaInscricao: SUB23_ANUIDADE };
+      return { mensal10: 0, trimestre3: 0, anual1: 0, taxaInscricao: SUB23_ANUIDADE };
     case "MASTERS":
-      return { mensal10: 0, trimestre3: 0, anual1: MASTERS_ANUIDADE, taxaInscricao: MASTERS_ANUIDADE };
+      return { mensal10: 0, trimestre3: 0, anual1: 0, taxaInscricao: MASTERS_ANUIDADE };
   }
 }
 
 export function estimateCosts(input: EstimateInput): EstimateResult {
   const band = classifyEscalao(input.escalao);
   const prices = choosePrices(band, input.tipoSocio, input.numAtletasAgregado ?? 1);
-// --- Guard clause: escalões SEM quotas (Masters / Sub-23) ---
-const s = (input.escalao || "").toLowerCase();
-const semQuotas =
-  s.includes("masters") ||
-  s.includes("sub 23") ||
-  s.includes("sub-23") ||
-  s.includes("seniores sub 23") ||
-  s.includes("seniores sub-23");
-
-if (semQuotas) {
-  return {
-    taxaInscricao: socioInscricaoAmount(input.tipoSocio),
-    mensal10: 0,
-    trimestre3: 0,
-    anual1: 0,
-    tarifa: "Tabela de referência",
-    info: "Masters/Sub-23: sem quotas; apenas taxa de inscrição.",
-    // IMPORTANTE: não forces vista “Anual apenas” para não aparecer o cartão de anuidade
-    onlyAnnual: false,
-  } as EstimateResult;
-}
-
 
   const onlyAnnual = band === "SUB23" || band === "MASTERS";
   const socioLabel = isSocioPro(input.tipoSocio) ? "Sócio PRO" :
