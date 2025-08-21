@@ -1246,7 +1246,7 @@ function TesourariaResumoAtletas({
     <div className="mt-3 border rounded-xl p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="font-medium">Situação de Tesouraria — Atletas</div>
-        <Button variant="outline" size="sm" onClick={onIrPagamentos}>Ir para Pagamentos</Button>
+        <Button variant="outline" onClick={onIrPagamentos}>Ir para Pagamentos</Button>
       </div>
       <div className="space-y-2">
         {resumos.map((r) => (
