@@ -767,6 +767,16 @@ function DadosPessoaisSection({
             </div>
           </div>
 
+          <div className="mt-3 flex gap-3 text-sm">
+            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
+              <FileUp className="h-3 w-3" /> Sócio (docs): {socioMissing} documento(s) em falta
+            </div>
+            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
+              <FileUp className="h-3 w-3" /> Atletas (docs): {missingAthDocs} documento(s) em falta
+            </div>
+          </div>
+        </div>
+
           {/* Resumo de Situação de Tesouraria */}
           <div className="mt-4">
             <div className="text-lg font-semibold mb-2">Resumo de Situação de Tesouraria</div>
@@ -834,16 +844,6 @@ function DadosPessoaisSection({
               </div>
             )}
           </div>
-
-          <div className="mt-3 flex gap-3 text-sm">
-            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3" /> Sócio (docs): {socioMissing} documento(s) em falta
-            </div>
-            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3" /> Atletas (docs): {missingAthDocs} documento(s) em falta
-            </div>
-          </div>
-        </div>
 
         <Card>
           <CardHeader>
