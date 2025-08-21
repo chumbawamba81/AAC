@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 
 // Serviços (Supabase) de autenticação e dados
 import { signIn, signUp, signOut } from "./services/authService";
@@ -78,8 +78,8 @@ const DOCS_ATLETA = [
   "Ficha de jogador FPB",
   "Ficha inscrição AAC",
   "Exame médico",
-] as const;
-// Nota: os comprovativos de inscrição (sócio/atleta) foram migrados para a Tesouraria.
+] as const; // comprovativos migrados para Tesouraria
+
 const DOCS_SOCIO = ["Ficha de Sócio"] as const;
 
 type Conta = { email: string };
@@ -91,7 +91,7 @@ export type State = {
   atletas: Atleta[];
   docsSocio: Partial<Record<(typeof DOCS_SOCIO)[number], UploadMeta>>;
   docsAtleta: Record<string, Partial<Record<(typeof DOCS_ATLETA)[number], UploadMeta>>>;
-  pagamentos: Record<string, Array<UploadMeta | null>>; // legado
+  pagamentos: Record<string, Array<UploadMeta | null>>; // legado local
   tesouraria?: string;
   noticias?: string;
   verificationPendingEmail?: string | null;
@@ -99,7 +99,7 @@ export type State = {
 
 const LS_KEY = "bb_app_payments_v1";
 
-/* -------------------- Helpers globais -------------------- */
+/* -------------------- Helpers -------------------- */
 function isPasswordStrong(p: string) {
   const lengthOk = p.length >= 8;
   const hasUpper = /[A-Z]/.test(p);
@@ -142,9 +142,6 @@ function normalizePessoaDados(x: any, fallbackEmail?: string): PessoaDados {
     profissao: x?.profissao ?? "",
   };
 }
-function isTipoSocio(tipo?: string | null) {
-  return !!(tipo && !/não\s*pretendo/i.test(tipo));
-}
 
 function isFutureISODate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -154,23 +151,13 @@ function isFutureISODate(s: string): boolean {
   today.setHours(0, 0, 0, 0);
   return d.getTime() > today.getTime();
 }
+function isTipoSocio(tipo?: string | null) {
+  return !!(tipo && !/não\s*pretendo/i.test(tipo));
+}
 
-/** Plano → nº de slots */
-function getSlotsForPlano(p: PlanoPagamento) {
-  if (p === "Mensal") return 10;
-  if (p === "Trimestral") return 3;
-  return 1;
-}
-/** Etiqueta de prestação para UI */
-function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
-  if (plano === "Anual") return "Pagamento da anuidade";
-  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
-  return `Pagamento - ${idx + 1}º Mês`;
-}
-/** Escalões que obrigam anuidade (sem mensalidade) */
-function isAnuidadeObrigatoria(escalao: string | undefined) {
-  if (!escalao) return false;
-  const s = escalao.toLowerCase();
+/* --------- Helpers globais de pagamentos (usados em várias secções) --------- */
+function isAnuidadeObrigatoria(escalao?: string | null | undefined) {
+  const s = (escalao || "").toLowerCase();
   return (
     s.includes("masters") ||
     s.includes("sub 23") ||
@@ -178,6 +165,16 @@ function isAnuidadeObrigatoria(escalao: string | undefined) {
     s.includes("seniores sub 23") ||
     s.includes("seniores sub-23")
   );
+}
+function getSlotsForPlano(p: PlanoPagamento) {
+  if (p === "Mensal") return 10;
+  if (p === "Trimestral") return 3;
+  return 1;
+}
+function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
+  if (plano === "Anual") return "Pagamento da anuidade";
+  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
+  return `Pagamento - ${idx + 1}º Mês`;
 }
 
 /* -------------------- Persistência local -------------------- */
@@ -454,7 +451,6 @@ function ContaSection({
 
 /* ---------------------------- DadosPessoaisSection ---------------------------- */
 
-// Extensão local para incluir validade do documento (mantendo o tipo original)
 type PessoaDadosWithVal = PessoaDados & { dataValidadeDocumento?: string };
 
 function DadosPessoaisSection({
@@ -495,58 +491,8 @@ function DadosPessoaisSection({
       }
   );
 
-  // 👉 Quando o perfil chegar do Supabase depois do login, preenche o form e sai do modo edição
-  useEffect(() => {
-    if (basePerfil) {
-      setForm((prev) => ({ ...prev, ...(basePerfil as PessoaDadosWithVal) }));
-      setEditMode(false);
-    }
-  }, [state.perfil]); // eslint-disable-line
-
-  // ===== Contadores reais do Supabase (documentos) =====
+  // estado de autenticação
   const [userId, setUserId] = useState<string | null>(null);
-  const [socioMissingCount, setSocioMissingCount] = useState<number>(DOCS_SOCIO.length);
-  const [athMissingCount, setAthMissingCount] = useState<number>(state.atletas.length * DOCS_ATLETA.length);
-
-  // Estado Tesouraria — inscrições de atletas
-  const [athInscr, setAthInscr] = useState<
-    Record<string, { status: "regularizado" | "pendente" | "em_dia" | "em_atraso" | "sem_lancamento"; due?: string | null }>
-  >({});
-
-  // ---- Resumo Sócio (inscrição) ----
-  const [socioResumo, setSocioResumo] = useState<
-    { status: "regularizado" | "pendente" | "em_dia" | "em_atraso" | "sem_lancamento"; due?: string | null }
-  >({ status: "sem_lancamento" });
-
-  // ---- Resumo Quotas por atleta (prestações) ----
-  const [athQuotas, setAthQuotas] = useState<
-    Record<string, { pendentes: number; atrasados: number; nextDue?: string | null }>
-  >({});
-
-  function StatusBadge({
-    s,
-  }: {
-    s: "regularizado" | "pendente" | "em_dia" | "em_atraso" | "sem_lancamento";
-  }) {
-    const map: Record<string, string> = {
-      regularizado: "bg-green-100 text-green-700",
-      pendente: "bg-blue-100 text-blue-700",
-      em_dia: "bg-gray-100 text-gray-700",
-      em_atraso: "bg-red-100 text-red-700",
-      sem_lancamento: "bg-gray-100 text-gray-500",
-    };
-    const label: Record<string, string> = {
-      regularizado: "Regularizado",
-      pendente: "Pendente de validação",
-      em_dia: "Dentro do prazo",
-      em_atraso: "Em atraso",
-      sem_lancamento: "Sem lançamento",
-    };
-    return (
-      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${map[s]}`}>{label[s]}</span>
-    );
-  }
-
   useEffect(() => {
     let mounted = true;
     const sub = supabase.auth.onAuthStateChange((_e, session) => {
@@ -563,6 +509,35 @@ function DadosPessoaisSection({
     };
   }, []);
 
+  // contadores de documentos
+  const [socioMissingCount, setSocioMissingCount] = useState<number>(DOCS_SOCIO.length);
+  const [athMissingCount, setAthMissingCount] = useState<number>(state.atletas.length * DOCS_ATLETA.length);
+
+  // Resumo de Tesouraria
+  type ResumoStatus = "regularizado" | "pendente" | "em_dia" | "em_atraso" | "sem_lancamento";
+  const [athInscr, setAthInscr] = useState<Record<string, { status: ResumoStatus; due?: string | null; valor?: number }>>({});
+  const [athQuotaNext, setAthQuotaNext] = useState<Record<string, { status: ResumoStatus; due?: string | null; valor?: number }>>({});
+  const [socioInscrResumo, setSocioInscrResumo] = useState<{ status: ResumoStatus; due?: string | null; valor?: number } | null>(null);
+
+  function StatusBadge({ s }: { s: ResumoStatus }) {
+    const map: Record<ResumoStatus, string> = {
+      regularizado: "bg-green-100 text-green-700",
+      pendente: "bg-blue-100 text-blue-700",
+      em_dia: "bg-gray-100 text-gray-700",
+      em_atraso: "bg-red-100 text-red-700",
+      sem_lancamento: "bg-gray-100 text-gray-500",
+    };
+    const label: Record<ResumoStatus, string> = {
+      regularizado: "Regularizado",
+      pendente: "Pendente de validação",
+      em_dia: "Dentro do prazo",
+      em_atraso: "Em atraso",
+      sem_lancamento: "Sem lançamento",
+    };
+    return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${map[s]}`}>{label[s]}</span>;
+  }
+
+  // documentos: contadores
   useEffect(() => {
     async function fetchDocCounters() {
       if (!userId) {
@@ -570,7 +545,7 @@ function DadosPessoaisSection({
         setAthMissingCount(state.atletas.length * DOCS_ATLETA.length);
         return;
       }
-      // -- Sócio
+      // Sócio
       const socioSel = await supabase
         .from("documentos")
         .select("doc_tipo")
@@ -582,7 +557,7 @@ function DadosPessoaisSection({
       const socioMiss = DOCS_SOCIO.filter((t) => !socioSet.has(t)).length;
       setSocioMissingCount(socioMiss);
 
-      // -- Atletas
+      // Atletas
       const athSel = await supabase
         .from("documentos")
         .select("atleta_id, doc_tipo")
@@ -607,15 +582,45 @@ function DadosPessoaisSection({
     fetchDocCounters().catch((e) => console.error("[fetchDocCounters]", e));
   }, [userId, state.atletas.map((a) => a.id).join(",")]);
 
-  // Resumo Tesouraria — inscrição de cada atleta
+  // Resumo Tesouraria — INSCRIÇÃO (sócio + atletas)
   useEffect(() => {
-    async function fetchAthInscr() {
-      if (!userId || state.atletas.length === 0) {
+    async function fetchInscricoes() {
+      if (!userId) {
         setAthInscr({});
+        setSocioInscrResumo(null);
         return;
       }
-      const out: Record<string, { status: "regularizado" | "pendente" | "em_dia" | "em_atraso" | "sem_lancamento"; due?: string | null }> =
-        {};
+
+      // Sócio
+      if (isTipoSocio(state.perfil?.tipoSocio)) {
+        try {
+          await createInscricaoSocioIfMissing(userId);
+          const socio = await listSocioInscricao(userId);
+          const row = socio?.[0];
+          const status: ResumoStatus = row
+            ? row.validado
+              ? "regularizado"
+              : row.comprovativo_url
+              ? "pendente"
+              : row.devido_em && new Date() > new Date(row.devido_em + "T23:59:59")
+              ? "em_atraso"
+              : "em_dia"
+            : "sem_lancamento";
+          setSocioInscrResumo({
+            status,
+            due: row?.devido_em ?? null,
+            valor: socioInscricaoAmount(state.perfil?.tipoSocio),
+          });
+        } catch (e) {
+          console.error("[Resumo] inscrição sócio", e);
+          setSocioInscrResumo({ status: "sem_lancamento" });
+        }
+      } else {
+        setSocioInscrResumo(null);
+      }
+
+      // Atletas
+      const out: Record<string, { status: ResumoStatus; due?: string | null; valor?: number }> = {};
       for (const a of state.atletas) {
         const { data, error } = await supabase
           .from("pagamentos")
@@ -629,107 +634,76 @@ function DadosPessoaisSection({
           continue;
         }
         const row = (data || [])[0];
-        if (!row) {
-          out[a.id] = { status: "sem_lancamento" };
-          continue;
-        }
-        if (row.validado) out[a.id] = { status: "regularizado", due: row.devido_em ?? null };
-        else if (row.comprovativo_url) out[a.id] = { status: "pendente", due: row.devido_em ?? null };
-        else {
-          const due = row.devido_em ? new Date(row.devido_em + "T23:59:59") : null;
-          const now = new Date();
-          out[a.id] = { status: due && now > due ? "em_atraso" : "em_dia", due: row.devido_em ?? null };
-        }
+        const est = estimateCosts({
+          escalao: a.escalao || "",
+          tipoSocio: state.perfil?.tipoSocio,
+          numAtletasAgregado: Math.max(1, state.atletas.filter(x => !isAnuidadeObrigatoria(x.escalao)).length),
+        });
+        const status: ResumoStatus = row
+          ? row.validado
+            ? "regularizado"
+            : row.comprovativo_url
+            ? "pendente"
+            : row.devido_em && new Date() > new Date(row.devido_em + "T23:59:59")
+            ? "em_atraso"
+            : "em_dia"
+          : "sem_lancamento";
+        out[a.id] = { status, due: row?.devido_em ?? null, valor: est.taxaInscricao };
       }
       setAthInscr(out);
     }
-    fetchAthInscr().catch((e) => console.error("[Resumo Tesouraria] inscrição atletas:", e));
-  }, [userId, state.atletas.map((a) => a.id).join(",")]);
+    fetchInscricoes().catch((e) => console.error("[Resumo Tesouraria] inscrições:", e));
+  }, [userId, state.atletas.map((a) => a.id).join(","), state.perfil?.tipoSocio]);
 
-  // Resumo: Sócio — Inscrição
+  // Resumo Tesouraria — QUOTAS: próxima a vencer por atleta
   useEffect(() => {
-    async function fetchSocioInscricao() {
-      if (!userId) {
-        setSocioResumo({ status: "sem_lancamento" });
-        return;
-      }
-      const { data, error } = await supabase
-        .from("pagamentos")
-        .select("id,comprovativo_url,validado,devido_em,created_at")
-        .is("atleta_id", null)
-        .eq("tipo", "socio_inscricao")
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (error) {
-        setSocioResumo({ status: "sem_lancamento" });
-        return;
-      }
-      const row = (data || [])[0];
-      if (!row) {
-        setSocioResumo({ status: "sem_lancamento" });
-        return;
-      }
-      const dueISO = row.devido_em || null;
-      const due = dueISO ? new Date(dueISO + "T23:59:59") : null;
-      const now = new Date();
-      if (row.validado) setSocioResumo({ status: "regularizado", due: dueISO });
-      else if (row.comprovativo_url) setSocioResumo({ status: "pendente", due: dueISO });
-      else setSocioResumo({ status: due && now > due ? "em_atraso" : "em_dia", due: dueISO });
-    }
-    fetchSocioInscricao().catch(() => setSocioResumo({ status: "sem_lancamento" }));
-  }, [userId]);
-
-  // Resumo: Quotas por Atleta
-  useEffect(() => {
-    async function fetchQuotas() {
+    async function fetchQuotasNext() {
       if (!userId || state.atletas.length === 0) {
-        setAthQuotas({});
+        setAthQuotaNext({});
         return;
       }
+      const out: Record<string, { status: ResumoStatus; due?: string | null; valor?: number }> = {};
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      const next: Record<string, { pendentes: number; atrasados: number; nextDue?: string | null }> = {};
+      const numAgregado = Math.max(1, state.atletas.filter(a => !isAnuidadeObrigatoria(a.escalao)).length);
+
       for (const a of state.atletas) {
-        const { data, error } = await supabase
-          .from("pagamentos")
-          .select("comprovativo_url,validado,devido_em,tipo")
-          .eq("atleta_id", a.id)
-          .eq("tipo", "prestacao");
+        // todas as linhas do atleta
+        const rowsAll = await listPagamentosByAtleta(a.id);
+        const rows = rowsAll.filter(r => (r as any).tipo !== "inscricao" && r.devido_em); // só quotas com due
 
-        if (error) {
-          next[a.id] = { pendentes: 0, atrasados: 0, nextDue: undefined };
+        // escolhe a próxima a vencer (due >= hoje) senão a mais tardia existente
+        const future = rows
+          .filter(r => r.devido_em && new Date(r.devido_em + "T00:00:00").getTime() >= today.getTime())
+          .sort((x, y) => new Date(x.devido_em!).getTime() - new Date(y.devido_em!).getTime());
+
+        const candidate = (future[0] || rows.sort((x, y) => new Date(y.devido_em!).getTime() - new Date(x.devido_em!).getTime())[0]) || null;
+
+        if (!candidate) {
+          out[a.id] = { status: "sem_lancamento" };
           continue;
         }
 
-        let pend = 0;
-        let late = 0;
-        let nextDue: string | null | undefined = undefined;
-        const now = new Date();
+        const planoEfetivo: PlanoPagamento = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
+        const est = estimateCosts({ escalao: a.escalao || "", tipoSocio: state.perfil?.tipoSocio, numAtletasAgregado: numAgregado });
+        const valor = planoEfetivo === "Mensal" ? est.mensal10 : planoEfetivo === "Trimestral" ? est.trimestre3 : est.anual1;
 
-        for (const r of (data || []) as Array<{ comprovativo_url: string | null; validado: boolean | null; devido_em: string | null }>) {
-          if (r.validado) continue;
+        const status: ResumoStatus =
+          candidate.validado
+            ? "regularizado"
+            : candidate.comprovativo_url
+            ? "pendente"
+            : candidate.devido_em && new Date() > new Date(candidate.devido_em + "T23:59:59")
+            ? "em_atraso"
+            : "em_dia";
 
-          const dueISO = r.devido_em || null;
-          const due = dueISO ? new Date(dueISO + "T23:59:59") : null;
-
-          if (r.comprovativo_url) {
-            pend++;
-          } else {
-            if (due && now > due) late++;
-            else {
-              if (dueISO) {
-                if (!nextDue) nextDue = dueISO;
-                else if (due && new Date(nextDue + "T00:00:00") > due) nextDue = dueISO;
-              }
-            }
-          }
-        }
-
-        next[a.id] = { pendentes: pend, atrasados: late, nextDue };
+        out[a.id] = { status, due: candidate.devido_em ?? null, valor };
       }
-      setAthQuotas(next);
+      setAthQuotaNext(out);
     }
-    fetchQuotas().catch(() => setAthQuotas({}));
-  }, [userId, state.atletas.map((a) => a.id).join(",")]);
+    fetchQuotasNext().catch((e) => console.error("[Resumo Tesouraria] quotas next:", e));
+  }, [userId, state.atletas.map(a => a.id).join(","), state.perfil?.tipoSocio]);
 
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
@@ -744,9 +718,6 @@ function DadosPessoaisSection({
     if (!form.telefone.trim()) errs.push("Telefone obrigatório");
     if (!form.email.trim()) errs.push("Email obrigatório");
     if (form.tipoDocumento === "Cartão de cidadão") {
-      if (!form.dataValidadeDocumento || !/^\d{4}-\d{2}-\d2$/.test(form.dataValidadeDocumento)) {
-        // relaxe; segue validação abaixo
-      }
       if (!form.dataValidadeDocumento || !/^\d{4}-\d{2}-\d{2}$/.test(form.dataValidadeDocumento)) {
         errs.push("Validade do cartão de cidadão é obrigatória");
       } else if (!isFutureISODate(form.dataValidadeDocumento)) {
@@ -801,43 +772,57 @@ function DadosPessoaisSection({
               <div className="flex items-center justify-between border rounded-xl px-3 py-2 mb-2">
                 <div className="text-sm">
                   <span className="font-medium">Sócio — Inscrição</span>
-                  {socioResumo.due && <span className="text-gray-500"> · Limite: {socioResumo.due}</span>}
+                  {socioInscrResumo?.valor != null && (
+                    <span className="ml-2">{eur(socioInscrResumo.valor)}</span>
+                  )}
+                  {socioInscrResumo?.due && (
+                    <span className="ml-2 text-gray-600">· Limite: {socioInscrResumo.due}</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <StatusBadge s={socioResumo.status as any} />
+                  <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
                   <Button variant="outline" onClick={goTesouraria}>Ir para Situação de Tesouraria</Button>
                 </div>
               </div>
             )}
 
-            {/* Atletas — Inscrição + Quotas */}
+            {/* Atletas — Inscrição + Próxima Quota */}
             {state.atletas.length > 0 && (
               <div className="space-y-2">
                 {state.atletas.map((a) => {
-                  const st = athInscr[a.id] || { status: "sem_lancamento", due: undefined };
-                  const q = athQuotas[a.id] || { pendentes: 0, atrasados: 0, nextDue: undefined };
+                  const stIns = athInscr[a.id]?.status ?? "sem_lancamento";
+                  const dueIns = athInscr[a.id]?.due;
+                  const valIns = athInscr[a.id]?.valor;
+
+                  const stQ = athQuotaNext[a.id]?.status ?? "sem_lancamento";
+                  const dueQ = athQuotaNext[a.id]?.due;
+                  const valQ = athQuotaNext[a.id]?.valor;
+
                   return (
-                    <div key={a.id} className="border rounded-xl p-3 space-y-2">
+                    <div key={a.id} className="border rounded-xl px-3 py-2 space-y-1">
+                      {/* Inscrição */}
                       <div className="flex items-center justify-between">
                         <div className="text-sm">
                           <span className="font-medium">Atleta — {a.nomeCompleto}</span>
                           <span className="text-gray-500"> · Inscrição</span>
-                          {st.due && <span className="text-gray-500"> · Limite: {st.due}</span>}
+                          {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
+                          {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <StatusBadge s={st.status as any} />
+                          <StatusBadge s={stIns} />
                           <Button variant="outline" onClick={goTesouraria}>Ir para Situação de Tesouraria</Button>
                         </div>
                       </div>
 
+                      {/* Próxima quota */}
                       <div className="flex items-center justify-between">
                         <div className="text-sm">
-                          <span className="font-medium">Atleta — {a.nomeCompleto}</span>
-                          <span className="text-gray-500"> · Quotas</span>
-                          {q.nextDue && <span className="text-gray-500"> · Próximo limite: {q.nextDue}</span>}
+                          <span className="text-gray-700">Quotas</span>
+                          {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
+                          {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
                         </div>
-                        <div className="text-xs text-gray-700">
-                          {q.pendentes} pendente(s){q.atrasados > 0 ? ` · ${q.atrasados} em atraso` : ""}
+                        <div className="flex items-center gap-2">
+                          <StatusBadge s={stQ} />
                         </div>
                       </div>
                     </div>
@@ -993,7 +978,6 @@ function DadosPessoaisSection({
 function PagamentosSection({ state }: { state: State }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
-  const [inscByAth, setInscByAth] = useState<Record<string, PagamentoRowWithUrl | null>>({});
   const [socioRows, setSocioRows] = useState<PagamentoRowWithUrl[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -1027,28 +1011,17 @@ function PagamentosSection({ state }: { state: State }) {
       setSocioRows([]);
     }
 
-    // Atletas (separar inscrição e prestações)
+    // Atletas
     const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
-    const insc: Record<string, PagamentoRowWithUrl | null> = {};
-
     for (const a of state.atletas) {
       const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
       const slots = getSlotsForPlano(planoEfetivo);
       const labels = Array.from({ length: slots }, (_, i) => getPagamentoLabel(planoEfetivo, i));
-
       const rows = await listPagamentosByAtleta(a.id);
       const rowsWithUrl = await withSignedUrlsPagamentos(rows);
 
-      // inscrição do atleta
-      const onlyInsc = rowsWithUrl
-        .filter((r) => (r as any).tipo === "inscricao" || /inscri/i.test(r.descricao))
-        .sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-      insc[a.id] = onlyInsc[0] || null;
-
-      // prestações (exclui inscrição)
       const byDesc = new Map<string, PagamentoRowWithUrl[]>();
       for (const r of rowsWithUrl) {
-        if ((r as any).tipo === "inscricao" || /inscri/i.test(r.descricao)) continue;
         const arr = byDesc.get(r.descricao) || [];
         arr.push(r);
         byDesc.set(r.descricao, arr);
@@ -1061,9 +1034,7 @@ function PagamentosSection({ state }: { state: State }) {
         return arr[0];
       });
     }
-
     setPayments(next);
-    setInscByAth(insc);
   }, [userId, state.atletas, state.perfil?.tipoSocio]);
 
   useEffect(() => { refreshPayments(); }, [refreshPayments]);
@@ -1083,10 +1054,9 @@ function PagamentosSection({ state }: { state: State }) {
   }, [state.atletas, refreshPayments]);
 
   function isOverdue(row: PagamentoRowWithUrl | null): boolean {
-    if (!row || (row as any)?.validado) return false;
-    const dueISO = (row as any)?.devido_em;
-    if (!dueISO) return false;
-    const dt = new Date(dueISO + "T23:59:59");
+    if (!row || row.validado) return false;
+    if (!row.devido_em) return false;
+    const dt = new Date(row.devido_em + "T23:59:59");
     const now = new Date();
     return now.getTime() > dt.getTime();
   }
@@ -1101,18 +1071,6 @@ function PagamentosSection({ state }: { state: State }) {
       await refreshPayments();
     } catch (e: any) {
       console.error("[Pagamentos] upload/replace", e);
-      alert(e?.message || "Falha no upload");
-    } finally { setBusy(false); }
-  }
-
-  async function handleUploadInscricao(athlete: Atleta, file: File) {
-    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
-    setBusy(true);
-    try {
-      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: "Inscrição de Atleta", file });
-      await refreshPayments();
-    } catch (e: any) {
-      console.error("[Pagamentos] upload inscrição", e);
       alert(e?.message || "Falha no upload");
     } finally { setBusy(false); }
   }
@@ -1143,7 +1101,6 @@ function PagamentosSection({ state }: { state: State }) {
     } finally { setBusy(false); }
   }
 
-  // helpers de valor
   const numAtletasAgregado = state.atletas.filter(a => !isAnuidadeObrigatoria(a.escalao)).length;
 
   if (state.atletas.length === 0 && !isSocio(state.perfil?.tipoSocio)) {
@@ -1169,25 +1126,22 @@ function PagamentosSection({ state }: { state: State }) {
         {/* ===== Sócio: Inscrição ===== */}
         {isSocio(state.perfil?.tipoSocio) && (
           <div className="border rounded-xl p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-medium">Inscrição de Sócio — {eur(socioInscricaoAmount(state.perfil?.tipoSocio))}</div>
-            </div>
             <div className="grid gap-3">
               {(() => {
                 const row = socioRows[0] || null;
                 const overdue = isOverdue(row);
+                const val = socioInscricaoAmount(state.perfil?.tipoSocio);
                 return (
                   <div className="border rounded-lg p-3 flex items-center justify-between">
                     <div>
                       <div className="font-medium">
-                        {row?.validado
-                          ? "Comprovativo validado"
-                          : row?.comprovativo_url
-                          ? (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente")
-                          : "Comprovativo em falta"}
+                        Inscrição de Sócio — {eur(val)}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {row?.devido_em ? `Limite: ${row.devido_em}` : "Sem data limite"}
+                        {row?.comprovativo_url
+                          ? (row.validado ? "Comprovativo validado" : (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente"))
+                          : (overdue ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")}
+                        {row?.devido_em && <span className="ml-2">· Limite: {row.devido_em}</span>}
                         {row?.signedUrl && (
                           <a className="underline inline-flex items-center gap-1 ml-2" href={row.signedUrl} target="_blank" rel="noreferrer">
                             <LinkIcon className="h-3 w-3" /> Abrir
@@ -1218,7 +1172,6 @@ function PagamentosSection({ state }: { state: State }) {
           const slots = getSlotsForPlano(planoEfetivo);
           const rows = payments[a.id] || Array.from({ length: slots }, () => null);
 
-          // custos para este atleta
           const est = estimateCosts({
             escalao: a.escalao || "",
             tipoSocio: state.perfil?.tipoSocio,
@@ -1230,9 +1183,6 @@ function PagamentosSection({ state }: { state: State }) {
             return est.anual1;
           };
 
-          const inscRow = inscByAth[a.id] || null;
-          const inscOver = isOverdue(inscRow);
-
           return (
             <div key={a.id} className="border rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
@@ -1243,40 +1193,11 @@ function PagamentosSection({ state }: { state: State }) {
                 </div>
               </div>
 
-              {/* Inscrição de Atleta */}
-              <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">Inscrição — {eur(est.taxaInscricao)}</div>
-                  <div className="text-xs text-gray-500">
-                    {inscRow?.comprovativo_url
-                      ? (inscRow?.validado ? "Validado" : (inscOver ? "Pendente (em atraso)" : "Pendente"))
-                      : (inscOver ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")}
-                    {inscRow?.devido_em && <span className="ml-2">· Limite: {inscRow.devido_em}</span>}
-                    {inscRow?.signedUrl && (
-                      <a className="underline inline-flex items-center gap-1 ml-2" href={inscRow.signedUrl} target="_blank" rel="noreferrer">
-                        <LinkIcon className="h-3 w-3" /> Abrir
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FilePickerButton
-                    variant={inscRow?.comprovativo_url ? "secondary" : "outline"}
-                    accept="image/*,application/pdf"
-                    onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-                  >
-                    <Upload className="h-4 w-4 mr-1" />
-                    {inscRow?.comprovativo_url ? "Substituir" : "Carregar"}
-                  </FilePickerButton>
-                </div>
-              </div>
-
-              {/* Prestações */}
               <div className="grid md:grid-cols-2 gap-3">
                 {Array.from({ length: slots }).map((_, i) => {
                   const meta = rows[i];
                   const label = getPagamentoLabel(planoEfetivo, i);
-                  const overdue = isOverdue(meta);
+                  const overdue = meta ? (!meta.validado && meta.devido_em && new Date() > new Date(meta.devido_em + "T23:59:59")) : false;
 
                   return (
                     <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
@@ -1286,8 +1207,8 @@ function PagamentosSection({ state }: { state: State }) {
                           {meta?.comprovativo_url
                             ? (
                               <span className="inline-flex items-center gap-2">
-                                {meta?.validado ? "Validado" : (overdue ? "Pendente (em atraso)" : "Pendente")}
-                                {meta?.signedUrl && (
+                                {meta.validado ? "Comprovativo validado" : (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente")}
+                                {meta.signedUrl && (
                                   <a className="underline inline-flex items-center gap-1" href={meta.signedUrl} target="_blank" rel="noreferrer">
                                     <LinkIcon className="h-3 w-3" /> Abrir
                                   </a>
@@ -1340,7 +1261,6 @@ function AtletasSection({
   setState: React.Dispatch<React.SetStateAction<State>>;
   onOpenForm: (a?: Atleta) => void;
 }) {
-  // missing por atleta calculado do Supabase + Realtime
   const [userId, setUserId] = useState<string | null>(null);
   const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
 
@@ -1412,10 +1332,6 @@ function AtletasSection({
     };
   }, [userId]); // eslint-disable-line
 
-  function isAnuidadeObrigatoriaLocal(escalao: string | undefined) {
-    return isAnuidadeObrigatoria(escalao);
-  }
-
   async function remove(id: string) {
     if (!confirm("Remover o atleta?")) return;
     try {
@@ -1462,7 +1378,7 @@ function AtletasSection({
                   </div>
                   <div className="text-xs text-gray-500">
                     {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento:{" "}
-                    {isAnuidadeObrigatoriaLocal(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}
+                    {isAnuidadeObrigatoria(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1494,7 +1410,7 @@ export default function App() {
   const [athModalOpen, setAthModalOpen] = useState(false);
   const [athEditing, setAthEditing] = useState<Atleta | undefined>(undefined);
 
-  // --- SYNC: no carregamento (se já houver sessão) e sempre que acontecer SIGNED_IN ---
+  // SYNC inicial e no SIGNED_IN
   const doSync = useCallback(async () => {
     setSyncing(true);
     try {
@@ -1542,22 +1458,19 @@ export default function App() {
     setActiveTab("home");
   }
 
-  // Abertura do modal a partir da lista
   const openAthForm = (a?: Atleta) => {
     setAthEditing(a);
     setAthModalOpen(true);
   };
 
-  // Guardar do formulário (modal global)
   const handleAthSave = async (novo: Atleta) => {
     const wasEditingId = athEditing?.id;
     const planoAntes = athEditing?.planoPagamento;
     const escalaoAntes = athEditing?.escalao;
 
     try {
-      const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
+      const saved = await saveAtleta(novo);
 
-      // Atualiza estado local
       const nextAtletas = wasEditingId
         ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
         : [saved, ...state.atletas];
@@ -1565,7 +1478,6 @@ export default function App() {
       setState((prev) => ({ ...prev, atletas: nextAtletas }));
       saveState({ ...state, atletas: nextAtletas });
 
-      // Gerar/ajustar calendário desta época
       const force = !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
       await ensureScheduleForAtleta(
@@ -1597,7 +1509,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab */}
+            {/* Tabs não controladas (mantemos o teu padrão): key força reseleção ao mudar activeTab */}
             <Tabs key={activeTab} defaultValue={activeTab}>
               <TabsList>
                 <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
@@ -1638,7 +1550,7 @@ export default function App() {
         )}
       </AuthGate>
 
-      {/* Modal global do Atleta — fica fora das Tabs, não desmonta ao trocar separador */}
+      {/* Modal global do Atleta */}
       <Dialog open={athModalOpen} onOpenChange={setAthModalOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -1736,7 +1648,7 @@ function AuthButton() {
   );
 }
 
-/** “Gate” que só renderiza children quando há sessão Supabase */
+/** Gate de sessão */
 function AuthGate({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
   const [ready, setReady] = useState<"checking" | "in" | "out">("checking");
   useEffect(() => {
