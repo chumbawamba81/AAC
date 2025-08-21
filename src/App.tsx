@@ -856,6 +856,32 @@ function DadosPessoaisSection({
   );
 }
 
+// === Helpers de Pagamentos (necessárias pela PagamentosSection) ===
+import type { PlanoPagamento } from "./types/Atleta"; // garante que este import existe no topo
+
+function getSlotsForPlano(p: PlanoPagamento) {
+  if (p === "Mensal") return 10;
+  if (p === "Trimestral") return 3;
+  return 1; // Anual
+}
+
+function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
+  if (plano === "Anual") return "Pagamento da anuidade";
+  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
+  return `Pagamento - ${idx + 1}º Mês`;
+}
+
+function isAnuidadeObrigatoria(escalao?: string | null) {
+  if (!escalao) return false;
+  const s = escalao.toLowerCase();
+  return (
+    s.includes("masters") ||
+    s.includes("sub23") || s.includes("sub 23") || s.includes("sub-23") ||
+    s.includes("seniores sub 23") || s.includes("seniores sub-23") || s.includes("seniores")
+  );
+}
+
+
 /* ---------------------------- PagamentosSection --------------------------- */
 
 function PagamentosSection({ state }: { state: State }) {
@@ -1222,13 +1248,7 @@ function AtletasSection({
     };
   }, [userId]); // eslint-disable-line
 
-  function isAnuidadeObrigatoria(escalao: string | undefined) {
-    if (!escalao) return false;
-    const s = escalao.toLowerCase();
-    return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
-  }
-
-  async function remove(id: string) {
+   async function remove(id: string) {
     if (!confirm("Remover o atleta?")) return;
     try {
       await removeAtleta(id);
