@@ -1,16 +1,13 @@
+// src/admin/pages/Pagamentos.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import PaymentsTable from "../PaymentsTable";
 import {
   listPagamentosAdmin,
   type AdminPagamento,
-  // (opcional) se tiveres um endpoint para listar estados, poderás expor aqui:
-  // listEstadosPagamentos,
 } from "../services/adminPagamentosService";
 
-type Filtro = "todos" | "socios" | "atletas";
+type Filtro = "todos" | "socios" | "atletas"; // ← alterado
 type Tab = "inscricao" | "mensalidades";
-
-// Estado: mantém "todos" + valores vindos dos dados
 type Estado = "todos" | string;
 
 export default function PagamentosPage() {
@@ -18,18 +15,18 @@ export default function PagamentosPage() {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<Tab>("inscricao"); // mantém tab atual
+  const [tab, setTab] = useState<Tab>("inscricao");
   const [estado, setEstado] = useState<Estado>("todos");
   const [estadosDisponiveis, setEstadosDisponiveis] = useState<string[]>([]);
 
   async function refresh() {
     setLoading(true);
     try {
-      // passa os filtros ao service (ver alteração no service abaixo)
-      const data = await listPagamentosAdmin({ scope: filtro, estado: estado === "todos" ? undefined : estado });
+      // mantém assinatura antiga: aceita apenas o Filtro
+      const data = await listPagamentosAdmin(filtro);
       setRows(data);
 
-      // se não vier uma lista de estados do backend, derivamos dos dados
+      // construir lista de estados a partir dos dados
       const uniq = Array.from(
         new Set(
           (data || [])
@@ -45,23 +42,31 @@ export default function PagamentosPage() {
     }
   }
 
-  // recarrega quando muda qualquer filtro
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtro, estado]);
+  }, [filtro]);
 
-  // pesquisa local
   const filtered = useMemo(() => {
-    const base = rows;
+    let base = rows;
+
+    // aplica filtro de estado no frontend
+    if (estado !== "todos") {
+      const alvo = estado.toLowerCase();
+      base = base.filter((r) => (r.status ?? "").toString().toLowerCase() === alvo);
+    }
+
+    // pesquisa local
     const q = search.trim().toLowerCase();
     if (!q) return base;
-    return base.filter((r) =>
-      (r.titularName || "").toLowerCase().includes(q) ||
-      (r.atletaNome || "").toLowerCase().includes(q) ||
-      (r.descricao || "").toLowerCase().includes(q)
+
+    return base.filter(
+      (r) =>
+        (r.titularName || "").toLowerCase().includes(q) ||
+        (r.atletaNome || "").toLowerCase().includes(q) ||
+        (r.descricao || "").toLowerCase().includes(q)
     );
-  }, [rows, search]);
+  }, [rows, estado, search]);
 
   return (
     <div className="space-y-4">
@@ -69,7 +74,7 @@ export default function PagamentosPage() {
         <h1 className="text-xl font-semibold">Pagamentos</h1>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Filtro de âmbito (backend) */}
+          {/* Filtro de âmbito */}
           <select
             className="rounded-lg border px-2 py-1 text-sm"
             value={filtro}
