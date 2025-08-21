@@ -857,7 +857,6 @@ function DadosPessoaisSection({
 }
 
 // === Helpers de Pagamentos (necessárias pela PagamentosSection) ===
-import type { PlanoPagamento } from "./types/Atleta"; // garante que este import existe no topo
 
 function getSlotsForPlano(p: PlanoPagamento) {
   if (p === "Mensal") return 10;
