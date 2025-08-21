@@ -1518,26 +1518,27 @@ export default function App() {
         ) : (
           <>
             {/* Tabs controladas para permitir navegação programática */}
+/* ===== TABS (BLOCO CORRIGIDO) ===== */
 <Tabs key={activeTab} defaultValue={activeTab}>
   <TabsList>
-    <TabsTrigger value="home" onClick={() => setActiveTab("home")}>
+    <TabsTrigger value="home">
       {mainTabLabel}
     </TabsTrigger>
 
     {hasPerfil && (
-      <TabsTrigger value="atletas" onClick={() => setActiveTab("atletas")}>
+      <TabsTrigger value="atletas">
         Atletas
       </TabsTrigger>
     )}
 
     {hasPerfil && (
-      <TabsTrigger value="docs" onClick={() => setActiveTab("docs")}>
+      <TabsTrigger value="docs">
         Documentos
       </TabsTrigger>
     )}
 
     {hasPerfil && hasAtletas && (
-      <TabsTrigger value="pag" onClick={() => setActiveTab("pag")}>
+      <TabsTrigger value="tes">
         Situação de Tesouraria
       </TabsTrigger>
     )}
@@ -1548,6 +1549,8 @@ export default function App() {
       state={state}
       setState={setState}
       onAfterSave={afterSavePerfil}
+      /* 👇 ADICIONADO: para o botão "Ir para Tesouraria" funcionar */
+      goTesouraria={() => setActiveTab("tes")}
     />
   </TabsContent>
 
@@ -1569,11 +1572,12 @@ export default function App() {
   )}
 
   {hasPerfil && hasAtletas && (
-    <TabsContent value="pag">
+    <TabsContent value="tes">
       <PagamentosSection state={state} />
     </TabsContent>
   )}
 </Tabs>
+
 
           </>
         )}
