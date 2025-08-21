@@ -18,7 +18,7 @@ export type AtletaRow = {
   emails_preferenciais: string | null;
   created_at: string | null;
 
-  // extras que podes ter na tabela (sem quebrar se não existirem)
+  // extras (não obrigatórios)
   nacionalidade?: string | null;
   nacionalidade_outra?: string | null;
   tipo_doc?: string | null;
@@ -43,6 +43,8 @@ export type TitularMinimal = {
   telefone: string | null;
   tipo_socio: string | null;
   codigo_postal: string | null;
+  /** <- NOVO: vem de dados_pessoais.situacao_tesouraria */
+  situacao_tesouraria?: string | null;
 };
 
 export type DocumentoRow = {
@@ -74,7 +76,7 @@ export const DOCS_ATLETA = [
   "Ficha de jogador FPB",
   "Ficha inscrição AAC",
   "Exame médico",
-] as const; // <— sem “Comprovativo de pagamento de inscrição”
+] as const; // <- retirado “Comprovativo de pagamento de inscrição”
 
 /** ------- Helpers ------- */
 
@@ -154,7 +156,7 @@ export async function listAtletasAdmin(opts?: {
   if (userIds.length) {
     const { data: tdata, error: terr } = await supabase
       .from("dados_pessoais")
-      .select("user_id,nome_completo,email,telefone,tipo_socio,codigo_postal")
+      .select("user_id,nome_completo,email,telefone,tipo_socio,codigo_postal,situacao_tesouraria")
       .in("user_id", userIds);
     if (terr) throw terr;
     titulares = asType<TitularMinimal[]>(tdata ?? []);

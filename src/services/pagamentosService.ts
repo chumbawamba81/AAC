@@ -1,60 +1,77 @@
 // src/services/pagamentosService.ts
 import { supabase } from "../supabaseClient";
+import type { Atleta } from "../types/Atleta";
 
+/** ----------------------- Tipos ----------------------- */
 export type PagamentoRow = {
   id: string;
   user_id: string;
   atleta_id: string | null;
   descricao: string;
-  devido_em: string | null;
-  created_at: string | null;
-  validado: boolean | null;
+  tipo: string | null;         // "mensal", "trimestre", "anual", "inscricao_atleta", "inscricao_socio", etc.
+  devido_em: string | null;    // date (YYYY-MM-DD)
   comprovativo_url: string | null;
+  validado: boolean | null;
+  created_at: string | null;
 };
 
 export type PagamentoRowWithUrl = PagamentoRow & { signedUrl?: string | null };
 
-function ymd(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/** ----------------------- Helpers ----------------------- */
+
+const BUCKET = "pagamentos";
+
+function sanitizeFileName(name: string) {
+  return (name || "ficheiro")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w.\-]+/g, "_")
+    .slice(0, 120);
 }
 
-/** 8 de Setembro da época fiscal (usada como due date “base”). */
-export function seasonStartDueDate(): string {
-  const now = new Date();
-  // se já passou Setembro deste ano, mantém o ano atual; senão, usa o atual na mesma
-  const year = now.getFullYear();
-  return `${year}-09-08`;
+function getSeasonStartYear(today = new Date()) {
+  const y = today.getFullYear();
+  const m = today.getMonth(); // 0=Jan ... 11=Dec
+  // Época começa em Setembro; se estamos até Agosto (<=7), a época começou em Setembro do ano anterior
+  return m <= 7 ? y - 1 : y;
 }
 
-/* ------------------------ LISTAGENS ------------------------ */
+export function isAnuidadeObrigatoria(escalao?: string | null) {
+  if (!escalao) return false;
+  const s = escalao.toLowerCase();
+  return (
+    s.includes("masters") ||
+    s.includes("sub23") ||
+    s.includes("sub 23") ||
+    s.includes("sub-23") ||
+    s.includes("seniores")
+  );
+}
+
+export function getSlotsForPlano(plano: Atleta["planoPagamento"] | "Anual") {
+  if (plano === "Mensal") return 10;
+  if (plano === "Trimestral") return 3;
+  return 1; // Anual
+}
+
+export function getPagamentoLabel(plano: Atleta["planoPagamento"] | "Anual", idx: number) {
+  if (plano === "Anual") return "Pagamento da anuidade";
+  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
+  return `Pagamento - ${idx + 1}º Mês`;
+}
+
+/** ----------------------- Listagens ----------------------- */
 
 export async function listByAtleta(atletaId: string): Promise<PagamentoRow[]> {
   const { data, error } = await supabase
     .from("pagamentos")
-    .select("*")
+    .select("id,user_id,atleta_id,descricao,tipo,devido_em,comprovativo_url,validado,created_at")
     .eq("atleta_id", atletaId)
-    .order("devido_em", { ascending: true })
-    .order("created_at", { ascending: true });
+    .order("devido_em", { ascending: true, nullsFirst: true })
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data || []) as PagamentoRow[];
-}
-
-/** Linhas do Sócio (atleta_id NULL) – normalmente só “Inscrição de Sócio”. */
-export async function listBySocio(userId: string): Promise<PagamentoRow[]> {
-  const { data, error } = await supabase
-    .from("pagamentos")
-    .select("*")
-    .eq("user_id", userId)
-    .is("atleta_id", null)
-    .order("devido_em", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-  return (data || []) as PagamentoRow[];
+  return (data ?? []) as PagamentoRow[];
 }
 
 export async function withSignedUrls(rows: PagamentoRow[]): Promise<PagamentoRowWithUrl[]> {
@@ -64,16 +81,13 @@ export async function withSignedUrls(rows: PagamentoRow[]): Promise<PagamentoRow
       out.push({ ...r, signedUrl: null });
       continue;
     }
-    const { data, error } = await supabase
-      .storage
-      .from("pagamentos")
-      .createSignedUrl(r.comprovativo_url, 3600);
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(r.comprovativo_url, 3600);
     out.push({ ...r, signedUrl: error ? null : data?.signedUrl ?? null });
   }
   return out;
 }
 
-/* ------------------------ UPLOAD / DELETE ------------------------ */
+/** ----------------------- CRUD do comprovativo ----------------------- */
 
 export async function saveComprovativo(opts: {
   userId: string;
@@ -81,152 +95,145 @@ export async function saveComprovativo(opts: {
   descricao: string;
   file: File;
 }) {
-  // caminho no bucket
-  const fileName = `${Date.now()}_${opts.file.name.replace(/\s+/g, "_")}`;
-  const path = `${opts.userId}/atleta/${opts.atletaId}/${fileName}`;
+  const { userId, atletaId, descricao, file } = opts;
 
-  const up = await supabase.storage.from("pagamentos").upload(path, opts.file, { upsert: false });
+  // 1) gerar path e fazer upload
+  const fileName = `${Date.now()}_${sanitizeFileName(file.name)}`;
+  const path = `${userId}/atletas/${atletaId}/${fileName}`;
+  const up = await supabase.storage.from(BUCKET).upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
   if (up.error) throw up.error;
 
-  // insere nova linha (ou atualiza if-needed). Mantemos histórico por simplicidade, mas a UI usa o mais recente.
-  const { error } = await supabase.from("pagamentos").insert({
-    user_id: opts.userId,
-    atleta_id: opts.atletaId,
-    descricao: opts.descricao,
-    devido_em: seasonStartDueDate(), // pode ser ajustado por slot, se quiseres granular
+  // 2) tentar obter linha existente para a mesma descrição
+  const { data: existing, error: selErr } = await supabase
+    .from("pagamentos")
+    .select("id,comprovativo_url")
+    .eq("atleta_id", atletaId)
+    .eq("descricao", descricao)
+    .maybeSingle();
+
+  if (selErr) throw selErr;
+
+  // 3) se havia comprovativo anterior, remove-o do storage
+  if (existing?.comprovativo_url) {
+    // melhor-effort; se falhar, não bloqueia
+    await supabase.storage.from(BUCKET).remove([existing.comprovativo_url]);
+  }
+
+  // 4) upsert
+  if (existing?.id) {
+    const { error: updErr } = await supabase
+      .from("pagamentos")
+      .update({
+        comprovativo_url: path,
+        // quando o utilizador substitui, volta a estado “pendente de validação”
+        validado: false,
+      })
+      .eq("id", existing.id);
+    if (updErr) throw updErr;
+    return;
+  }
+
+  const { error: insErr } = await supabase.from("pagamentos").insert({
+    user_id: userId,
+    atleta_id: atletaId,
+    descricao,
+    tipo: "mensalidade",
     comprovativo_url: path,
     validado: false,
   });
-  if (error) throw error;
+  if (insErr) throw insErr;
 }
 
 export async function deletePagamento(row: PagamentoRow) {
-  // apaga storage (best effort)
+  // remover do storage primeiro (best-effort)
   if (row.comprovativo_url) {
-    await supabase.storage.from("pagamentos").remove([row.comprovativo_url]).catch(() => {});
+    await supabase.storage.from(BUCKET).remove([row.comprovativo_url]);
   }
   const { error } = await supabase.from("pagamentos").delete().eq("id", row.id);
   if (error) throw error;
 }
 
-/* ------------------------ SÓCIO ------------------------ */
+/** ----------------------- Geração de calendário (época) ----------------------- */
 
-/** Garante que existe a linha de “Inscrição de Sócio” (atleta_id NULL). */
-export async function ensureSocioInscricao(userId: string) {
-  const { data, error } = await supabase
-    .from("pagamentos")
-    .select("id")
-    .eq("user_id", userId)
-    .is("atleta_id", null)
-    .ilike("descricao", "%inscri%")
-    .limit(1);
-  if (error) throw error;
-
-  if (!data || data.length === 0) {
-    const { error: insErr } = await supabase.from("pagamentos").insert({
-      user_id: userId,
-      atleta_id: null,
-      descricao: "Inscrição de Sócio",
-      devido_em: seasonStartDueDate(),
-      validado: false,
-      comprovativo_url: null,
-    });
-    if (insErr) throw insErr;
-  }
-}
-
-/** Upload/substituição do comprovativo da Inscrição de Sócio. */
-export async function saveComprovativoSocio(opts: {
-  userId: string;
-  file: File;
-}) {
-  const fileName = `${Date.now()}_${opts.file.name.replace(/\s+/g, "_")}`;
-  const path = `${opts.userId}/socio/${fileName}`;
-
-  const up = await supabase.storage.from("pagamentos").upload(path, opts.file, { upsert: false });
-  if (up.error) throw up.error;
-
-  // Insert de uma nova linha (histórico). A UI assume a mais recente como “ativa”.
-  const { error } = await supabase.from("pagamentos").insert({
-    user_id: opts.userId,
-    atleta_id: null,
-    descricao: "Inscrição de Sócio",
-    devido_em: seasonStartDueDate(),
-    comprovativo_url: path,
-    validado: false,
-  });
-  if (error) throw error;
-}
-
-/* ------------------------ AGENDA ATLETA ------------------------ */
-
-export type EnsureOpts = { forceRebuild?: boolean };
-
-/** Cria/garante as linhas base do atleta para a época conforme plano. */
 export async function ensureScheduleForAtleta(
-  atleta: { id: string; escalao?: string | null; planoPagamento: "Mensal" | "Trimestral" | "Anual" },
-  opts?: EnsureOpts
+  atleta: Pick<Atleta, "id" | "escalao" | "planoPagamento">,
+  opts?: { forceRebuild?: boolean }
 ) {
-  // Politica simples: se forceRebuild, removemos todas as linhas (não validadas) e recriamos.
+  const atletaId = atleta.id;
+  const anualObrig = isAnuidadeObrigatoria(atleta.escalao);
+  const planoEfetivo: Atleta["planoPagamento"] | "Anual" = anualObrig ? "Anual" : atleta.planoPagamento;
+  const slots = getSlotsForPlano(planoEfetivo);
+
+  // reconstruir se pedido
   if (opts?.forceRebuild) {
-    await supabase
+    const { error: delErr } = await supabase
       .from("pagamentos")
       .delete()
-      .eq("atleta_id", atleta.id)
-      .eq("validado", false)
-      .catch(() => {});
+      .eq("atleta_id", atletaId)
+      .in("tipo", ["mensal", "trimestre", "anual"])
+      .is("comprovativo_url", null); // só remove esqueletos não carregados
+    if (delErr) throw delErr;
   }
 
-  const { data, error } = await supabase
-    .from("pagamentos")
-    .select("id,descricao,atleta_id,comprovativo_url,validado")
-    .eq("atleta_id", atleta.id);
+  // Gerar descrições e datas limite (dia 8)
+  const startYear = getSeasonStartYear();
+  const items: Array<{ descricao: string; tipo: string; devido_em: string }> = [];
 
-  if (error) throw error;
-
-  const have = new Set((data || []).map((r) => (r.descricao || "").toLowerCase()));
-
-  const dueBase = seasonStartDueDate();
-  const inserts: Partial<PagamentoRow>[] = [];
-
-  // 1) Inscrição do atleta
-  if (![...have].some((d) => d.includes("inscri"))) {
-    inserts.push({
-      user_id: (await supabase.auth.getUser()).data.user?.id!,
-      atleta_id: atleta.id,
-      descricao: "Inscrição do atleta",
-      devido_em: dueBase,
-      validado: false,
-      comprovativo_url: null,
+  if (planoEfetivo === "Anual") {
+    items.push({
+      descricao: getPagamentoLabel("Anual", 0),
+      tipo: "anual",
+      devido_em: `${startYear}-09-08`,
     });
-  }
-
-  // 2) Slots conforme plano
-  const mkDesc = (idx: number) =>
-    atleta.planoPagamento === "Anual"
-      ? "Pagamento da anuidade"
-      : atleta.planoPagamento === "Trimestral"
-      ? `Pagamento - ${idx + 1}º Trimestre`
-      : `Pagamento - ${idx + 1}º Mês`;
-
-  const slots = atleta.planoPagamento === "Mensal" ? 10 : atleta.planoPagamento === "Trimestral" ? 3 : 1;
-
-  for (let i = 0; i < slots; i++) {
-    const desc = mkDesc(i).toLowerCase();
-    if (!have.has(desc)) {
-      inserts.push({
-        user_id: (await supabase.auth.getUser()).data.user?.id!,
-        atleta_id: atleta.id,
-        descricao: mkDesc(i),
-        devido_em: dueBase,
-        validado: false,
-        comprovativo_url: null,
+  } else if (planoEfetivo === "Trimestral") {
+    const trimes = [9, 12, 3]; // set/dez/mar
+    for (let i = 0; i < slots; i++) {
+      const m = trimes[i];
+      const y = m >= 9 ? startYear : startYear + 1;
+      items.push({
+        descricao: getPagamentoLabel("Trimestral", i),
+        tipo: "trimestre",
+        devido_em: `${y}-${String(m).padStart(2, "0")}-08`,
+      });
+    }
+  } else {
+    // Mensal: Setembro..Junho
+    const months = [9,10,11,12,1,2,3,4,5,6];
+    for (let i = 0; i < slots; i++) {
+      const m = months[i];
+      const y = m >= 9 ? startYear : startYear + 1;
+      items.push({
+        descricao: getPagamentoLabel("Mensal", i),
+        tipo: "mensal",
+        devido_em: `${y}-${String(m).padStart(2, "0")}-08`,
       });
     }
   }
 
-  if (inserts.length) {
-    const { error: insErr } = await supabase.from("pagamentos").insert(inserts);
-    if (insErr) throw insErr;
+  // Inserir esqueletos que ainda não existam (sem comprovativo)
+  for (const it of items) {
+    const { data: exist, error: selErr } = await supabase
+      .from("pagamentos")
+      .select("id")
+      .eq("atleta_id", atletaId)
+      .eq("descricao", it.descricao)
+      .maybeSingle();
+    if (selErr) throw selErr;
+
+    if (!exist) {
+      const { error: insErr } = await supabase.from("pagamentos").insert({
+        user_id: (await supabase.auth.getUser()).data.user?.id ?? null,
+        atleta_id: atletaId,
+        descricao: it.descricao,
+        tipo: it.tipo,
+        devido_em: it.devido_em,
+        validado: false,
+        comprovativo_url: null,
+      });
+      if (insErr) throw insErr;
+    }
   }
 }
