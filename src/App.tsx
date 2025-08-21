@@ -757,6 +757,7 @@ function DadosPessoaisSection({
               <div className="font-semibold">{basePerfil.nomeCompleto}</div>
               <div className="text-xs text-gray-500">
                 {basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}
+				{isTipoSocio(basePerfil.tipoSocio) && <> · {basePerfil.tipoSocio}</>}
               </div>
             </div>
             <div className="text-right">
