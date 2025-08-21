@@ -1518,7 +1518,7 @@ export default function App() {
         ) : (
           <>
             {/* Tabs controladas para permitir navegação programática */}
-/* ===== TABS (BLOCO CORRIGIDO) ===== */
+
 <Tabs key={activeTab} defaultValue={activeTab}>
   <TabsList>
     <TabsTrigger value="home">
