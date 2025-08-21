@@ -18,7 +18,7 @@ export type AtletaRow = {
   emails_preferenciais: string | null;
   created_at: string | null;
 
-  // extras que possas ter na tabela (não quebra)
+  // extras que podes ter na tabela (sem quebrar se não existirem)
   nacionalidade?: string | null;
   nacionalidade_outra?: string | null;
   tipo_doc?: string | null;
@@ -43,7 +43,6 @@ export type TitularMinimal = {
   telefone: string | null;
   tipo_socio: string | null;
   codigo_postal: string | null;
-  situacao_tesouraria?: string | null; // <--- novo
 };
 
 export type DocumentoRow = {
@@ -70,13 +69,12 @@ export type PagamentoRow = {
   signedUrl?: string;
 };
 
-// RETIRADO o comprovativo de inscrição (passou para Pagamentos)
 export const DOCS_ATLETA = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
   "Ficha inscrição AAC",
   "Exame médico",
-] as const;
+] as const; // <— sem “Comprovativo de pagamento de inscrição”
 
 /** ------- Helpers ------- */
 
@@ -86,6 +84,7 @@ export function displayFileName(r: Pick<DocumentoRow, "nome" | "file_path">): st
   return last || "ficheiro";
 }
 
+/** batelada de URLs assinadas no bucket indicado */
 async function attachSignedUrls<T extends { signedUrl?: string }>(
   bucket: "documentos" | "pagamentos",
   rows: (T & { [k: string]: any })[],
@@ -102,6 +101,7 @@ async function attachSignedUrls<T extends { signedUrl?: string }>(
   return out as T[];
 }
 
+/** Cast seguro via unknown (evita TS2352 por GenericStringError) */
 function asType<T>(v: any): T {
   return v as unknown as T;
 }
@@ -112,7 +112,7 @@ export async function listAtletasAdmin(opts?: {
   search?: string;
   genero?: "Feminino" | "Masculino" | "";
   escalao?: string | "";
-  tipoSocio?: string | ""; // filtro por tipo de sócio
+  tipoSocio?: string | ""; // filtro por tipo de sócio (via dados_pessoais)
   sort?: "nome_asc" | "nome_desc" | "created_desc" | "created_asc";
 }): Promise<
   Array<{
@@ -148,12 +148,13 @@ export async function listAtletasAdmin(opts?: {
 
   const atletas = asType<AtletaRow[]>(data ?? []);
 
+  // Buscar titulares (dados_pessoais) para os user_id encontrados
   const userIds = Array.from(new Set(atletas.map(a => a.user_id).filter(Boolean))) as string[];
   let titulares: TitularMinimal[] = [];
   if (userIds.length) {
     const { data: tdata, error: terr } = await supabase
       .from("dados_pessoais")
-      .select("user_id,nome_completo,email,telefone,tipo_socio,codigo_postal,situacao_tesouraria")
+      .select("user_id,nome_completo,email,telefone,tipo_socio,codigo_postal")
       .in("user_id", userIds);
     if (terr) throw terr;
     titulares = asType<TitularMinimal[]>(tdata ?? []);
@@ -162,6 +163,7 @@ export async function listAtletasAdmin(opts?: {
   const byUser = new Map<string, TitularMinimal>();
   for (const t of titulares) if (t.user_id) byUser.set(t.user_id, t);
 
+  // filtro por tipo de sócio (se pedido)
   const filtered = (opts?.tipoSocio && opts.tipoSocio !== "")
     ? atletas.filter(a => (a.user_id && (byUser.get(a.user_id)?.tipo_socio || "") === opts.tipoSocio))
     : atletas;

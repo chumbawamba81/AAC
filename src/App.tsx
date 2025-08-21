@@ -19,7 +19,6 @@ import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
-import { ensureScheduleForAtleta } from "./services/pagamentosService";
 
 // Ícones
 import {
@@ -64,6 +63,8 @@ import {
   saveComprovativo as saveComprovativoPagamento,
   deletePagamento,
   withSignedUrls as withSignedUrlsPagamentos,
+  ensureScheduleForAtleta,
+  // Tipos do service podem não expor todos os campos; vamos aceder a alguns via `any`
   type PagamentoRowWithUrl,
 } from "./services/pagamentosService";
 
@@ -73,10 +74,10 @@ const DOCS_ATLETA = [
   "Ficha de jogador FPB",
   "Ficha inscrição AAC",
   "Exame médico",
-  // comprovativo de inscrição de atleta agora é tratado em pagamentos
+  // O comprovativo de inscrição de atleta agora é tratado na Tesouraria, não aqui
 ] as const;
 
-const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
+const DOCS_SOCIO = ["Ficha de Sócio"] as const; // O comprovativo de inscrição de sócio passa para Tesouraria
 
 type Conta = { email: string };
 type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
@@ -148,8 +149,14 @@ function isFutureISODate(s: string): boolean {
   return d.getTime() > today.getTime();
 }
 
-function isSocio(tipo?: string | null): boolean {
+function isSocio(tipo?: string | null) {
   return !!tipo && !/não\s*pretendo/i.test(tipo);
+}
+
+function todayISO() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
 }
 
 /* -------------------- Persistência local -------------------- */
@@ -429,56 +436,16 @@ function ContaSection({
 // Extensão local para incluir validade do documento (mantendo o tipo original)
 type PessoaDadosWithVal = PessoaDados & { dataValidadeDocumento?: string };
 
-type SocioInscricao = {
-  id: string;
-  descricao: string;
-  devido_em: string | null;
-  validado: boolean | null;
-  comprovativo_url: string | null;
-  signedUrl?: string | null;
-};
-
-type AthResumo = {
-  atletaId: string;
-  nome: string;
-  status: "Regularizado" | "Pendente de validação" | "A pagamento" | "Em atraso";
-};
-
-function badge(cls: string, text: React.ReactNode) {
-  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${cls}`}>{text}</span>;
-}
-
-function statusBadge(status: AthResumo["status"]) {
-  switch (status) {
-    case "Regularizado":
-      return badge("bg-green-100 text-green-700", <><CheckCircle2 className="h-3 w-3" /> Regularizado</>);
-    case "Pendente de validação":
-      return badge("bg-amber-100 text-amber-700", <><AlertCircle className="h-3 w-3" /> Pendente de validação</>);
-    case "Em atraso":
-      return badge("bg-red-100 text-red-700", <><AlertCircle className="h-3 w-3" /> Em atraso</>);
-    default:
-      return badge("bg-gray-100 text-gray-700", "A pagamento");
-  }
-}
-
-function isPast(dateIso?: string | null) {
-  if (!dateIso) return false;
-  const d = new Date(dateIso + "T23:59:59");
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  return d.getTime() < today.getTime();
-}
-
 function DadosPessoaisSection({
   state,
   setState,
   onAfterSave,
-  onGoToPayments,
+  onGoTesouraria,
 }: {
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
   onAfterSave: () => void;
-  onGoToPayments: () => void;
+  onGoTesouraria: () => void;
 }) {
   function formatPostal(v: string) {
     const d = v.replace(/\D/g, "").slice(0, 7);
@@ -515,10 +482,21 @@ function DadosPessoaisSection({
     }
   }, [state.perfil]); // eslint-disable-line
 
-  // ===== Contadores (documentos) =====
+  // ===== Contadores reais do Supabase (documentos) =====
   const [userId, setUserId] = useState<string | null>(null);
   const [socioMissingCount, setSocioMissingCount] = useState<number>(DOCS_SOCIO.length);
   const [athMissingCount, setAthMissingCount] = useState<number>(state.atletas.length * DOCS_ATLETA.length);
+
+  // ===== Socio: pagamento inscrição (linha de 'pagamentos' com atleta_id NULL) =====
+  const [socioPay, setSocioPay] = useState<{
+    id: string;
+    descricao: string;
+    comprovativo_url: string | null;
+    validado: boolean | null;
+    devido_em: string | null;
+    created_at: string | null;
+    signedUrl?: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -536,14 +514,41 @@ function DadosPessoaisSection({
     };
   }, []);
 
+  async function refreshSocioPay(currentUserId: string) {
+    // tenta primeiro por tipo='socio' (se existir), senão usa atleta_id IS NULL
+    let q = supabase
+      .from("pagamentos")
+      .select("id,descricao,comprovativo_url,validado,devido_em,created_at")
+      .eq("user_id", currentUserId)
+      .is("atleta_id", null)
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(1);
+
+    const { data, error } = await q;
+    if (error) {
+      console.error("[SocioPay] SELECT:", error.message);
+      setSocioPay(null);
+      return;
+    }
+    const row = (data && data[0]) || null;
+
+    if (row?.comprovativo_url) {
+      const sig = await supabase.storage.from("pagamentos").createSignedUrl(row.comprovativo_url, 60 * 60);
+      setSocioPay({ ...row, signedUrl: sig.error ? null : sig.data?.signedUrl });
+    } else {
+      setSocioPay(row);
+    }
+  }
+
   useEffect(() => {
     async function fetchDocCounters() {
       if (!userId) {
         setSocioMissingCount(DOCS_SOCIO.length);
         setAthMissingCount(state.atletas.length * DOCS_ATLETA.length);
+        setSocioPay(null);
         return;
       }
-      // Sócio
+      // -- Sócio (documentos)
       const socioSel = await supabase
         .from("documentos")
         .select("doc_tipo")
@@ -555,7 +560,7 @@ function DadosPessoaisSection({
       const socioMiss = DOCS_SOCIO.filter((t) => !socioSet.has(t)).length;
       setSocioMissingCount(socioMiss);
 
-      // Atletas
+      // -- Atletas (documentos)
       const athSel = await supabase
         .from("documentos")
         .select("atleta_id, doc_tipo")
@@ -575,74 +580,13 @@ function DadosPessoaisSection({
         for (const t of DOCS_ATLETA) if (!have.has(t)) totalMissing++;
       }
       setAthMissingCount(totalMissing);
+
+      // -- Sócio (pagamento inscrição na tesouraria)
+      await refreshSocioPay(userId);
     }
 
     fetchDocCounters().catch((e) => console.error("[fetchDocCounters]", e));
   }, [userId, state.atletas.map((a) => a.id).join(",")]);
-
-  // ===== Tesouraria (pagamentos) =====
-  const [socioInscricao, setSocioInscricao] = useState<SocioInscricao | null>(null);
-  const [athResumo, setAthResumo] = useState<AthResumo[]>([]);
-
-  useEffect(() => {
-    if (!userId) return;
-
-    // Sócio — inscrição (atleta_id NULL)
-    (async () => {
-      if (!isSocio(basePerfil?.tipoSocio)) { setSocioInscricao(null); return; }
-      const { data, error } = await supabase
-        .from("pagamentos")
-        .select("id, descricao, devido_em, validado, comprovativo_url")
-        .eq("user_id", userId)
-        .is("atleta_id", null)
-        .order("devido_em", { ascending: false })
-        .limit(1);
-      if (error) { setSocioInscricao(null); return; }
-      const row = data?.[0] || null;
-      setSocioInscricao(row ? { ...row } as SocioInscricao : null);
-    })();
-
-    // Atletas — resumo por atleta
-    (async () => {
-      const ids = state.atletas.map(a => a.id);
-      if (!ids.length) { setAthResumo([]); return; }
-      const { data, error } = await supabase
-        .from("pagamentos")
-        .select("id, atleta_id, devido_em, validado, comprovativo_url, descricao")
-        .in("atleta_id", ids);
-      if (error) { setAthResumo([]); return; }
-
-      const byAth: Record<string, { worst: AthResumo["status"] }> = {};
-      for (const a of state.atletas) byAth[a.id] = { worst: "Regularizado" };
-
-      for (const r of (data || [])) {
-        const id = r.atleta_id as string;
-        if (!byAth[id]) continue;
-
-        let next: AthResumo["status"] = "Regularizado";
-        if (r.validado) next = "Regularizado";
-        else if (r.comprovativo_url) next = "Pendente de validação";
-        else if (isPast(r.devido_em)) next = "Em atraso";
-        else next = "A pagamento";
-
-        const order: Record<AthResumo["status"], number> = {
-          "Regularizado": 0,
-          "A pagamento": 1,
-          "Pendente de validação": 2,
-          "Em atraso": 3,
-        };
-
-        if (order[next] > order[byAth[id].worst]) byAth[id].worst = next;
-      }
-
-      const out: AthResumo[] = state.atletas.map(a => ({
-        atletaId: a.id,
-        nome: a.nomeCompleto,
-        status: byAth[a.id]?.worst || "A pagamento",
-      }));
-      setAthResumo(out);
-    })();
-  }, [userId, state.atletas.map(a => a.id).join(","), basePerfil?.tipoSocio]);
 
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
@@ -680,58 +624,34 @@ function DadosPessoaisSection({
     }
   }
 
+  // Helpers de estado (tesouraria)
+  function badge(label: string, tone: "green" | "amber" | "red" | "gray" = "gray") {
+    const cls =
+      tone === "green"
+        ? "bg-green-100 text-green-700"
+        : tone === "amber"
+        ? "bg-amber-100 text-amber-700"
+        : tone === "red"
+        ? "bg-red-100 text-red-700"
+        : "bg-gray-100 text-gray-700";
+    return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${cls}`}>{label}</span>;
+  }
+
+  function socioBadge() {
+    if (!socioPay) return badge("Sem lançamento", "gray");
+    const hasFile = !!socioPay.comprovativo_url;
+    const valid = !!socioPay.validado;
+    const due = socioPay.devido_em;
+    const today = todayISO();
+    if (valid) return badge("Regularizado", "green");
+    if (hasFile && !valid) return badge("Pendente de validação", "amber");
+    if (!hasFile && due && due < today) return badge("Em atraso", "red");
+    return badge("Por regularizar (no prazo)", "gray");
+  }
+
   if (!editMode && basePerfil) {
     const socioMissing = socioMissingCount;
     const missingAthDocs = athMissingCount;
-
-    const renderSocioTesouraria = () => {
-      if (!isSocio(basePerfil.tipoSocio)) return null;
-      let status: AthResumo["status"] = "A pagamento";
-      if (socioInscricao?.validado) status = "Regularizado";
-      else if (socioInscricao?.comprovativo_url) status = "Pendente de validação";
-      else if (isPast(socioInscricao?.devido_em)) status = "Em atraso";
-
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Situação de Tesouraria — Sócio</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div className="text-sm">
-              <div>{statusBadge(status)}</div>
-              <div className="text-xs text-gray-500 mt-1">
-                {socioInscricao?.devido_em ? `Data limite: ${socioInscricao.devido_em}` : "Sem data limite definida."}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onGoToPayments}>Ir para pagamentos</Button>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    };
-
-    const renderAtletasTesouraria = () => {
-      if (!state.atletas.length) return null;
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Situação de Tesouraria — Atletas</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {athResumo.map(r => (
-              <div key={r.atletaId} className="flex items-center justify-between border rounded-lg p-2">
-                <div className="text-sm font-medium">{r.nome}</div>
-                <div>{statusBadge(r.status)}</div>
-              </div>
-            ))}
-            <div className="pt-2">
-              <Button variant="outline" onClick={onGoToPayments}>Ir para pagamentos</Button>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    };
 
     return (
       <div className="space-y-4">
@@ -743,31 +663,41 @@ function DadosPessoaisSection({
                 {basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}
               </div>
             </div>
-            <div>
+            <div className="text-right">
               <Button variant="outline" onClick={() => setEditMode(true)}>
                 <PencilLine className="h-4 w-4 mr-1" /> Editar dados
               </Button>
             </div>
           </div>
 
-          {/* Indicadores de documentação (mantidos) */}
-          <div className="mt-3 flex flex-wrap gap-3 text-sm">
+          {/* Resumo de Situação de Tesouraria */}
+          <div className="mt-3 space-y-2">
+            <div className="font-medium">Resumo de Situação de Tesouraria</div>
+
+            {/* Sócio — apenas se for sócio */}
             {isSocio(basePerfil.tipoSocio) && (
-              <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-                <FileUp className="h-3 w-3" /> Sócio: {socioMissing} documento(s) em falta
+              <div className="text-sm flex items-center justify-between border rounded-lg p-2">
+                <div> Sócio — Inscrição </div>
+                <div className="flex items-center gap-3">
+                  {socioBadge()}
+                  <Button variant="outline" onClick={onGoTesouraria}>
+                    Ir para Situação de Tesouraria
+                  </Button>
+                </div>
               </div>
             )}
-            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3" /> Atletas: {missingAthDocs} documento(s) em falta
+
+            {/* Atletas */}
+            <div className="text-sm flex items-center gap-2">
+              <FileUp className="h-4 w-4" />
+              <span>Sócio (docs): {socioMissing} documento(s) em falta</span>
+            </div>
+            <div className="text-sm flex items-center gap-2">
+              <FileUp className="h-4 w-4" />
+              <span>Atletas (docs): {missingAthDocs} documento(s) em falta</span>
             </div>
           </div>
         </div>
-
-        {/* Tesouraria — Sócio (apenas se for sócio) */}
-        {renderSocioTesouraria()}
-
-        {/* Tesouraria — Atletas */}
-        {renderAtletasTesouraria()}
 
         <Card>
           <CardHeader>
@@ -900,7 +830,7 @@ function DadosPessoaisSection({
   );
 }
 
-/* ---------------------------- PagamentosSection --------------------------- */
+/* ---------------------------- SituaçãoTesourariaSection --------------------------- */
 
 function getSlotsForPlano(p: PlanoPagamento) {
   if (p === "Mensal") return 10;
@@ -918,18 +848,21 @@ function isAnuidadeObrigatoria(escalao: string | undefined) {
   return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
 }
 
-type AthPaymentsVM = {
-  inscricao: PagamentoRowWithUrl | null;
-  slots: Array<PagamentoRowWithUrl | null>;
-};
-
-function PagamentosSection({ state }: { state: State }) {
+function SituacaoTesourariaSection({ state }: { state: State }) {
   const [userId, setUserId] = useState<string | null>(null);
-  const [payments, setPayments] = useState<Record<string, AthPaymentsVM>>({});
+  const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
   const [busy, setBusy] = useState(false);
 
-  // nº de atletas elegíveis no agregado (exclui Sub-23 e Masters)
-  const elegiveis = state.atletas.filter(a => !isAnuidadeObrigatoria(a.escalao)).length || 1;
+  // Sócio
+  const [socioPay, setSocioPay] = useState<{
+    id: string;
+    descricao: string;
+    comprovativo_url: string | null;
+    validado: boolean | null;
+    devido_em: string | null;
+    created_at: string | null;
+    signedUrl?: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -947,9 +880,32 @@ function PagamentosSection({ state }: { state: State }) {
     };
   }, []);
 
+  const refreshSocioPay = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from("pagamentos")
+      .select("id,descricao,comprovativo_url,validado,devido_em,created_at")
+      .eq("user_id", userId)
+      .is("atleta_id", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error) {
+      console.error("[SituacaoTesouraria] socio select:", error.message);
+      setSocioPay(null);
+      return;
+    }
+    const row = (data && data[0]) || null;
+    if (row?.comprovativo_url) {
+      const sig = await supabase.storage.from("pagamentos").createSignedUrl(row.comprovativo_url, 60 * 60);
+      setSocioPay({ ...row, signedUrl: sig.error ? null : sig.data?.signedUrl });
+    } else {
+      setSocioPay(row);
+    }
+  }, [userId]);
+
   const refreshPayments = useCallback(async () => {
     if (!userId) return;
-    const next: Record<string, AthPaymentsVM> = {};
+    const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
     for (const a of state.atletas) {
       const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
       const slots = getSlotsForPlano(planoEfetivo);
@@ -964,27 +920,20 @@ function PagamentosSection({ state }: { state: State }) {
         byDesc.set(r.descricao, arr);
       }
 
-      // último por descrição
-      const slotArr = labels.map((lab) => {
+      next[a.id] = labels.map((lab) => {
         const arr = byDesc.get(lab) || [];
         if (arr.length === 0) return null;
-        arr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
+        arr.sort((x, y) => new Date((y as any).created_at || 0).getTime() - new Date((x as any).created_at || 0).getTime());
         return arr[0];
       });
-
-      // inscrição do atleta
-      const insc = rowsWithUrl
-        .filter(r => /inscri/i.test(r.descricao || ""))
-        .sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime())[0] || null;
-
-      next[a.id] = { inscricao: insc, slots: slotArr };
     }
     setPayments(next);
   }, [userId, state.atletas]);
 
   useEffect(() => {
     refreshPayments();
-  }, [refreshPayments]);
+    refreshSocioPay();
+  }, [refreshPayments, refreshSocioPay]);
 
   useEffect(() => {
     const channel = supabase
@@ -996,14 +945,17 @@ function PagamentosSection({ state }: { state: State }) {
           const newAth = (payload as any)?.new?.atleta_id;
           const oldAth = (payload as any)?.old?.atleta_id;
           const ids = new Set(state.atletas.map((a) => a.id));
-          if (ids.has(newAth) || ids.has(oldAth)) refreshPayments();
+          if (ids.has(newAth) || ids.has(oldAth) || (!newAth && !oldAth)) {
+            refreshPayments();
+            refreshSocioPay();
+          }
         }
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [state.atletas, refreshPayments]);
+  }, [state.atletas, refreshPayments, refreshSocioPay]);
 
   async function handleUpload(athlete: Atleta, idx: number, file: File) {
     if (!userId || !file) {
@@ -1017,7 +969,7 @@ function PagamentosSection({ state }: { state: State }) {
       await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file });
       await refreshPayments();
     } catch (e: any) {
-      console.error("[Pagamentos] upload/replace", e);
+      console.error("[Tesouraria] upload atleta", e);
       alert(e?.message || "Falha no upload");
     } finally {
       setBusy(false);
@@ -1025,202 +977,199 @@ function PagamentosSection({ state }: { state: State }) {
   }
 
   async function handleDelete(athlete: Atleta, idx: number) {
-    const row = payments[athlete.id]?.slots[idx];
+    const row = payments[athlete.id]?.[idx];
     if (!row) return;
     if (!confirm("Remover este comprovativo?")) return;
     setBusy(true);
     try {
-      await deletePagamento(row);
+      await deletePagamento(row as any);
       await refreshPayments();
     } catch (e: any) {
-      console.error("[Pagamentos] delete", e);
+      console.error("[Tesouraria] delete atleta", e);
       alert(e?.message || "Falha a remover");
     } finally {
       setBusy(false);
     }
   }
 
-  async function handleUploadInscricao(athlete: Atleta, file: File) {
-    if (!userId || !file) {
-      alert("Sessão ou ficheiro em falta");
+  async function handleUploadSocio(file: File) {
+    if (!userId || !socioPay) {
+      alert("Registo de inscrição de sócio não encontrado.");
       return;
     }
     setBusy(true);
     try {
-      const current = payments[athlete.id]?.inscricao;
-      const desc = current?.descricao || "Inscrição do atleta";
-      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: desc, file });
-      await refreshPayments();
+      const folder = `${userId}/socio/inscricao`;
+      const ext = file.name.split(".").pop() || "pdf";
+      const path = `${folder}/${Date.now()}_inscricao_socio.${ext}`;
+      const up = await supabase.storage.from("pagamentos").upload(path, file, { upsert: false });
+      if (up.error) throw up.error;
+      const upd = await supabase
+        .from("pagamentos")
+        .update({ comprovativo_url: path })
+        .eq("id", socioPay.id);
+      if (upd.error) throw upd.error;
+      await refreshSocioPay();
     } catch (e: any) {
-      console.error("[Pagamentos] upload inscrição", e);
-      alert(e?.message || "Falha no upload");
+      console.error("[Tesouraria] upload sócio", e);
+      alert(e?.message || "Falha no upload do comprovativo de sócio");
     } finally {
       setBusy(false);
     }
   }
 
-  async function handleDeleteInscricao(athlete: Atleta) {
-    const row = payments[athlete.id]?.inscricao;
-    if (!row) return;
-    if (!confirm("Remover comprovativo da inscrição?")) return;
-    setBusy(true);
-    try {
-      await deletePagamento(row);
-      await refreshPayments();
-    } catch (e: any) {
-      console.error("[Pagamentos] delete inscrição", e);
-      alert(e?.message || "Falha a remover");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // preço por slot
-  function getSlotAmount(plano: PlanoPagamento, idx: number, athlete: Atleta): number {
-    const est = estimateCosts({
-      escalao: athlete.escalao || "",
-      tipoSocio: (state.perfil?.tipoSocio || null),
-      numAtletasAgregado: elegiveis,
-    });
-    if (plano === "Anual") return est.anual1;
-    if (plano === "Trimestral") return est.trimestre3;
-    return est.mensal10;
-  }
-
-  function getInscricaoAmount(athlete: Atleta): number {
-    const est = estimateCosts({
-      escalao: athlete.escalao || "",
-      tipoSocio: (state.perfil?.tipoSocio || null),
-      numAtletasAgregado: elegiveis,
-    });
-    return est.taxaInscricao;
-  }
-
-  if (state.atletas.length === 0) {
+  if (state.atletas.length === 0 && !isSocio(state.perfil?.tipoSocio)) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Pagamentos</CardTitle>
+          <CardTitle>Situação de Tesouraria</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-500">Crie primeiro um atleta.</p>
+          <p className="text-sm text-gray-500">Crie primeiro um atleta ou configure o tipo de sócio.</p>
         </CardContent>
       </Card>
     );
+  }
+
+  // Nº de atletas no agregado (para Sócio PRO descontos nas mensalidades)
+  const elegiveisPro = state.atletas.filter((a) => !isAnuidadeObrigatoria(a.escalao)).length;
+  const tipoSocio = state.perfil?.tipoSocio;
+
+  function chipEstado(row: any) {
+    const hasFile = !!row?.comprovativo_url || !!row?.signedUrl;
+    const valid = !!row?.validado;
+    const due = row?.devido_em as string | null;
+    const today = todayISO();
+    if (valid) return <span className="text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">Regularizado</span>;
+    if (hasFile && !valid)
+      return <span className="text-xs rounded-full px-2 py-0.5 bg-amber-100 text-amber-700">Pendente de validação</span>;
+    if (!hasFile && due && due < today)
+      return <span className="text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">Em atraso</span>;
+    return <span className="text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-700">Por regularizar (no prazo)</span>;
   }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Pagamentos
+          Situação de Tesouraria
           {busy && <RefreshCw className="h-4 w-4 animate-spin" />}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Sócio (se aplicável) */}
+        {isSocio(tipoSocio) && (
+          <div className="border rounded-xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-medium">Sócio — Inscrição</div>
+              <div className="text-xs text-gray-500 flex items-center gap-2">
+                {chipEstado(socioPay)}
+                {socioPay?.signedUrl && (
+                  <a
+                    className="underline inline-flex items-center gap-1"
+                    href={socioPay.signedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <LinkIcon className="h-3 w-3" />
+                    Abrir
+                  </a>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between border rounded-lg p-3">
+              <div className="text-sm">
+                <div className="font-medium">Comprovativo de inscrição de sócio</div>
+                <div className="text-xs text-gray-500">
+                  {socioPay?.comprovativo_url ? "Comprovativo carregado" : "Comprovativo em falta"}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <FilePickerButton
+                  variant={socioPay?.comprovativo_url ? "secondary" : "outline"}
+                  accept="image/*,application/pdf"
+                  onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
+                >
+                  <Upload className="h-4 w-4 mr-1" />
+                  {socioPay?.comprovativo_url ? "Substituir" : "Carregar"}
+                </FilePickerButton>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Atletas */}
         {state.atletas.map((a) => {
           const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
           const slots = getSlotsForPlano(planoEfetivo);
-          const vm = payments[a.id] || { inscricao: null, slots: Array.from({ length: slots }, () => null) };
+          const rows = payments[a.id] || Array.from({ length: slots }, () => null);
+
+          // Valor esperado por slot (via pricing)
+          const est = estimateCosts({
+            escalao: a.escalao || "",
+            tipoSocio,
+            numAtletasAgregado: Math.max(1, elegiveisPro || 1),
+          });
+
+          const amountByIdx = (idx: number) => {
+            if (planoEfetivo === "Mensal") return est.mensal10 > 0 ? eur(est.mensal10) : undefined;
+            if (planoEfetivo === "Trimestral") return est.trimestre3 > 0 ? eur(est.trimestre3) : undefined;
+            return est.anual1 > 0 ? eur(est.anual1) : undefined;
+          };
 
           return (
-            <div key={a.id} className="border rounded-xl p-3 space-y-3">
-              <div className="flex items-center justify-between">
+            <div key={a.id} className="border rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
                 <div className="font-medium">{a.nomeCompleto}</div>
                 <div className="text-xs text-gray-500">
                   Plano: {planoEfetivo}
                   {isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
                 </div>
               </div>
-
-              {/* Inscrição do atleta */}
-              <div className="border rounded-lg p-3 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">Inscrição do atleta</div>
-                  <div className="text-xs text-gray-500">
-                    Valor: <strong>{eur(getInscricaoAmount(a))}</strong>{" "}
-                    {vm.inscricao ? (
-                      <span className="inline-flex items-center gap-2 ml-2">
-                        — Comprovativo carregado
-                        {vm.inscricao.signedUrl && (
-                          <a
-                            className="underline inline-flex items-center gap-1"
-                            href={vm.inscricao.signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <LinkIcon className="h-3 w-3" />
-                            Abrir
-                          </a>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="ml-2">— Comprovativo em falta</span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FilePickerButton
-                    variant={vm.inscricao ? "secondary" : "outline"}
-                    accept="image/*,application/pdf"
-                    onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-                  >
-                    <Upload className="h-4 w-4 mr-1" />
-                    {vm.inscricao ? "Substituir" : "Carregar"}
-                  </FilePickerButton>
-                  {vm.inscricao && (
-                    <Button variant="destructive" onClick={() => handleDeleteInscricao(a)}>
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Remover
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Mensal/Trimestral/Anual */}
               <div className="grid md:grid-cols-2 gap-3">
                 {Array.from({ length: slots }).map((_, i) => {
-                  const meta = vm.slots[i];
+                  const row = rows[i] as any; // pode não ter todas as props tipadas
                   const label = getPagamentoLabel(planoEfetivo, i);
-                  const amount = getSlotAmount(planoEfetivo, i, a);
+                  const hasFile = !!row?.signedUrl || !!row?.comprovativo_url;
+                  const value = amountByIdx(i);
                   return (
                     <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
                       <div>
-                        <div className="font-medium">{label}</div>
-                        <div className="text-xs text-gray-500">
-                          Valor: <strong>{eur(amount)}</strong>{" "}
-                          {meta ? (
-                            <span className="inline-flex items-center gap-2 ml-2">
-                              — Comprovativo carregado
-                              {meta.signedUrl && (
-                                <a
-                                  className="underline inline-flex items-center gap-1"
-                                  href={meta.signedUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  <LinkIcon className="h-3 w-3" />
-                                  Abrir
-                                </a>
-                              )}
+                        <div className="font-medium flex items-center gap-2">
+                          {label}
+                          {value && (
+                            <span className="text-xs rounded-full px-2 py-0.5 bg-gray-100 text-gray-700">
+                              Valor esperado: {value}
                             </span>
-                          ) : (
-                            <span className="ml-2">— Comprovativo em falta</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 flex items-center gap-2">
+                          {chipEstado(row)}
+                          {row?.signedUrl && (
+                            <a
+                              className="underline inline-flex items-center gap-1"
+                              href={row.signedUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <LinkIcon className="h-3 w-3" />
+                              Abrir
+                            </a>
                           )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <FilePickerButton
-                          variant={meta ? "secondary" : "outline"}
+                          variant={hasFile ? "secondary" : "outline"}
                           accept="image/*,application/pdf"
                           onFiles={(files) => files?.[0] && handleUpload(a, i, files[0])}
                         >
                           <Upload className="h-4 w-4 mr-1" />
-                          {meta ? "Substituir" : "Carregar"}
+                          {hasFile ? "Substituir" : "Carregar"}
                         </FilePickerButton>
 
-                        {meta && (
+                        {hasFile && (
                           <Button variant="destructive" onClick={() => handleDelete(a, i)}>
                             <Trash2 className="h-4 w-4 mr-1" />
                             Remover
@@ -1322,7 +1271,7 @@ function AtletasSection({
     };
   }, [userId]); // eslint-disable-line
 
-  function isAnuidadeObrigatoria(escalao: string | undefined) {
+  function isAnuidadeObrigatoriaLocal(escalao: string | undefined) {
     if (!escalao) return false;
     const s = escalao.toLowerCase();
     return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
@@ -1374,7 +1323,7 @@ function AtletasSection({
                   </div>
                   <div className="text-xs text-gray-500">
                     {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento:{" "}
-                    {isAnuidadeObrigatoria(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}
+                    {isAnuidadeObrigatoriaLocal(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1462,13 +1411,15 @@ export default function App() {
 
   // Guardar do formulário (modal global)
   const handleAthSave = async (novo: Atleta) => {
+    // valores anteriores (se estiveres a editar)
     const wasEditingId = athEditing?.id;
     const planoAntes = athEditing?.planoPagamento;
     const escalaoAntes = athEditing?.escalao;
 
     try {
-      const saved = await saveAtleta(novo);
+      const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
 
+      // Atualiza estado local
       const nextAtletas = wasEditingId
         ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
         : [saved, ...state.atletas];
@@ -1476,6 +1427,7 @@ export default function App() {
       setState((prev) => ({ ...prev, atletas: nextAtletas }));
       saveState({ ...state, atletas: nextAtletas });
 
+      // Gerar/ajustar calendário desta época
       const force =
         !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
@@ -1501,19 +1453,24 @@ export default function App() {
         <AuthButton />
       </header>
 
-      <AuthGate fallback={<ContaSection state={state} setState={setState} onLogged={() => setActiveTab("home")} />}>
+      <AuthGate
+        fallback={<ContaSection state={state} setState={setState} onLogged={() => setActiveTab("home")} />}
+      >
         {syncing ? (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
           </div>
         ) : (
           <>
+            {/* Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab */}
             <Tabs key={activeTab} defaultValue={activeTab}>
               <TabsList>
                 <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
                 {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
                 {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
-                {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
+                {hasPerfil && (hasAtletas || isSocio(state.perfil?.tipoSocio)) && (
+                  <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="home">
@@ -1521,7 +1478,7 @@ export default function App() {
                   state={state}
                   setState={setState}
                   onAfterSave={afterSavePerfil}
-                  onGoToPayments={() => setActiveTab("pag")}
+                  onGoTesouraria={() => setActiveTab("tes")}
                 />
               </TabsContent>
 
@@ -1538,9 +1495,9 @@ export default function App() {
                 </TabsContent>
               )}
 
-              {hasPerfil && hasAtletas && (
-                <TabsContent value="pag">
-                  <PagamentosSection state={state} />
+              {hasPerfil && (hasAtletas || isSocio(state.perfil?.tipoSocio)) && (
+                <TabsContent value="tes">
+                  <SituacaoTesourariaSection state={state} />
                 </TabsContent>
               )}
             </Tabs>

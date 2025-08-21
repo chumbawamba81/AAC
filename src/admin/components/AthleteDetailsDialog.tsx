@@ -30,7 +30,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
 
   useEffect(() => {
     if (!open) return;
-    // docs
+    // documentos do atleta
     (async () => {
       if (!atleta.user_id) return;
       setLoadingDocs(true);
@@ -38,7 +38,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
       catch { setDocs([]); }
       finally { setLoadingDocs(false); }
     })();
-    // pagamentos
+    // pagamentos do atleta (inclui inscrição de atleta)
     (async () => {
       setLoadingPags(true);
       try { setPags(await listPagamentosByAtleta(atleta.id)); }
@@ -55,13 +55,15 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
         className="bg-white rounded-2xl shadow-xl w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="px-4 py-3 border-b flex items-center justify-between">
           <div className="font-semibold">Atleta · {atleta.nome}</div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100">
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100" aria-label="Fechar">
             <X className="h-5 w-5" />
           </button>
         </div>
 
+        {/* Tabs */}
         <div className="px-4 pt-3">
           <div className="flex gap-2 text-sm mb-3">
             <button
@@ -88,6 +90,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
           </div>
         </div>
 
+        {/* Content */}
         <div className="px-4 pb-4 overflow-y-auto max-h-[75vh]">
           {tab === "dados" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
