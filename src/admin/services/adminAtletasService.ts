@@ -43,7 +43,7 @@ export type TitularMinimal = {
   telefone: string | null;
   tipo_socio: string | null;
   codigo_postal: string | null;
-  /** <- NOVO: vem de dados_pessoais.situacao_tesouraria */
+  /** NOVO: espelha dados_pessoais.situacao_tesouraria */
   situacao_tesouraria?: string | null;
 };
 
@@ -76,7 +76,7 @@ export const DOCS_ATLETA = [
   "Ficha de jogador FPB",
   "Ficha inscrição AAC",
   "Exame médico",
-] as const; // <- retirado “Comprovativo de pagamento de inscrição”
+] as const; // <- o comprovativo de inscrição foi movido para Pagamentos
 
 /** ------- Helpers ------- */
 

@@ -20,7 +20,6 @@ export default function AthletesTable() {
   const [loading, setLoading] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [genero, setGenero] = useState<"" | "Feminino" | "Masculino">("");
   const [escalao, setEscalao] = useState<string>("");
   const [tipoSocio, setTipoSocio] = useState<string>("");
   const [sort, setSort] = useState<"nome_asc" | "nome_desc" | "created_desc" | "created_asc">("nome_asc");
@@ -28,13 +27,15 @@ export default function AthletesTable() {
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState<RowVM | null>(null);
 
+  // carregar listagem
   async function reload() {
     setLoading(true);
     try {
-      const base = await listAtletasAdmin({ search, genero, escalao, tipoSocio, sort });
+      const base = await listAtletasAdmin({ search, escalao, tipoSocio, sort });
       const vm: RowVM[] = base.map((x) => ({ atleta: x.atleta, titular: x.titular }));
       setRows(vm);
 
+      // missing em lote
       const ids = vm.map((r) => r.atleta.id);
       const miss = await getMissingCountsForAtletas(ids);
       setRows((prev) => prev.map((r) => ({ ...r, missing: miss[r.atleta.id] ?? 0 })));
@@ -46,7 +47,7 @@ export default function AthletesTable() {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, genero, escalao, tipoSocio, sort]);
+  }, [search, escalao, tipoSocio, sort]);
 
   const escaloes = useMemo(() => {
     const s = new Set<string>();
@@ -57,7 +58,6 @@ export default function AthletesTable() {
   function exportCSV() {
     const cols = [
       "Nome",
-      "Género",
       "DataNascimento",
       "Escalão",
       "OpçãoPagamento",
@@ -65,8 +65,8 @@ export default function AthletesTable() {
       "TipoSócio",
       "EmailTitular",
       "TelefoneTitular",
-      "Tesouraria",
       "DocsEmFalta",
+      "Tesouraria",
     ];
     const lines = [cols.join(";")];
     for (const r of rows) {
@@ -74,7 +74,6 @@ export default function AthletesTable() {
       const t = r.titular;
       const line = [
         a.nome,
-        a.genero || "",
         a.data_nascimento,
         a.escalao || "",
         a.opcao_pagamento || "",
@@ -82,8 +81,8 @@ export default function AthletesTable() {
         t?.tipo_socio || "",
         t?.email || "",
         t?.telefone || "",
-        t?.situacao_tesouraria || "",
         (r.missing ?? "").toString(),
+        t?.situacao_tesouraria || "",
       ]
         .map((v) => (v ?? "").toString().replace(/;/g, ","))
         .join(";");
@@ -105,17 +104,23 @@ export default function AthletesTable() {
           <Users className="h-5 w-5" /> Atletas
         </h2>
         <div className="flex items-center gap-2">
-          <button onClick={exportCSV} className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm inline-flex items-center gap-2">
+          <button
+            onClick={exportCSV}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm inline-flex items-center gap-2"
+          >
             <Download className="h-4 w-4" /> Exportar CSV
           </button>
-          <button onClick={reload} className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm inline-flex items-center gap-2">
+          <button
+            onClick={reload}
+            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm inline-flex items-center gap-2"
+          >
             <RefreshCw className="h-4 w-4" /> Atualizar
           </button>
         </div>
       </div>
 
       {/* Filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         <div className="col-span-2 flex items-center gap-2">
           <Search className="h-4 w-4 text-gray-500" />
           <input
@@ -126,20 +131,24 @@ export default function AthletesTable() {
           />
         </div>
 
-        <select className="rounded-xl border px-3 py-2 text-sm" value={genero} onChange={(e) => setGenero(e.target.value as any)}>
-          <option value="">Género — todos</option>
-          <option value="Feminino">Feminino</option>
-          <option value="Masculino">Masculino</option>
-        </select>
-
-        <select className="rounded-xl border px-3 py-2 text-sm" value={escalao} onChange={(e) => setEscalao(e.target.value)}>
+        <select
+          className="rounded-xl border px-3 py-2 text-sm"
+          value={escalao}
+          onChange={(e) => setEscalao(e.target.value)}
+        >
           <option value="">Escalão — todos</option>
           {escaloes.map((e) => (
-            <option key={e} value={e}>{e}</option>
+            <option key={e} value={e}>
+              {e}
+            </option>
           ))}
         </select>
 
-        <select className="rounded-xl border px-3 py-2 text-sm" value={tipoSocio} onChange={(e) => setTipoSocio(e.target.value)}>
+        <select
+          className="rounded-xl border px-3 py-2 text-sm"
+          value={tipoSocio}
+          onChange={(e) => setTipoSocio(e.target.value)}
+        >
           <option value="">Tipo de sócio — todos</option>
           <option value="Sócio Pro">Sócio Pro</option>
           <option value="Sócio Família">Sócio Família</option>
@@ -148,7 +157,11 @@ export default function AthletesTable() {
           <option value="Não pretendo ser sócio">Não pretendo ser sócio</option>
         </select>
 
-        <select className="rounded-xl border px-3 py-2 text-sm" value={sort} onChange={(e) => setSort(e.target.value as any)}>
+        <select
+          className="rounded-xl border px-3 py-2 text-sm"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as any)}
+        >
           <option value="nome_asc">Ordenar: Nome ↑</option>
           <option value="nome_desc">Ordenar: Nome ↓</option>
           <option value="created_desc">Ordenar: Recentes</option>
@@ -162,12 +175,11 @@ export default function AthletesTable() {
           <thead className="bg-gray-50 text-left">
             <tr>
               <Th>Nome</Th>
-              <Th>Género</Th>
               <Th>Escalão</Th>
               <Th>Opção pagamento</Th>
               <Th>Tipo de sócio</Th>
-              <Th>Tesouraria</Th>
               <Th>Docs em falta</Th>
+              <Th>Tesouraria</Th>
               <Th>Ações</Th>
             </tr>
           </thead>
@@ -175,16 +187,18 @@ export default function AthletesTable() {
             {rows.map((r) => (
               <tr key={r.atleta.id} className="border-t">
                 <Td>{r.atleta.nome}</Td>
-                <Td>{r.atleta.genero || "—"}</Td>
                 <Td>{r.atleta.escalao || "—"}</Td>
                 <Td>{r.atleta.opcao_pagamento || "—"}</Td>
                 <Td>{r.titular?.tipo_socio || "—"}</Td>
-                <Td>{r.titular?.situacao_tesouraria || "—"}</Td>
                 <Td>{r.missing ?? "—"}</Td>
+                <Td>{r.titular?.situacao_tesouraria || "—"}</Td>
                 <Td>
                   <button
                     className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
-                    onClick={() => { setFocus(r); setOpen(true); }}
+                    onClick={() => {
+                      setFocus(r);
+                      setOpen(true);
+                    }}
                   >
                     <Eye className="h-4 w-4" /> Detalhes
                   </button>
@@ -193,12 +207,16 @@ export default function AthletesTable() {
             ))}
             {rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className="text-center py-6 text-gray-500">Sem resultados.</td>
+                <td colSpan={7} className="text-center py-6 text-gray-500">
+                  Sem resultados.
+                </td>
               </tr>
             )}
             {loading && (
               <tr>
-                <td colSpan={8} className="text-center py-6 text-gray-500">A carregar…</td>
+                <td colSpan={7} className="text-center py-6 text-gray-500">
+                  A carregar…
+                </td>
               </tr>
             )}
           </tbody>

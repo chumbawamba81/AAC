@@ -113,12 +113,10 @@ export async function saveComprovativo(opts: {
     .eq("atleta_id", atletaId)
     .eq("descricao", descricao)
     .maybeSingle();
-
   if (selErr) throw selErr;
 
-  // 3) se havia comprovativo anterior, remove-o do storage
+  // 3) se havia comprovativo anterior, remove-o do storage (best-effort)
   if (existing?.comprovativo_url) {
-    // melhor-effort; se falhar, não bloqueia
     await supabase.storage.from(BUCKET).remove([existing.comprovativo_url]);
   }
 
@@ -128,8 +126,7 @@ export async function saveComprovativo(opts: {
       .from("pagamentos")
       .update({
         comprovativo_url: path,
-        // quando o utilizador substitui, volta a estado “pendente de validação”
-        validado: false,
+        validado: false, // volta a pendente de validação ao substituir
       })
       .eq("id", existing.id);
     if (updErr) throw updErr;
@@ -148,8 +145,8 @@ export async function saveComprovativo(opts: {
 }
 
 export async function deletePagamento(row: PagamentoRow) {
-  // remover do storage primeiro (best-effort)
   if (row.comprovativo_url) {
+    // best-effort
     await supabase.storage.from(BUCKET).remove([row.comprovativo_url]);
   }
   const { error } = await supabase.from("pagamentos").delete().eq("id", row.id);
@@ -167,14 +164,14 @@ export async function ensureScheduleForAtleta(
   const planoEfetivo: Atleta["planoPagamento"] | "Anual" = anualObrig ? "Anual" : atleta.planoPagamento;
   const slots = getSlotsForPlano(planoEfetivo);
 
-  // reconstruir se pedido
+  // reconstruir se pedido: apaga só esqueletos (sem comprovativo)
   if (opts?.forceRebuild) {
     const { error: delErr } = await supabase
       .from("pagamentos")
       .delete()
       .eq("atleta_id", atletaId)
       .in("tipo", ["mensal", "trimestre", "anual"])
-      .is("comprovativo_url", null); // só remove esqueletos não carregados
+      .is("comprovativo_url", null);
     if (delErr) throw delErr;
   }
 
@@ -224,8 +221,9 @@ export async function ensureScheduleForAtleta(
     if (selErr) throw selErr;
 
     if (!exist) {
+      const { data: u } = await supabase.auth.getUser();
       const { error: insErr } = await supabase.from("pagamentos").insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id ?? null,
+        user_id: u?.user?.id ?? null,
         atleta_id: atletaId,
         descricao: it.descricao,
         tipo: it.tipo,
