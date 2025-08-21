@@ -78,15 +78,15 @@ function buildDueDates(plano: PlanoPagamento): string[] {
   out.push(`${year}-09-30`); // Setembro
   // Outubro a Junho → dia 08
   const monthlyDays = [
-    { y: year, m: 9, d: 08 },   // Out
-    { y: year, m: 10, d: 08 },  // Nov
-    { y: year, m: 11, d: 08 },  // Dez
-    { y: year + 1, m: 0, d: 08 }, // Jan
-    { y: year + 1, m: 1, d: 08 },  // Fev
-    { y: year + 1, m: 2, d: 08 },  // Mar
-    { y: year + 1, m: 3, d: 08 },  // Abr
-    { y: year + 1, m: 4, d: 08 },  // Mai
-    { y: year + 1, m: 5, d: 08 },  // Jun
+    { y: year, m: 9, d: 8 },   // Out
+    { y: year, m: 10, d: 8 },  // Nov
+    { y: year, m: 11, d: 8 },  // Dez
+    { y: year + 1, m: 0, d: 8 }, // Jan
+    { y: year + 1, m: 1, d: 8 },  // Fev
+    { y: year + 1, m: 2, d: 8 },  // Mar
+    { y: year + 1, m: 3, d: 8 },  // Abr
+    { y: year + 1, m: 4, d: 8 },  // Mai
+    { y: year + 1, m: 5, d: 8 },  // Jun
   ];
   for (const x of monthlyDays) out.push(fmt(new Date(x.y, x.m, x.d)));
   return out;
