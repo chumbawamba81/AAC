@@ -288,7 +288,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
         {/* ---- Aviso: comprovativos migrados ---- */}
         <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
           <div className="text-sm">
-            Os <strong>comprovativos de pagamento</strong> (inscrição do sócio e inscrição do atleta) foram movidos para a
+            Os <strong>comprovativos de pagamento</strong> (inscrição do sócio e inscrição do atleta) encontram-se disponíveis para upload na
             secção <strong>Situação de Tesouraria</strong>.
           </div>
         </div>
