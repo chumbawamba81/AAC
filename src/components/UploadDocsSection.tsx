@@ -1,7 +1,7 @@
 // src/components/UploadDocsSection.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { Button } from './ui/button';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
+import { Button } from "./ui/button";
 import {
   Upload,
   Trash2,
@@ -11,11 +11,10 @@ import {
   Plus,
   FileUp,
   RefreshCw,
-  Info,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { supabase } from '../supabaseClient';
-import type { Atleta } from '../types/Atleta';
+import { supabase } from "../supabaseClient";
+import type { State } from "../types/AppState";
 
 import {
   listDocs,
@@ -24,26 +23,28 @@ import {
   replaceDoc,
   deleteDoc,
   type DocumentoRow,
-} from '../services/documentosService';
+} from "../services/documentosService";
 
-import { migrateLocalDataUrls } from '../services/migracaoDocumentos';
-import type { State } from '../types/AppState';
+/** ⚠️ Nesta UI não mostramos os comprovativos de inscrição:
+ *  - Sócio: "Comprovativo de pagamento de sócio"
+ *  - Atleta: "Comprovativo de pagamento de inscrição"
+ *  porque vivem em “Situação de Tesouraria”.
+ */
+const DOCS_SOCIO_UI = ["Ficha de Sócio"] as const;
+const DOCS_ATLETA_UI = [
+  "Ficha de sócio de atleta",
+  "Ficha de jogador FPB",
+  "Ficha inscrição AAC",
+  "Exame médico",
+] as const;
+
+type DocSocioUI = (typeof DOCS_SOCIO_UI)[number];
+type DocAtletaUI = (typeof DOCS_ATLETA_UI)[number];
 
 type Props = {
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
 };
-
-const DOCS_SOCIO = ['Ficha de Sócio'] as const; // <- removido "Comprovativo de pagamento de sócio"
-const DOCS_ATLETA = [
-  'Ficha de sócio de atleta',
-  'Ficha de jogador FPB',
-  'Ficha inscrição AAC',
-  'Exame médico',
-] as const;
-
-type DocSocio = (typeof DOCS_SOCIO)[number];
-type DocAtleta = (typeof DOCS_ATLETA)[number];
 
 function groupByTipo(rows: DocumentoRow[]) {
   const map = new Map<string, DocumentoRow[]>();
@@ -91,19 +92,21 @@ export default function UploadDocsSection({ state, setState }: Props) {
     if (!userId) return;
     setLoading(true);
     try {
-      const socioRows = await listDocs({ nivel: 'socio', userId });
+      // Sócio
+      const socioRows = await listDocs({ nivel: "socio", userId });
       const socioWithUrls = await withSignedUrls(socioRows);
       setSocioDocs(groupByTipo(socioWithUrls));
 
+      // Atletas
       const nextAth: Record<string, Map<string, DocumentoRow[]>> = {};
       for (const a of state.atletas) {
-        const rows = await listDocs({ nivel: 'atleta', userId, atletaId: a.id });
+        const rows = await listDocs({ nivel: "atleta", userId, atletaId: a.id });
         const withUrls = await withSignedUrls(rows);
         nextAth[a.id] = groupByTipo(withUrls);
       }
       setAthDocs(nextAth);
     } catch (e: any) {
-      console.error('[refreshAll]', e);
+      console.error("[refreshAll]", e);
       alert(`Falha ao carregar documentos: ${e?.message || e}`);
     } finally {
       setLoading(false);
@@ -113,21 +116,21 @@ export default function UploadDocsSection({ state, setState }: Props) {
   useEffect(() => {
     refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, state.atletas.map(a => a.id).join(',')]);
+  }, [userId, state.atletas.map((a) => a.id).join(",")]);
 
   const socioMissingCount = useMemo(() => {
     let miss = 0;
-    for (const t of DOCS_SOCIO) {
+    for (const t of DOCS_SOCIO_UI) {
       if (!socioDocs.get(t)?.length) miss++;
     }
     return miss;
   }, [socioDocs]);
 
-  /* ======================= UPLOAD: múltiplos ficheiros ======================= */
+  /* ======================= Upload Many ======================= */
 
-  async function handleUploadSocioMany(tipo: DocSocio, filesList: FileList | null) {
+  async function handleUploadSocioMany(tipo: DocSocioUI, filesList: FileList | null) {
     if (!userId || !filesList || filesList.length === 0) {
-      alert('Sessão ou ficheiros em falta');
+      alert("Sessão ou ficheiros em falta");
       return;
     }
     setLoading(true);
@@ -137,27 +140,27 @@ export default function UploadDocsSection({ state, setState }: Props) {
       const files = Array.from(filesList);
       for (let i = 0; i < files.length; i++) {
         await uploadDoc({
-          nivel: 'socio',
+          nivel: "socio",
           userId,
           tipo,
           file: files[i],
-          mode: 'new',
+          mode: "new",
           page: start + i,
         });
       }
       await refreshAll();
       alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
-      console.error('[upload socio many]', e);
+      console.error("[upload socio many]", e);
       alert(`Falha no upload (sócio): ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleUploadAtletaMany(atletaId: string, tipo: DocAtleta, filesList: FileList | null) {
+  async function handleUploadAtletaMany(atletaId: string, tipo: DocAtletaUI, filesList: FileList | null) {
     if (!userId || !filesList || filesList.length === 0) {
-      alert('Sessão ou ficheiros em falta');
+      alert("Sessão ou ficheiros em falta");
       return;
     }
     setLoading(true);
@@ -168,142 +171,75 @@ export default function UploadDocsSection({ state, setState }: Props) {
       const files = Array.from(filesList);
       for (let i = 0; i < files.length; i++) {
         await uploadDoc({
-          nivel: 'atleta',
+          nivel: "atleta",
           userId,
           atletaId,
           tipo,
           file: files[i],
-          mode: 'new',
+          mode: "new",
           page: start + i,
         });
       }
       await refreshAll();
       alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
-      console.error('[upload atleta many]', e);
+      console.error("[upload atleta many]", e);
       alert(`Falha no upload (atleta): ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
   }
 
-  /* ======================= Replace/Delete (1-a-1) ======================= */
+  /* ======================= Replace / Delete ======================= */
 
-  async function handleReplaceSocio(row: DocumentoRow, file: File) {
+  async function handleReplace(row: DocumentoRow, file: File) {
     if (!file) return;
     setLoading(true);
     try {
       await replaceDoc(row.id, file);
       await refreshAll();
-      alert('Documento substituído.');
+      alert("Documento substituído.");
     } catch (e: any) {
-      console.error('[replace socio]', e);
+      console.error("[replace]", e);
       alert(`Falha a substituir: ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleDeleteSocio(row: DocumentoRow) {
-    if (!confirm('Apagar este ficheiro?')) return;
+  async function handleDelete(row: DocumentoRow) {
+    if (!confirm("Apagar este ficheiro?")) return;
     setLoading(true);
     try {
       await deleteDoc(row.id);
       await refreshAll();
-      alert('Apagado.');
+      alert("Apagado.");
     } catch (e: any) {
-      console.error('[delete socio]', e);
+      console.error("[delete]", e);
       alert(`Falha a apagar: ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleReplaceAtleta(row: DocumentoRow, file: File) {
-    if (!file) return;
-    setLoading(true);
-    try {
-      await replaceDoc(row.id, file);
-      await refreshAll();
-      alert('Documento substituído.');
-    } catch (e: any) {
-      console.error('[replace atleta]', e);
-      alert(`Falha a substituir: ${e?.message || e}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleDeleteAtleta(row: DocumentoRow) {
-    if (!confirm('Apagar este ficheiro?')) return;
-    setLoading(true);
-    try {
-      await deleteDoc(row.id);
-      await refreshAll();
-      alert('Apagado.');
-    } catch (e: any) {
-      console.error('[delete atleta]', e);
-      alert(`Falha a apagar: ${e?.message || e}`);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /* ======================= Migração DataURLs locais ======================= */
-
-  async function migrateLocal() {
-    if (!userId) {
-      alert('Sessão não encontrada.');
-      return;
-    }
-    setLoading(true);
-    try {
-      await migrateLocalDataUrls({
-        state,
-        userId,
-        onProgress: (msg) => console.log('[migrate]', msg),
-      });
-      setState((prev) => ({ ...prev, docsSocio: {}, docsAtleta: {} }));
-      await refreshAll();
-      alert('Migração concluída.');
-    } catch (e: any) {
-      console.error(e);
-      alert(e.message || 'Falha na migração');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function openSocioPicker(tipo: string) {
-    const el = socioPickersRef.current[tipo];
-    if (el) el.click();
-  }
-  function openAthPicker(atletaId: string, tipo: string) {
-    if (!atletaPickersRef.current[atletaId]) atletaPickersRef.current[atletaId] = {};
-    const el = atletaPickersRef.current[atletaId][tipo];
-    if (el) el.click();
-  }
-  function openReplacePicker(rowId: string) {
-    const el = replacePickersRef.current[rowId];
-    if (el) el.click();
-  }
+  /* ======================= Diagnóstico opcional ======================= */
 
   async function testStorage() {
     try {
-      setDiagMsg('A testar Storage…');
+      setDiagMsg("A testar Storage…");
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user?.id) throw new Error('Sem sessão');
-      const blob = new Blob(['hello'], { type: 'text/plain' });
-      const file = new File([blob], 'teste.txt', { type: 'text/plain' });
+      if (!u?.user?.id) throw new Error("Sem sessão");
+      const blob = new Blob(["hello"], { type: "text/plain" });
+      const file = new File([blob], "teste.txt", { type: "text/plain" });
       const path = `${u.user.id}/socio/Teste/${Date.now()}_teste.txt`;
-      const up = await supabase.storage.from('documentos').upload(path, file, { upsert: false });
+      const up = await supabase.storage.from("documentos").upload(path, file, { upsert: false });
       if (up.error) throw up.error;
-      const sig = await supabase.storage.from('documentos').createSignedUrl(path, 60);
+      const sig = await supabase.storage.from("documentos").createSignedUrl(path, 60);
       if (sig.error) throw sig.error;
-      setDiagMsg('Storage + signed URL OK.');
-      alert('Storage OK ✅');
+      setDiagMsg("Storage + signed URL OK.");
+      alert("Storage OK ✅");
     } catch (e: any) {
-      console.error('[diag storage]', e);
+      console.error("[diag storage]", e);
       setDiagMsg(`Storage FAIL: ${e?.message || e}`);
       alert(`Storage FAIL ❌: ${e?.message || e}`);
     }
@@ -311,32 +247,34 @@ export default function UploadDocsSection({ state, setState }: Props) {
 
   async function testTable() {
     try {
-      setDiagMsg('A testar tabela…');
+      setDiagMsg("A testar tabela…");
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user?.id) throw new Error('Sem sessão');
+      if (!u?.user?.id) throw new Error("Sem sessão");
       const row = {
         user_id: u.user.id,
-        doc_nivel: 'socio',
+        doc_nivel: "socio",
         atleta_id: null,
-        doc_tipo: 'Teste',
+        doc_tipo: "Teste",
         page: 1,
         file_path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
         path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
-        nome: 'dummy.txt',
-        mime_type: 'text/plain',
+        nome: "dummy.txt",
+        mime_type: "text/plain",
         file_size: 5,
         uploaded_at: new Date().toISOString(),
       };
-      const ins = await supabase.from('documentos').insert(row).select('id').single();
+      const ins = await supabase.from("documentos").insert(row).select("id").single();
       if (ins.error) throw ins.error;
-      setDiagMsg('Tabela OK.');
-      alert('Tabela OK ✅');
+      setDiagMsg("Tabela OK.");
+      alert("Tabela OK ✅");
     } catch (e: any) {
-      console.error('[diag table]', e);
+      console.error("[diag table]", e);
       setDiagMsg(`Tabela FAIL: ${e?.message || e}`);
       alert(`Tabela FAIL ❌: ${e?.message || e}`);
     }
   }
+
+  /* ======================= Render ======================= */
 
   return (
     <Card>
@@ -347,13 +285,11 @@ export default function UploadDocsSection({ state, setState }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-8">
-
-        {/* AVISO: comprovativo de sócio moveu-se para Tesouraria */}
-        <div className="border rounded-md p-3 bg-blue-50 text-blue-900 text-sm flex items-start gap-2">
-          <Info className="h-4 w-4 mt-[2px]" />
-          <div>
-            O <strong>Comprovativo de pagamento de sócio</strong> foi movido para a secção
-            <strong> Situação de Tesouraria</strong>. Faça o upload nessa secção.
+        {/* ---- Aviso: comprovativos migrados ---- */}
+        <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
+          <div className="text-sm">
+            Os <strong>comprovativos de pagamento</strong> (inscrição do sócio e inscrição do atleta) foram movidos para a
+            secção <strong>Situação de Tesouraria</strong>.
           </div>
         </div>
 
@@ -369,33 +305,11 @@ export default function UploadDocsSection({ state, setState }: Props) {
           {!!diagMsg && <div className="text-xs text-gray-600 mt-2">{diagMsg}</div>}
         </div>
 
-        {/* ---- MIGRAÇÃO LOCAL ---- */}
-        {(state.docsSocio && Object.keys(state.docsSocio).length > 0) ||
-        (state.docsAtleta && Object.keys(state.docsAtleta).length > 0) ? (
-          <div className="border rounded-lg p-3 bg-amber-50">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm">
-                Encontrámos comprovativos <strong>locais</strong> guardados no browser. Queres migrá-los para o Storage?
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => refreshAll()}>
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Atualizar
-                </Button>
-                <Button variant="destructive" onClick={migrateLocal}>
-                  <Upload className="h-4 w-4 mr-1" />
-                  Migrar para o Storage
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
         {/* ---- SOCIO ---- */}
         <section>
           <div className="mb-2">
             <div className="font-medium">
-              Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || 'Conta'})
+              Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
             </div>
             <div className="text-xs text-gray-500">
               {socioMissingCount > 0 ? (
@@ -411,14 +325,14 @@ export default function UploadDocsSection({ state, setState }: Props) {
           </div>
 
           <div className="grid md:grid-cols-2 gap-3">
-            {DOCS_SOCIO.map((tipo) => {
+            {DOCS_SOCIO_UI.map((tipo) => {
               const files = socioDocs.get(tipo) || [];
               return (
                 <div key={tipo} className="border rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="font-medium">
                       {tipo}
-                      {state.perfil?.tipoSocio && tipo === 'Ficha de Sócio' ? ` (${state.perfil.tipoSocio})` : ''}
+                      {state.perfil?.tipoSocio && tipo === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
                     </div>
                     <div className="flex gap-2">
                       <input
@@ -429,11 +343,11 @@ export default function UploadDocsSection({ state, setState }: Props) {
                         className="hidden"
                         onChange={async (e) => {
                           const fs = e.target.files;
-                          await handleUploadSocioMany(tipo as DocSocio, fs);
-                          e.currentTarget.value = '';
+                          await handleUploadSocioMany(tipo, fs);
+                          e.currentTarget.value = "";
                         }}
                       />
-                      <Button variant="outline" onClick={() => openSocioPicker(tipo)}>
+                      <Button variant="outline" onClick={() => socioPickersRef.current[tipo]?.click()}>
                         <Plus className="h-4 w-4 mr-1" /> Adicionar
                       </Button>
                     </div>
@@ -446,17 +360,10 @@ export default function UploadDocsSection({ state, setState }: Props) {
                       {files.map((row, idx) => (
                         <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
                           <div className="text-sm flex items-center gap-2">
-                            <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                              Ficheiro {idx + 1}
-                            </span>
-                            <a
-                              href={row.signedUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="underline inline-flex items-center gap-1"
-                            >
+                            <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">Ficheiro {idx + 1}</span>
+                            <a href={row.signedUrl || undefined} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
                               <LinkIcon className="h-4 w-4" />
-                              {row.nome || 'ficheiro'}
+                              {row.nome || "ficheiro"}
                             </a>
                           </div>
                           <div className="flex items-center gap-2">
@@ -467,17 +374,15 @@ export default function UploadDocsSection({ state, setState }: Props) {
                               className="hidden"
                               onChange={async (e) => {
                                 const f = e.target.files?.[0];
-                                if (f) await handleReplaceSocio(row, f);
-                                e.currentTarget.value = '';
+                                if (f) await handleReplace(row, f);
+                                e.currentTarget.value = "";
                               }}
                             />
-                            <Button variant="outline" onClick={() => openReplacePicker(row.id)}>
-                              <RefreshCw className="h-4 w-4 mr-1" />
-                              Substituir
+                            <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                              <RefreshCw className="h-4 w-4 mr-1" /> Substituir
                             </Button>
-                            <Button variant="destructive" onClick={() => handleDeleteSocio(row)}>
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Apagar
+                            <Button variant="destructive" onClick={() => handleDelete(row)}>
+                              <Trash2 className="h-4 w-4 mr-1" /> Apagar
                             </Button>
                           </div>
                         </li>
@@ -493,18 +398,16 @@ export default function UploadDocsSection({ state, setState }: Props) {
         {/* ---- ATLETAS ---- */}
         <section className="space-y-3">
           <div className="font-medium">Documentos por Atleta</div>
-          {state.atletas.length === 0 && (
-            <p className="text-sm text-gray-500">Sem atletas criados.</p>
-          )}
+          {state.atletas.length === 0 && <p className="text-sm text-gray-500">Sem atletas criados.</p>}
           {state.atletas.map((a) => {
             const mapa = athDocs[a.id] || new Map<string, DocumentoRow[]>();
-            const missing = DOCS_ATLETA.filter((t) => !(mapa.get(t) || []).length).length;
+            const missing = DOCS_ATLETA_UI.filter((t) => !(mapa.get(t) || []).length).length;
 
             return (
               <div key={a.id} className="border rounded-xl p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="font-medium flex items-center gap-2">
-                    {a.nomeCompleto}{' '}
+                    {a.nomeCompleto}{" "}
                     {missing > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
                         <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
@@ -519,9 +422,9 @@ export default function UploadDocsSection({ state, setState }: Props) {
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-3">
-                  {DOCS_ATLETA.map((tipo) => {
-                    const files = mapa.get(tipo) || [];
+                  {DOCS_ATLETA_UI.map((tipo) => {
                     if (!atletaPickersRef.current[a.id]) atletaPickersRef.current[a.id] = {};
+                    const files = mapa.get(tipo) || [];
                     return (
                       <div key={tipo} className="border rounded-lg p-3 space-y-2">
                         <div className="flex items-center justify-between">
@@ -535,11 +438,11 @@ export default function UploadDocsSection({ state, setState }: Props) {
                               className="hidden"
                               onChange={async (e) => {
                                 const fs = e.target.files;
-                                await handleUploadAtletaMany(a.id, tipo as DocAtleta, fs);
-                                e.currentTarget.value = '';
+                                await handleUploadAtletaMany(a.id, tipo, fs);
+                                e.currentTarget.value = "";
                               }}
                             />
-                            <Button variant="outline" onClick={() => openAthPicker(a.id, tipo)}>
+                            <Button variant="outline" onClick={() => atletaPickersRef.current[a.id][tipo]?.click()}>
                               <Plus className="h-4 w-4 mr-1" /> Adicionar
                             </Button>
                           </div>
@@ -552,17 +455,10 @@ export default function UploadDocsSection({ state, setState }: Props) {
                             {files.map((row, idx) => (
                               <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
                                 <div className="text-sm flex items-center gap-2">
-                                  <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                                    Ficheiro {idx + 1}
-                                  </span>
-                                  <a
-                                    href={row.signedUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="underline inline-flex items-center gap-1"
-                                  >
+                                  <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">Ficheiro {idx + 1}</span>
+                                  <a href={row.signedUrl || undefined} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
                                     <LinkIcon className="h-4 w-4" />
-                                    {row.nome || 'ficheiro'}
+                                    {row.nome || "ficheiro"}
                                   </a>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -573,17 +469,15 @@ export default function UploadDocsSection({ state, setState }: Props) {
                                     className="hidden"
                                     onChange={async (e) => {
                                       const f = e.target.files?.[0];
-                                      if (f) await handleReplaceAtleta(row, f);
-                                      e.currentTarget.value = '';
+                                      if (f) await handleReplace(row, f);
+                                      e.currentTarget.value = "";
                                     }}
                                   />
-                                  <Button variant="outline" onClick={() => openReplacePicker(row.id)}>
-                                    <RefreshCw className="h-4 w-4 mr-1" />
-                                    Substituir
+                                  <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                                    <RefreshCw className="h-4 w-4 mr-1" /> Substituir
                                   </Button>
-                                  <Button variant="destructive" onClick={() => handleDeleteAtleta(row)}>
-                                    <Trash2 className="h-4 w-4 mr-1" />
-                                    Apagar
+                                  <Button variant="destructive" onClick={() => handleDelete(row)}>
+                                    <Trash2 className="h-4 w-4 mr-1" /> Apagar
                                   </Button>
                                 </div>
                               </li>

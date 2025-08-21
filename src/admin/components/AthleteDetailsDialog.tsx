@@ -21,6 +21,8 @@ type Props = {
 
 type Tab = "dados" | "docs" | "pag";
 
+const DOC_TIPO_INSCRICAO_ATLETA = "Comprovativo de pagamento de inscrição";
+
 export default function AthleteDetailsDialog({ open, onClose, atleta, titular }: Props) {
   const [tab, setTab] = useState<Tab>("dados");
   const [docs, setDocs] = useState<DocumentoRow[]>([]);
@@ -30,20 +32,32 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
 
   useEffect(() => {
     if (!open) return;
-    // documentos do atleta
+
+    // Documentos do atleta
     (async () => {
       if (!atleta.user_id) return;
       setLoadingDocs(true);
-      try { setDocs(await listDocsByAtleta(atleta.user_id, atleta.id)); }
-      catch { setDocs([]); }
-      finally { setLoadingDocs(false); }
+      try {
+        const all = await listDocsByAtleta(atleta.user_id, atleta.id);
+        setDocs(all);
+      } catch {
+        setDocs([]);
+      } finally {
+        setLoadingDocs(false);
+      }
     })();
-    // pagamentos do atleta (inclui inscrição de atleta)
+
+    // Pagamentos do atleta
     (async () => {
       setLoadingPags(true);
-      try { setPags(await listPagamentosByAtleta(atleta.id)); }
-      catch { setPags([]); }
-      finally { setLoadingPags(false); }
+      try {
+        const pg = await listPagamentosByAtleta(atleta.id);
+        setPags(pg);
+      } catch {
+        setPags([]);
+      } finally {
+        setLoadingPags(false);
+      }
     })();
   }, [open, atleta]);
 
@@ -90,8 +104,9 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
           </div>
         </div>
 
-        {/* Content */}
+        {/* Content (scrollable) */}
         <div className="px-4 pb-4 overflow-y-auto max-h-[75vh]">
+          {/* --- DADOS --- */}
           {tab === "dados" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Nome">{atleta.nome}</Field>
@@ -100,11 +115,13 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
               <Field label="Escalão">{atleta.escalao || "—"}</Field>
               <Field label="Opção de pagamento">{atleta.opcao_pagamento || "—"}</Field>
               <Field label="NIF">{atleta.nif || "—"}</Field>
+
               <Field className="md:col-span-2" label="Alergias / saúde">{atleta.alergias || "—"}</Field>
               <Field className="md:col-span-2" label="Morada">{atleta.morada || "—"}</Field>
               <Field label="Código postal">{atleta.codigo_postal || "—"}</Field>
               <Field label="Contactos urgência">{atleta.contactos_urgencia || "—"}</Field>
               <Field className="md:col-span-2" label="Emails preferenciais">{atleta.emails_preferenciais || "—"}</Field>
+
               <div className="md:col-span-2 border-t pt-3 mt-2">
                 <div className="font-medium mb-2">Titular</div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -117,54 +134,58 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
             </div>
           )}
 
+          {/* --- DOCUMENTOS (sem o comprovativo de inscrição) --- */}
           {tab === "docs" && (
             <div className="space-y-3">
               {loadingDocs ? (
                 <p className="text-sm text-gray-500">A carregar documentos…</p>
               ) : (
                 <>
-                  {DOCS_ATLETA.map((tipo) => {
-                    const files = docs.filter((d) => d.doc_tipo === tipo);
-                    return (
-                      <div key={tipo} className="border rounded-lg p-3">
-                        <div className="font-medium mb-2">{tipo}</div>
-                        {files.length === 0 ? (
-                          <p className="text-sm text-gray-500">Sem ficheiros.</p>
-                        ) : (
-                          <ul className="space-y-2">
-                            {files.map((row) => (
-                              <li key={row.id} className="flex items-center justify-between">
-                                <div className="text-sm flex items-center gap-2 min-w-0">
-                                  <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5 shrink-0">
-                                    {(row.page ?? 0) > 0 ? `Ficheiro ${row.page}` : "Ficheiro"}
-                                  </span>
-                                  {row.signedUrl ? (
-                                    <a
-                                      href={row.signedUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="underline inline-flex items-center gap-1 truncate"
-                                      title={displayFileName(row)}
-                                    >
-                                      <LinkIcon className="h-4 w-4 shrink-0" />
-                                      <span className="truncate">{displayFileName(row)}</span>
-                                    </a>
-                                  ) : (
-                                    <span className="text-gray-500">{displayFileName(row)}</span>
-                                  )}
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {DOCS_ATLETA
+                    .filter((tipo) => String(tipo) !== DOC_TIPO_INSCRICAO_ATLETA)
+                    .map((tipo) => {
+                      const files = docs.filter((d) => d.doc_tipo === tipo);
+                      return (
+                        <div key={String(tipo)} className="border rounded-lg p-3">
+                          <div className="font-medium mb-2">{String(tipo)}</div>
+                          {files.length === 0 ? (
+                            <p className="text-sm text-gray-500">Sem ficheiros.</p>
+                          ) : (
+                            <ul className="space-y-2">
+                              {files.map((row) => (
+                                <li key={row.id} className="flex items-center justify-between">
+                                  <div className="text-sm flex items-center gap-2 min-w-0">
+                                    <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5 shrink-0">
+                                      {(row.page ?? 0) > 0 ? `Ficheiro ${row.page}` : "Ficheiro"}
+                                    </span>
+                                    {row.signedUrl ? (
+                                      <a
+                                        href={row.signedUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="underline inline-flex items-center gap-1 truncate"
+                                        title={displayFileName(row)}
+                                      >
+                                        <LinkIcon className="h-4 w-4 shrink-0" />
+                                        <span className="truncate">{displayFileName(row)}</span>
+                                      </a>
+                                    ) : (
+                                      <span className="text-gray-500">{displayFileName(row)}</span>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
                 </>
               )}
             </div>
           )}
 
+          {/* --- PAGAMENTOS (inclui o comprovativo de inscrição do atleta) --- */}
           {tab === "pag" && (
             <div className="space-y-3">
               {loadingPags ? (
@@ -199,7 +220,15 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
   );
 }
 
-function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div className={["space-y-1", className].join(" ")}>
       <div className="text-xs text-gray-500">{label}</div>

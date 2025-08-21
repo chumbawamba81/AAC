@@ -7,7 +7,7 @@ export type AtletaRow = {
   id: string;
   user_id: string | null;
   nome: string;
-  data_nascimento: string;      // date (YYYY-MM-DD)
+  data_nascimento: string;
   genero: string | null;
   escalao: string | null;
   opcao_pagamento: string | null;
@@ -18,12 +18,11 @@ export type AtletaRow = {
   emails_preferenciais: string | null;
   created_at: string | null;
 
-  // extras (não obrigatórios)
   nacionalidade?: string | null;
   nacionalidade_outra?: string | null;
   tipo_doc?: string | null;
   num_doc?: string | null;
-  validade_doc?: string | null; // date
+  validade_doc?: string | null;
   nif?: string | null;
   nome_pai?: string | null;
   nome_mae?: string | null;
@@ -43,8 +42,7 @@ export type TitularMinimal = {
   telefone: string | null;
   tipo_socio: string | null;
   codigo_postal: string | null;
-  /** NOVO: espelha dados_pessoais.situacao_tesouraria */
-  situacao_tesouraria?: string | null;
+  situacao_tesouraria: string | null; // 👈 novo
 };
 
 export type DocumentoRow = {
@@ -66,7 +64,7 @@ export type PagamentoRow = {
   id: string;
   atleta_id: string | null;
   descricao: string;
-  comprovativo_url: string | null; // caminho no bucket 'pagamentos'
+  comprovativo_url: string | null;
   created_at: string | null;
   signedUrl?: string;
 };
@@ -76,7 +74,8 @@ export const DOCS_ATLETA = [
   "Ficha de jogador FPB",
   "Ficha inscrição AAC",
   "Exame médico",
-] as const; // <- o comprovativo de inscrição foi movido para Pagamentos
+  "Comprovativo de pagamento de inscrição",
+] as const;
 
 /** ------- Helpers ------- */
 
@@ -86,7 +85,6 @@ export function displayFileName(r: Pick<DocumentoRow, "nome" | "file_path">): st
   return last || "ficheiro";
 }
 
-/** batelada de URLs assinadas no bucket indicado */
 async function attachSignedUrls<T extends { signedUrl?: string }>(
   bucket: "documentos" | "pagamentos",
   rows: (T & { [k: string]: any })[],
@@ -103,7 +101,6 @@ async function attachSignedUrls<T extends { signedUrl?: string }>(
   return out as T[];
 }
 
-/** Cast seguro via unknown (evita TS2352 por GenericStringError) */
 function asType<T>(v: any): T {
   return v as unknown as T;
 }
@@ -114,7 +111,7 @@ export async function listAtletasAdmin(opts?: {
   search?: string;
   genero?: "Feminino" | "Masculino" | "";
   escalao?: string | "";
-  tipoSocio?: string | ""; // filtro por tipo de sócio (via dados_pessoais)
+  tipoSocio?: string | "";
   sort?: "nome_asc" | "nome_desc" | "created_desc" | "created_asc";
 }): Promise<
   Array<{
@@ -131,10 +128,7 @@ export async function listAtletasAdmin(opts?: {
         "nome_pai,nome_mae,telefone_opc,email_opc,escola,ano_escolaridade,encarregado_educacao,parentesco_outro,observacoes"
     );
 
-  if (opts?.search) {
-    const s = opts.search.trim();
-    if (s) q = q.ilike("nome", `%${s}%`);
-  }
+  if (opts?.search?.trim()) q = q.ilike("nome", `%${opts.search.trim()}%`);
   if (opts?.genero) q = q.eq("genero", opts.genero);
   if (opts?.escalao) q = q.eq("escalao", opts.escalao);
 
@@ -150,8 +144,8 @@ export async function listAtletasAdmin(opts?: {
 
   const atletas = asType<AtletaRow[]>(data ?? []);
 
-  // Buscar titulares (dados_pessoais) para os user_id encontrados
-  const userIds = Array.from(new Set(atletas.map(a => a.user_id).filter(Boolean))) as string[];
+  // titulares
+  const userIds = Array.from(new Set(atletas.map((a) => a.user_id).filter(Boolean))) as string[];
   let titulares: TitularMinimal[] = [];
   if (userIds.length) {
     const { data: tdata, error: terr } = await supabase
@@ -165,7 +159,6 @@ export async function listAtletasAdmin(opts?: {
   const byUser = new Map<string, TitularMinimal>();
   for (const t of titulares) if (t.user_id) byUser.set(t.user_id, t);
 
-  // filtro por tipo de sócio (se pedido)
   const filtered = (opts?.tipoSocio && opts.tipoSocio !== "")
     ? atletas.filter(a => (a.user_id && (byUser.get(a.user_id)?.tipo_socio || "") === opts.tipoSocio))
     : atletas;
@@ -173,7 +166,7 @@ export async function listAtletasAdmin(opts?: {
   return filtered.map(a => ({ atleta: a, titular: a.user_id ? byUser.get(a.user_id) : undefined }));
 }
 
-/** Missing por atleta, numa única query (em lote) */
+/** Missing por atleta, em lote */
 export async function getMissingCountsForAtletas(atletaIds: string[]): Promise<Record<string, number>> {
   if (!atletaIds.length) return {};
   const { data, error } = await supabase
@@ -183,7 +176,12 @@ export async function getMissingCountsForAtletas(atletaIds: string[]): Promise<R
     .in("atleta_id", atletaIds);
   if (error) throw error;
 
-  const want = new Set<string>(DOCS_ATLETA as unknown as string[]);
+  const want = new Set<string>([
+    "Ficha de sócio de atleta",
+    "Ficha de jogador FPB",
+    "Ficha inscrição AAC",
+    "Exame médico",
+  ]);
   const byAth = new Map<string, Set<string>>();
   for (const r of asType<Array<{ atleta_id: string | null; doc_tipo: string }>>(data ?? [])) {
     if (!r.atleta_id) continue;
@@ -201,7 +199,7 @@ export async function getMissingCountsForAtletas(atletaIds: string[]): Promise<R
   return out;
 }
 
-/** Documentos (com URLs) por atleta */
+/** Documentos com URLs por atleta */
 export async function listDocsByAtleta(userId: string, atletaId: string) {
   const { data, error } = await supabase
     .from("documentos")
@@ -211,18 +209,18 @@ export async function listDocsByAtleta(userId: string, atletaId: string) {
     .eq("atleta_id", atletaId)
     .order("doc_tipo", { ascending: true })
     .order("page", { ascending: true });
-
   if (error) throw error;
   const rows = asType<DocumentoRow[]>(data ?? []);
   return attachSignedUrls<DocumentoRow>("documentos", rows, "file_path");
 }
 
-/** Pagamentos (com URLs) por atleta */
+/** Pagamentos com URLs por atleta */
 export async function listPagamentosByAtleta(atletaId: string) {
   const { data, error } = await supabase
     .from("pagamentos")
     .select("id,atleta_id,descricao,comprovativo_url,created_at")
     .eq("atleta_id", atletaId)
+    .order("devido_em", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: false });
   if (error) throw error;
   const rows = asType<PagamentoRow[]>(data ?? []);
