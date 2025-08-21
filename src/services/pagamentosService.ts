@@ -10,16 +10,22 @@ export type PagamentoRow = {
   tipo: "inscricao" | "quota";
   descricao: string;                 // único por atleta (ux_pagamentos_atleta_descricao)
   comprovativo_url: string | null;
-  validado: boolean | null;
+  validado: boolean;                 // NOT NULL (false = pendente)
   devido_em: string | null;          // 'YYYY-MM-DD'
   created_at: string | null;
 };
 
 export type PagamentoRowWithUrl = PagamentoRow & { signedUrl?: string | null };
 
-/* ======================= Utils locais ======================= */
+/* ======================= Utils de datas ======================= */
 
-// Dia 8 de setembro do ano corrente
+// 30 de setembro do ano corrente
+function sep30OfCurrentYear(): string {
+  const y = new Date().getFullYear();
+  return `${y}-09-30`;
+}
+
+// 8 de setembro — mantido só se precisares noutros contextos
 function sep8OfCurrentYear(): string {
   const y = new Date().getFullYear();
   return `${y}-09-08`;
@@ -40,6 +46,8 @@ function isAnuidadeObrigatoria(escalao?: string | null) {
   );
 }
 
+/* ======================= Rótulos / slots / prazos ======================= */
+
 export function getSlotsForPlano(p: PlanoPagamento) {
   return p === "Mensal" ? 10 : p === "Trimestral" ? 3 : 1;
 }
@@ -50,28 +58,37 @@ export function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
   return `Pagamento - ${idx + 1}º Mês`;
 }
 
-// Datas-limite por plano (usamos as mesmas que a UI mostra)
+// Datas-limite por plano.
+// Regras pedidas: primeiro pagamento a 30/09; restantes mantêm (08 de cada mês / 08 Jan / 08 Abr).
 function buildDueDates(plano: PlanoPagamento): string[] {
   const now = new Date();
   const year = now.getFullYear();
+
   if (plano === "Anual") {
-    return [sep8OfCurrentYear()];
+    return [sep30OfCurrentYear()];
   }
+
   if (plano === "Trimestral") {
-    // 1º: 8 Set (ano corrente), 2º: 15 Jan (ano seguinte), 3º: 15 Abr (ano seguinte)
-    return [
-      `${year}-09-08`,
-      `${year + 1}-01-15`,
-      `${year + 1}-04-15`,
-    ];
+    // 1º: 30 Set (ano corrente), 2º: 08 Jan (ano seguinte), 3º: 08 Abr (ano seguinte)
+    return [`${year}-09-30`, `${year + 1}-01-08`, `${year + 1}-04-08`];
   }
-  // Mensal: 10 meses de Setembro a Junho (dia 10)
+
+  // Mensal: 10 meses de Setembro a Junho; o 1.º vence a 30/09
   const out: string[] = [];
-  // set/ano -> jun/(ano+1)
-  for (let i = 0; i < 10; i++) {
-    const d = new Date(year, 8 + i, 10); // mês 8 = setembro
-    out.push(fmt(d));
-  }
+  out.push(`${year}-09-30`); // Setembro
+  // Outubro a Junho → dia 08
+  const monthlyDays = [
+    { y: year, m: 9, d: 08 },   // Out
+    { y: year, m: 10, d: 08 },  // Nov
+    { y: year, m: 11, d: 08 },  // Dez
+    { y: year + 1, m: 0, d: 08 }, // Jan
+    { y: year + 1, m: 1, d: 08 },  // Fev
+    { y: year + 1, m: 2, d: 08 },  // Mar
+    { y: year + 1, m: 3, d: 08 },  // Abr
+    { y: year + 1, m: 4, d: 08 },  // Mai
+    { y: year + 1, m: 5, d: 08 },  // Jun
+  ];
+  for (const x of monthlyDays) out.push(fmt(new Date(x.y, x.m, x.d)));
   return out;
 }
 
@@ -120,7 +137,7 @@ export async function saveComprovativo(params: {
   const up = await supabase.storage.from("pagamentos").upload(path, params.file, { upsert: false });
   if (up.error) throw up.error;
 
-  // 2) atualizar a linha
+  // 2) atualizar a linha (validado permanece false até validação de admin)
   const { error } = await supabase
     .from("pagamentos")
     .update({ comprovativo_url: path, validado: false })
@@ -147,17 +164,17 @@ export async function saveComprovativoSocioInscricao(userId: string, file: File)
 
 export async function createInscricaoSocioIfMissing(userId: string) {
   // cria (se não existir) a linha "inscricao" do sócio
-  const due = sep8OfCurrentYear();
+  const due = sep30OfCurrentYear(); // 30/09 (pedido)
   const row = {
     user_id: userId,
     atleta_id: null,
-    tipo: "inscricao",
+    tipo: "inscricao" as const,
     descricao: "Inscrição de Sócio",
     comprovativo_url: null,
-    validado: null,
+    validado: false,   // NOT NULL
     devido_em: due,
   };
-  // upsert por (user_id, atleta_id, tipo, descricao) — na prática, atleta_id é null
+  // upsert por (user_id, atleta_id, descricao)
   const { error } = await supabase
     .from("pagamentos")
     .upsert(row, { onConflict: "user_id,atleta_id,descricao" });
@@ -175,6 +192,18 @@ export async function listSocioInscricao(userId: string): Promise<PagamentoRow[]
     .limit(1);
   if (error) throw error;
   return (data || []) as PagamentoRow[];
+}
+
+/* ======================= Ajustes (inscrição atleta, se existir) ======================= */
+
+// Se já existir uma inscrição do atleta, força a data-limite para 30/09 do ano corrente.
+async function bumpAtletaInscricaoToSep30(atletaId: string) {
+  const { error } = await supabase
+    .from("pagamentos")
+    .update({ devido_em: sep30OfCurrentYear() })
+    .eq("atleta_id", atletaId)
+    .eq("tipo", "inscricao");
+  if (error) throw error;
 }
 
 /* ======================= Schedule do atleta (idempotente) ======================= */
@@ -198,15 +227,15 @@ export async function ensureScheduleForAtleta(
     if (delErr) throw delErr;
   }
 
-  // upsert — evita violar ux_pagamentos_atleta_descricao
+  // upsert — evita violar ux_pagamentos_atleta_descricao e atualiza devido_em
   const rows = labels.map((descricao, i) => ({
-    user_id: null as any, // preenchido por trigger/row level security, se aplicável
+    user_id: null as any, // pode ser populado por trigger; deixamos null aqui se a coluna permitir
     atleta_id: atleta.id,
     tipo: "quota" as const,
     descricao,
     comprovativo_url: null,
-    validado: null,
-    devido_em: dues[i] || null,
+    validado: false,              // NOT NULL (pendente)
+    devido_em: dues[i] || null,   // 30/09 para o primeiro, restantes conforme a regra
   }));
 
   const { error } = await supabase
@@ -214,5 +243,6 @@ export async function ensureScheduleForAtleta(
     .upsert(rows, { onConflict: "atleta_id,descricao" });
   if (error) throw error;
 
-  // Nota: a inscrição do atleta (tipo='inscricao') é gerida no fluxo de Admin/lançamento.
+  // Se existir inscrição do atleta, alinhar a data-limite para 30/09
+  await bumpAtletaInscricaoToSep30(atleta.id);
 }
