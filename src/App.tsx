@@ -20,6 +20,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
 import { ensureScheduleForAtleta } from "./services/pagamentosService";
+import { estimateCosts, eur, socioInscricaoAmount } from "./utils/pricing";
+import { createInscricaoSocioIfMissing, listSocioInscricao, saveComprovativoSocioInscricao } from "./services/pagamentosService";
 
 // Ícones
 import {
@@ -856,63 +858,11 @@ function DadosPessoaisSection({
 
 /* ---------------------------- PagamentosSection --------------------------- */
 
-function getSlotsForPlano(p: PlanoPagamento) {
-  if (p === "Mensal") return 10;
-  if (p === "Trimestral") return 3;
-  return 1;
-}
-function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
-  if (plano === "Anual") return "Pagamento da anuidade";
-  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
-  return `Pagamento - ${idx + 1}º Mês`;
-}
-function isAnuidadeObrigatoria(escalao: string | undefined) {
-  if (!escalao) return false;
-  const s = escalao.toLowerCase();
-  return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
-}
-
-type SocioRow = {
-  id: string;
-  descricao: string;
-  tipo: string | null;
-  comprovativo_url: string | null;
-  validado: boolean | null;
-  devido_em: string | null;
-  created_at: string | null;
-  signedUrl?: string;
-};
-
-async function getSocioInscricao(userId: string): Promise<SocioRow | null> {
-  const { data, error } = await supabase
-    .from("pagamentos")
-    .select("id,descricao,tipo,comprovativo_url,validado,devido_em,created_at")
-    .is("atleta_id", null)
-    .eq("user_id", userId)
-    .eq("tipo", "socio_inscricao")
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  if (error) throw error;
-  const row = (data || [])[0];
-  if (!row) return null;
-
-  if (row.comprovativo_url) {
-    const { data: u, error: e2 } = await supabase.storage
-      .from("pagamentos")
-      .createSignedUrl(row.comprovativo_url, 3600);
-    if (!e2 && u?.signedUrl) (row as any).signedUrl = u.signedUrl;
-  }
-  return row as SocioRow;
-}
-
 function PagamentosSection({ state }: { state: State }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
-  const [socioRow, setSocioRow] = useState<SocioRow | null>(null);
+  const [socioRows, setSocioRows] = useState<PagamentoRowWithUrl[]>([]);
   const [busy, setBusy] = useState(false);
-
-  const showSocioArea = isTipoSocio(state.perfil?.tipoSocio);
 
   useEffect(() => {
     let mounted = true;
@@ -930,31 +880,26 @@ function PagamentosSection({ state }: { state: State }) {
     };
   }, []);
 
+  const isSocio = (t?: string | null) => !!t && !/não\s*pretendo/i.test(t);
+
   const refreshPayments = useCallback(async () => {
     if (!userId) return;
 
-    // Sócio — inscrição
-    if (showSocioArea) {
-      try {
-        setSocioRow(await getSocioInscricao(userId));
-      } catch (e) {
-        console.error("[Socio inscr fetch]", e);
-        setSocioRow(null);
-      }
+    // Sócio — garantir linha e listar
+    if (isSocio(state.perfil?.tipoSocio)) {
+      await createInscricaoSocioIfMissing(userId);
+      const socio = await listSocioInscricao(userId);
+      setSocioRows(await withSignedUrlsPagamentos(socio));
     } else {
-      setSocioRow(null);
+      setSocioRows([]);
     }
 
     // Atletas
     const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
     for (const a of state.atletas) {
       const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-
-      const registrationLabel = "Inscrição de Atleta";
-      const slotsPlano = getSlotsForPlano(planoEfetivo);
-      const planLabels = Array.from({ length: slotsPlano }, (_, i) => getPagamentoLabel(planoEfetivo, i));
-      const labels = [registrationLabel, ...planLabels];
-
+      const slots = getSlotsForPlano(planoEfetivo);
+      const labels = Array.from({ length: slots }, (_, i) => getPagamentoLabel(planoEfetivo, i));
       const rows = await listPagamentosByAtleta(a.id);
       const rowsWithUrl = await withSignedUrlsPagamentos(rows);
 
@@ -973,53 +918,45 @@ function PagamentosSection({ state }: { state: State }) {
       });
     }
     setPayments(next);
-  }, [userId, state.atletas, showSocioArea]);
+  }, [userId, state.atletas, state.perfil?.tipoSocio]);
 
-  useEffect(() => {
-    refreshPayments();
-  }, [refreshPayments]);
+  useEffect(() => { refreshPayments(); }, [refreshPayments]);
 
   useEffect(() => {
     const channel = supabase
       .channel("rt-pagamentos")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pagamentos" },
-        (payload) => {
-          const newAth = (payload as any)?.new?.atleta_id;
-          const oldAth = (payload as any)?.old?.atleta_id;
-          const ids = new Set(state.atletas.map((a) => a.id));
-          if (ids.has(newAth) || ids.has(oldAth) || (!newAth && !oldAth)) refreshPayments();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "pagamentos" }, (payload) => {
+        const newAth = (payload as any)?.new?.atleta_id;
+        const oldAth = (payload as any)?.old?.atleta_id;
+        const ids = new Set(state.atletas.map((a) => a.id));
+        if (ids.has(newAth) || ids.has(oldAth)) refreshPayments();
+        if (!newAth && !oldAth) refreshPayments(); // socio
+      })
       .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [state.atletas, refreshPayments]);
 
+  function isOverdue(row: PagamentoRowWithUrl | null): boolean {
+    if (!row || row.validado) return false;
+    if (!row.devido_em) return false;
+    // considerar fim do dia limite
+    const dt = new Date(row.devido_em + "T23:59:59");
+    const now = new Date();
+    return now.getTime() > dt.getTime();
+  }
+
   async function handleUpload(athlete: Atleta, idx: number, file: File) {
-    if (!userId || !file) {
-      alert("Sessão ou ficheiro em falta");
-      return;
-    }
+    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
     setBusy(true);
     try {
       const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
-      const registrationLabel = "Inscrição de Atleta";
-      const slotsPlano = getSlotsForPlano(planoEfetivo);
-      const planLabels = Array.from({ length: slotsPlano }, (_, i) => getPagamentoLabel(planoEfetivo, i));
-      const labels = [registrationLabel, ...planLabels];
-
-      const label = labels[idx];
+      const label = getPagamentoLabel(planoEfetivo, idx);
       await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file });
       await refreshPayments();
     } catch (e: any) {
       console.error("[Pagamentos] upload/replace", e);
       alert(e?.message || "Falha no upload");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   async function handleDelete(athlete: Atleta, idx: number) {
@@ -1033,81 +970,31 @@ function PagamentosSection({ state }: { state: State }) {
     } catch (e: any) {
       console.error("[Pagamentos] delete", e);
       alert(e?.message || "Falha a remover");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
-  // Sócio — upload/remover
   async function handleUploadSocio(file: File) {
-    if (!userId || !file) {
-      alert("Sessão ou ficheiro em falta");
-      return;
-    }
+    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
     setBusy(true);
     try {
-      // Se existir linha, atualiza; senão cria
-      let row = await getSocioInscricao(userId);
-      let pagamentoId: string | null = row?.id ?? null;
-
-      if (!row) {
-        const insert = await supabase
-          .from("pagamentos")
-          .insert({
-            user_id: userId,
-            atleta_id: null,
-            tipo: "socio_inscricao",
-            descricao: "Inscrição de Sócio",
-            validado: false,
-          })
-          .select("id")
-          .single();
-        if (insert.error) throw insert.error;
-        pagamentoId = insert.data.id as string;
-      }
-
-      const path = `${userId}/socio/inscricao/${Date.now()}_${file.name}`;
-      const up = await supabase.storage.from("pagamentos").upload(path, file, { upsert: false });
-      if (up.error) throw up.error;
-
-      const upd = await supabase
-        .from("pagamentos")
-        .update({ comprovativo_url: path, validado: false })
-        .eq("id", pagamentoId!);
-      if (upd.error) throw upd.error;
-
+      await saveComprovativoSocioInscricao(userId, file);
       await refreshPayments();
     } catch (e: any) {
-      console.error("[Socio] upload", e);
-      alert(e?.message || "Falha no upload do comprovativo de sócio");
-    } finally {
-      setBusy(false);
-    }
+      console.error("[Pagamentos] socio upload", e);
+      alert(e?.message || "Falha no upload");
+    } finally { setBusy(false); }
   }
 
-  async function handleDeleteSocio() {
-    if (!socioRow) return;
-    if (!confirm("Remover o comprovativo de inscrição de sócio?")) return;
-    setBusy(true);
-    try {
-      // apagar ficheiro no storage (best effort)
-      if (socioRow.comprovativo_url) {
-        await supabase.storage.from("pagamentos").remove([socioRow.comprovativo_url]).catch(() => {});
-      }
-      // limpar caminho na linha
-      const upd = await supabase
-        .from("pagamentos")
-        .update({ comprovativo_url: null, validado: false })
-        .eq("id", socioRow.id);
-      if (upd.error) throw upd.error;
+  // helpers de valor
+  const numAtletasAgregado = state.atletas.filter(a => !isAnuidadeObrigatoria(a.escalao)).length;
 
-      await refreshPayments();
-    } catch (e: any) {
-      console.error("[Socio] delete", e);
-      alert(e?.message || "Falha ao remover comprovativo");
-    } finally {
-      setBusy(false);
-    }
+  if (state.atletas.length === 0 && !isSocio(state.perfil?.tipoSocio)) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Situação de Tesouraria</CardTitle></CardHeader>
+        <CardContent><p className="text-sm text-gray-500">Crie primeiro um atleta ou ative a opção de sócio.</p></CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -1118,134 +1005,139 @@ function PagamentosSection({ state }: { state: State }) {
           {busy && <RefreshCw className="h-4 w-4 animate-spin" />}
         </CardTitle>
       </CardHeader>
+
       <CardContent className="space-y-6">
-        {/* Sócio — Inscrição */}
-        {showSocioArea && (
+
+        {/* ===== Sócio: Inscrição ===== */}
+        {isSocio(state.perfil?.tipoSocio) && (
           <div className="border rounded-xl p-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="font-medium">Sócio — Inscrição</div>
-              <div className="text-xs text-gray-500">Comprovativo único</div>
+              <div className="font-medium">Inscrição de Sócio</div>
+              <div className="text-xs text-gray-500">
+                {eur(socioInscricaoAmount(state.perfil?.tipoSocio))}
+              </div>
             </div>
-            <div className="border rounded-lg p-3 flex items-center justify-between">
-              <div>
-                <div className="font-medium">Inscrição de Sócio</div>
-                <div className="text-xs text-gray-500">
-                  {socioRow && socioRow.comprovativo_url ? (
-                    <span className="inline-flex items-center gap-2">
-                      Comprovativo carregado
-                      {socioRow.signedUrl && (
-                        <a className="underline inline-flex items-center gap-1" href={socioRow.signedUrl} target="_blank" rel="noreferrer">
-                          <LinkIcon className="h-3 w-3" />
-                          Abrir
-                        </a>
-                      )}
-                    </span>
-                  ) : (
-                    "Comprovativo em falta"
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <FilePickerButton
-                  variant={socioRow && socioRow.comprovativo_url ? "secondary" : "outline"}
-                  accept="image/*,application/pdf"
-                  onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
-                >
-                  <Upload className="h-4 w-4 mr-1" />
-                  {socioRow && socioRow.comprovativo_url ? "Substituir" : "Carregar"}
-                </FilePickerButton>
-                {socioRow && socioRow.comprovativo_url && (
-                  <Button variant="destructive" onClick={handleDeleteSocio}>
-                    <Trash2 className="h-4 w-4 mr-1" /> Remover
-                  </Button>
-                )}
-              </div>
+            <div className="grid gap-3">
+              {(() => {
+                const row = socioRows[0] || null;
+                const overdue = isOverdue(row);
+                return (
+                  <div className="border rounded-lg p-3 flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">
+                        Comprovativo {row?.validado ? "validado" : row?.comprovativo_url ? (overdue ? "— pendente (em atraso)" : "— pendente") : "em falta"}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {row?.devido_em ? `Data limite: ${row.devido_em}` : "Sem data limite"}
+                        {row?.signedUrl && (
+                          <a className="underline inline-flex items-center gap-1 ml-2" href={row.signedUrl} target="_blank" rel="noreferrer">
+                            <LinkIcon className="h-3 w-3" /> Abrir
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FilePickerButton
+                        variant={row?.comprovativo_url ? "secondary" : "outline"}
+                        accept="image/*,application/pdf"
+                        onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        {row?.comprovativo_url ? "Substituir" : "Carregar"}
+                      </FilePickerButton>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
 
-        {/* Atletas */}
-        {state.atletas.length === 0 ? (
-          <p className="text-sm text-gray-500">Crie primeiro um atleta.</p>
-        ) : (
-          state.atletas.map((a) => {
-            const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-            const slotsPlano = getSlotsForPlano(planoEfetivo);
-            const registrationLabel = "Inscrição de Atleta";
-            const planLabels = Array.from({ length: slotsPlano }, (_, i) => getPagamentoLabel(planoEfetivo, i));
-            const labels = [registrationLabel, ...planLabels];
+        {/* ===== Atletas ===== */}
+        {state.atletas.map((a) => {
+          const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
+          const slots = getSlotsForPlano(planoEfetivo);
+          const rows = payments[a.id] || Array.from({ length: slots }, () => null);
 
-            const rows = payments[a.id] || Array.from({ length: labels.length }, () => null);
+          // custos para este atleta
+          const est = estimateCosts({
+            escalao: a.escalao || "",
+            tipoSocio: state.perfil?.tipoSocio,
+            numAtletasAgregado: Math.max(1, numAtletasAgregado),
+          });
+          const amountForIdx = (idx: number) => {
+            if (planoEfetivo === "Mensal") return est.mensal10;
+            if (planoEfetivo === "Trimestral") return est.trimestre3;
+            return est.anual1;
+          };
 
-            return (
-              <div key={a.id} className="border rounded-xl p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium">Atleta — {a.nomeCompleto}</div>
-                  <div className="text-xs text-gray-500">
-                    Plano: {planoEfetivo}
-                    {isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {labels.length} comprovativo(s)
-                  </div>
+          return (
+            <div key={a.id} className="border rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-medium">Atleta — {a.nomeCompleto}</div>
+                <div className="text-xs text-gray-500">
+                  Plano: {planoEfetivo}
+                  {isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
                 </div>
+              </div>
 
-                <div className="grid md:grid-cols-2 gap-3">
-                  {labels.map((label, i) => {
-                    const meta = rows[i];
-                    const hasProof = !!(meta && meta.comprovativo_url && `${meta.comprovativo_url}`.trim() !== "");
-                    return (
-                      <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
-                        <div>
-                          <div className="font-medium">{label}</div>
-                          <div className="text-xs text-gray-500">
-                            {hasProof ? (
+              <div className="grid md:grid-cols-2 gap-3">
+                {Array.from({ length: slots }).map((_, i) => {
+                  const meta = rows[i];
+                  const label = getPagamentoLabel(planoEfetivo, i);
+                  const overdue = isOverdue(meta);
+
+                  return (
+                    <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{label} — {eur(amountForIdx(i))}</div>
+                        <div className="text-xs text-gray-500">
+                          {meta?.comprovativo_url
+                            ? (
                               <span className="inline-flex items-center gap-2">
-                                Comprovativo carregado
-                                {meta?.signedUrl && (
-                                  <a
-                                    className="underline inline-flex items-center gap-1"
-                                    href={meta.signedUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    <LinkIcon className="h-3 w-3" />
-                                    Abrir
+                                {meta.validado ? "Validado" : (overdue ? "Pendente (em atraso)" : "Pendente")}
+                                {meta.signedUrl && (
+                                  <a className="underline inline-flex items-center gap-1" href={meta.signedUrl} target="_blank" rel="noreferrer">
+                                    <LinkIcon className="h-3 w-3" /> Abrir
                                   </a>
                                 )}
                               </span>
-                            ) : (
-                              "Comprovativo em falta"
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <FilePickerButton
-                            variant={hasProof ? "secondary" : "outline"}
-                            accept="image/*,application/pdf"
-                            onFiles={(files) => files?.[0] && handleUpload(a, i, files[0])}
-                          >
-                            <Upload className="h-4 w-4 mr-1" />
-                            {hasProof ? "Substituir" : "Carregar"}
-                          </FilePickerButton>
-
-                          {hasProof && (
-                            <Button variant="destructive" onClick={() => handleDelete(a, i)}>
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Remover
-                            </Button>
-                          )}
+                            )
+                            : (overdue ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")
+                          }
+                          {meta?.devido_em && <span className="ml-2">· Limite: {meta.devido_em}</span>}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      <div className="flex items-center gap-2">
+                        <FilePickerButton
+                          variant={meta?.comprovativo_url ? "secondary" : "outline"}
+                          accept="image/*,application/pdf"
+                          onFiles={(files) => files?.[0] && handleUpload(a, i, files[0])}
+                        >
+                          <Upload className="h-4 w-4 mr-1" />
+                          {meta?.comprovativo_url ? "Substituir" : "Carregar"}
+                        </FilePickerButton>
+
+                        {meta?.comprovativo_url && (
+                          <Button variant="destructive" onClick={() => handleDelete(a, i)}>
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remover
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })
-        )}
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );
 }
+
 
 /* ----------------------------- AtletasSection ----------------------------- */
 
