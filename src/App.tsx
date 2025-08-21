@@ -19,8 +19,16 @@ import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
-import { ensureScheduleForAtleta } from "./services/pagamentosService";
-import { estimateCosts, eur } from "./utils/pricing";
+
+// Pagamentos
+import {
+  ensureScheduleForAtleta,
+  listByAtleta as listPagamentosByAtleta,
+  saveComprovativo as saveComprovativoPagamento,
+  deletePagamento,
+  withSignedUrls as withSignedUrlsPagamentos,
+  type PagamentoRowWithUrl,
+} from "./services/pagamentosService";
 
 // Ícones
 import {
@@ -49,6 +57,7 @@ import type { Atleta, PlanoPagamento } from "./types/Atleta";
 
 // Utils
 import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
+import { estimateCosts, eur } from "./utils/pricing";
 
 // Componentes
 import AtletaFormCompleto from "./components/AtletaFormCompleto";
@@ -58,22 +67,13 @@ import FilePickerButton from "./components/FilePickerButton";
 // Supabase
 import { supabase } from "./supabaseClient";
 
-// Pagamentos (tabela/bucket dedicados)
-import {
-  listByAtleta as listPagamentosByAtleta,
-  saveComprovativo as saveComprovativoPagamento,
-  deletePagamento,
-  withSignedUrls as withSignedUrlsPagamentos,
-  type PagamentoRowWithUrl,
-} from "./services/pagamentosService";
-
 /* -------------------- Constantes locais -------------------- */
+// ATENÇÃO: retirado o "Comprovativo de pagamento de inscrição" (passou para Pagamentos)
 const DOCS_ATLETA = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
   "Ficha inscrição AAC",
   "Exame médico",
-  "Comprovativo de pagamento de inscrição",
 ] as const;
 
 const DOCS_SOCIO = ["Ficha de Sócio", "Comprovativo de pagamento de sócio"] as const;
@@ -146,6 +146,12 @@ function isFutureISODate(s: string): boolean {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return d.getTime() > today.getTime();
+}
+
+function isAnuidadeObrigatoria(escalao?: string) {
+  if (!escalao) return false;
+  const s = escalao.toLowerCase();
+  return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores");
 }
 
 /* -------------------- Persistência local -------------------- */
@@ -474,10 +480,6 @@ function DadosPessoaisSection({
   const [socioMissingCount, setSocioMissingCount] = useState<number>(DOCS_SOCIO.length);
   const [athMissingCount, setAthMissingCount] = useState<number>(state.atletas.length * DOCS_ATLETA.length);
 
-  // ===== Tesouraria (sócio + atletas) =====
-  const [socioPaid, setSocioPaid] = useState<boolean>(false);
-  const [athTreasury, setAthTreasury] = useState<Record<string, { status: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso"; amount: number }>>({});
-
   useEffect(() => {
     let mounted = true;
     const sub = supabase.auth.onAuthStateChange((_e, session) => {
@@ -538,84 +540,6 @@ function DadosPessoaisSection({
     fetchDocCounters().catch((e) => console.error("[fetchDocCounters]", e));
   }, [userId, state.atletas.map((a) => a.id).join(",")]);
 
-  // -- Tesouraria: status do sócio + por atleta (usa tabela pagamentos.devido_em/comprovativo/validado)
-  useEffect(() => {
-    async function run() {
-      if (!userId) { setSocioPaid(false); setAthTreasury({}); return; }
-
-      try {
-        // Sócio: presença do comprovativo de pagamento de sócio nos documentos
-        const { data: socioDocs } = await supabase
-          .from("documentos")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("doc_nivel", "socio")
-          .eq("doc_tipo", "Comprovativo de pagamento de sócio")
-          .limit(1);
-        setSocioPaid(!!(socioDocs && socioDocs.length > 0));
-      } catch {
-        setSocioPaid(false);
-      }
-
-      // Atletas: construir mapa de pagamentos por atleta
-      const athleteIds = state.atletas.map((a) => a.id);
-      if (athleteIds.length === 0) { setAthTreasury({}); return; }
-
-      // nº de atletas no agregado para desconto PRO (exclui masters/sub-23)
-      const numElegiveis = state.atletas.filter((a) => !isAnuidadeObrigatoria(a.escalao)).length || 1;
-      const tipoSocio = state.perfil?.tipoSocio;
-
-      try {
-        const { data } = await supabase
-          .from("pagamentos")
-          .select("id, atleta_id, descricao, devido_em, comprovativo_url, validado")
-          .in("atleta_id", athleteIds);
-
-        const byAth: Record<string, any[]> = {};
-        for (const r of (data || [])) {
-          const id = r.atleta_id;
-          if (!id) continue;
-          (byAth[id] ||= []).push(r);
-        }
-
-        const today = new Date(); today.setHours(0,0,0,0);
-
-        const out: Record<string, { status: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso"; amount: number }> = {};
-        for (const a of state.atletas) {
-          const planoEfetivo: PlanoPagamento = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-          const est = estimateCosts({ escalao: a.escalao || "", tipoSocio, numAtletasAgregado: numElegiveis });
-          const slotValue = planoEfetivo === "Mensal" ? est.mensal10 : (planoEfetivo === "Trimestral" ? est.trimestre3 : est.anual1);
-
-          const rows = (byAth[a.id] || []).slice().sort((x,y) => {
-            const dx = x.devido_em ? new Date(x.devido_em).getTime() : Number.MAX_SAFE_INTEGER;
-            const dy = y.devido_em ? new Date(y.devido_em).getTime() : Number.MAX_SAFE_INTEGER;
-            return dx - dy;
-          });
-
-          // primeira parcela ainda não validada
-          const firstOpen = rows.find((r) => !r.validado);
-
-          if (!firstOpen) {
-            out[a.id] = { status: "Regularizado", amount: 0 };
-          } else if (firstOpen.comprovativo_url) {
-            out[a.id] = { status: "Pendente de validação", amount: 0 };
-          } else {
-            const due = firstOpen.devido_em ? new Date(firstOpen.devido_em) : null;
-            const late = !!(due && due.getTime() < today.getTime());
-            out[a.id] = { status: late ? "Em atraso" : "Por regularizar", amount: slotValue || 0 };
-          }
-        }
-
-        setAthTreasury(out);
-      } catch (e) {
-        console.error("[Tesouraria] Falha a obter pagamentos:", e);
-        setAthTreasury({});
-      }
-    }
-
-    run();
-  }, [userId, state.atletas.map(a=>a.id).join(","), state.atletas.map(a=>a.planoPagamento).join(","), state.atletas.map(a=>a.escalao).join(","), state.perfil?.tipoSocio]);
-
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
     const errs: string[] = [];
@@ -667,12 +591,13 @@ function DadosPessoaisSection({
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm">Situação de Tesouraria:</div>
+              <div className="text-sm">Situação de Tesouraria (Sócio):</div>
               <div className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-800">
                 {state.tesouraria || "Campo em atualização"}
               </div>
             </div>
           </div>
+
           <div className="mt-2 flex gap-3 text-sm">
             <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
               <FileUp className="h-3 w-3" /> Sócio: {socioMissing} documento(s) em falta
@@ -681,6 +606,17 @@ function DadosPessoaisSection({
               <FileUp className="h-3 w-3" /> Atletas: {missingAthDocs} documento(s) em falta
             </div>
           </div>
+
+          <TesourariaResumoAtletas
+            atletas={state.atletas}
+            tipoSocio={state.perfil?.tipoSocio || null}
+            onIrPagamentos={() => {
+              // trocar para a tab “pag”
+              const el = document.querySelector<HTMLButtonElement>('[data-tab-trigger="pag"]');
+              el?.click();
+            }}
+          />
+
           <div className="mt-3">
             <Button variant="outline" onClick={() => setEditMode(true)}>
               <PencilLine className="h-4 w-4 mr-1" /> Editar dados
@@ -690,51 +626,9 @@ function DadosPessoaisSection({
 
         <Card>
           <CardHeader>
-            <CardTitle>Situação de Tesouraria</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium">Sócio (inscrição)</div>
-              <StatusChip label={socioPaid ? "Regularizado" : "Por regularizar"} />
-            </div>
-
-            {state.atletas.length > 0 ? (
-              <div className="space-y-2">
-                {state.atletas.map((a) => {
-                  const info = athTreasury[a.id];
-                  const label: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso" = info?.status || "Por regularizar";
-                  const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-                  return (
-                    <div key={a.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{a.nomeCompleto}</div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {a.escalao || "—"} · {planoEfetivo === "Anual" ? "Anual (obrigatório)" : `Plano: ${planoEfetivo}`}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <StatusChip label={label} />
-                        {info && info.amount > 0 && (
-                          <div className="text-sm">
-                            Valor: <span className="font-semibold">{eur(info.amount)}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">Sem atletas registados.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
             <CardTitle>Notícias da Secção de Basquetebol</CardTitle>
           </CardHeader>
-        <CardContent>
+          <CardContent>
             {state.noticias ? (
               <div className="prose prose-sm max-w-none">{state.noticias}</div>
             ) : (
@@ -861,22 +755,6 @@ function DadosPessoaisSection({
   );
 }
 
-/* ---------------------------- Tesouraria helpers --------------------------- */
-
-type StatusLabel = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
-
-function StatusChip({ label }: { label: StatusLabel }) {
-  const cls =
-    label === "Regularizado"
-      ? "bg-green-100 text-green-800"
-      : label === "Pendente de validação"
-      ? "bg-amber-100 text-amber-800"
-      : label === "Em atraso"
-      ? "bg-red-100 text-red-700"
-      : "bg-gray-100 text-gray-800";
-  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
-}
-
 /* ---------------------------- PagamentosSection --------------------------- */
 
 function getSlotsForPlano(p: PlanoPagamento) {
@@ -888,11 +766,6 @@ function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
   if (plano === "Anual") return "Pagamento da anuidade";
   if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
   return `Pagamento - ${idx + 1}º Mês`;
-}
-function isAnuidadeObrigatoria(escalao: string | undefined) {
-  if (!escalao) return false;
-  const s = escalao.toLowerCase();
-  return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
 }
 
 function PagamentosSection({ state }: { state: State }) {
@@ -1039,17 +912,16 @@ function PagamentosSection({ state }: { state: State }) {
               <div className="grid md:grid-cols-2 gap-3">
                 {Array.from({ length: slots }).map((_, i) => {
                   const meta = rows[i];
-                  const hasFile = !!(meta && (meta.comprovativo_url || meta.signedUrl));
                   const label = getPagamentoLabel(planoEfetivo, i);
                   return (
                     <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
                       <div>
                         <div className="font-medium">{label}</div>
                         <div className="text-xs text-gray-500">
-                          {hasFile ? (
+                          {meta && meta.comprovativo_url ? (
                             <span className="inline-flex items-center gap-2">
                               Comprovativo carregado
-                              {meta?.signedUrl && (
+                              {meta.signedUrl && (
                                 <a
                                   className="underline inline-flex items-center gap-1"
                                   href={meta.signedUrl}
@@ -1069,15 +941,15 @@ function PagamentosSection({ state }: { state: State }) {
 
                       <div className="flex items-center gap-2">
                         <FilePickerButton
-                          variant={hasFile ? "secondary" : "outline"}
+                          variant={meta && meta.comprovativo_url ? "secondary" : "outline"}
                           accept="image/*,application/pdf"
                           onFiles={(files) => handleUpload(a, i, files[0])}
                         >
                           <Upload className="h-4 w-4 mr-1" />
-                          {hasFile ? "Substituir" : "Carregar"}
+                          {meta && meta.comprovativo_url ? "Substituir" : "Carregar"}
                         </FilePickerButton>
 
-                        {hasFile && (
+                        {meta && meta.comprovativo_url && (
                           <Button variant="destructive" onClick={() => handleDelete(a, i)}>
                             <Trash2 className="h-4 w-4 mr-1" />
                             Remover
@@ -1179,12 +1051,6 @@ function AtletasSection({
     };
   }, [userId]); // eslint-disable-line
 
-  function isAnuidadeObrigatoria(escalao: string | undefined) {
-    if (!escalao) return false;
-    const s = escalao.toLowerCase();
-    return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
-  }
-
   async function remove(id: string) {
     if (!confirm("Remover o atleta?")) return;
     try {
@@ -1251,6 +1117,160 @@ function AtletasSection({
   );
 }
 
+/* ---------------------- Tesouraria (Home) — resumo ------------------------ */
+
+type AtletaResumo = {
+  id: string;
+  nome: string;
+  escalao?: string;
+  plano?: PlanoPagamento;
+  counts: { reg: number; pendVal: number; porReg: number; atraso: number };
+  emDivida: number; // €
+};
+
+function paymentStatus(r: PagamentoRowWithUrl): "REG" | "PVAL" | "PREG" | "ATR" {
+  if (r.validado) return "REG";
+  const hasFile = !!r.comprovativo_url;
+  const due = r.devido_em ? new Date(r.devido_em + "T00:00:00") : null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (hasFile) return "PVAL";
+  if (due && due.getTime() < today.getTime()) return "ATR";
+  return "PREG";
+}
+
+function labelEstado(code: "REG" | "PVAL" | "PREG" | "ATR") {
+  switch (code) {
+    case "REG": return "Regularizado";
+    case "PVAL": return "Pendente de validação";
+    case "PREG": return "Por regularizar";
+    case "ATR": return "Em atraso";
+  }
+}
+
+function chipClass(code: "REG" | "PVAL" | "PREG" | "ATR") {
+  switch (code) {
+    case "REG": return "bg-green-100 text-green-700";
+    case "PVAL": return "bg-blue-100 text-blue-700";
+    case "PREG": return "bg-gray-100 text-gray-700";
+    case "ATR": return "bg-red-100 text-red-700";
+  }
+}
+
+function TesourariaResumoAtletas({
+  atletas,
+  tipoSocio,
+  onIrPagamentos,
+}: {
+  atletas: Atleta[];
+  tipoSocio: string | null;
+  onIrPagamentos: () => void;
+}) {
+  const [rowsByAth, setRowsByAth] = useState<Record<string, PagamentoRowWithUrl[]>>({});
+
+  // backfill pagamentos (calendário) para atletas que já existam
+  useEffect(() => {
+    (async () => {
+      for (const a of atletas) {
+        try {
+          await ensureScheduleForAtleta({ id: a.id, escalao: a.escalao, planoPagamento: a.planoPagamento });
+        } catch (e) {
+          // silencioso
+        }
+      }
+    })();
+  }, [atletas.map((x) => x.id).join(",")]);
+
+  // carregar pagamentos por atleta
+  useEffect(() => {
+    (async () => {
+      const out: Record<string, PagamentoRowWithUrl[]> = {};
+      for (const a of atletas) {
+        try {
+          const rows = await listPagamentosByAtleta(a.id);
+          out[a.id] = rows;
+        } catch {
+          out[a.id] = [];
+        }
+      }
+      setRowsByAth(out);
+    })();
+  }, [atletas.map((x) => x.id).join(",")]);
+
+  // nº de atletas no agregado que contam para PRO2 (não SUB23/MASTERS)
+  const nProGroup = atletas.filter((a) => !isAnuidadeObrigatoria(a.escalao || "")).length;
+
+  const resumos: AtletaResumo[] = atletas.map((a) => {
+    const rows = rowsByAth[a.id] || [];
+    const obrigAnual = isAnuidadeObrigatoria(a.escalao || "");
+    const planoEfetivo: PlanoPagamento = obrigAnual ? "Anual" : a.planoPagamento;
+    const est = estimateCosts({
+      escalao: a.escalao || "",
+      tipoSocio: tipoSocio || undefined,
+      numAtletasAgregado: nProGroup || 1,
+    });
+
+    let reg = 0, pval = 0, preg = 0, atr = 0;
+    let emDivida = 0;
+
+    for (const r of rows) {
+      const st = paymentStatus(r);
+      if (st === "REG") reg++;
+      if (st === "PVAL") pval++;
+      if (st === "PREG") preg++;
+      if (st === "ATR") atr++;
+
+      if (st === "PREG" || st === "ATR") {
+        switch (r.tipo) {
+          case "mensalidade": emDivida += est.mensal10; break;
+          case "trimestre": emDivida += est.trimestre3; break;
+          case "anual": emDivida += est.anual1; break;
+          case "inscricao": emDivida += est.taxaInscricao; break;
+        }
+      }
+    }
+
+    return {
+      id: a.id,
+      nome: a.nomeCompleto,
+      escalao: a.escalao || undefined,
+      plano: planoEfetivo,
+      counts: { reg, pendVal: pval, porReg: preg, atraso: atr },
+      emDivida,
+    };
+  });
+
+  if (resumos.length === 0) return null;
+
+  return (
+    <div className="mt-3 border rounded-xl p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="font-medium">Situação de Tesouraria — Atletas</div>
+        <Button variant="outline" size="sm" onClick={onIrPagamentos}>Ir para Pagamentos</Button>
+      </div>
+      <div className="space-y-2">
+        {resumos.map((r) => (
+          <div key={r.id} className="flex flex-col md:flex-row md:items-center md:justify-between border rounded-lg p-2">
+            <div className="mb-2 md:mb-0">
+              <div className="font-medium">{r.nome}</div>
+              <div className="text-xs text-gray-500">
+                Escalão: {r.escalao || "—"} · Plano: {r.plano}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1 text-xs">
+              <span className={`px-2 py-0.5 rounded-full ${chipClass("REG")}`}>{labelEstado("REG")}: {r.counts.reg}</span>
+              <span className={`px-2 py-0.5 rounded-full ${chipClass("PVAL")}`}>{labelEstado("PVAL")}: {r.counts.pendVal}</span>
+              <span className={`px-2 py-0.5 rounded-full ${chipClass("PREG")}`}>{labelEstado("PREG")}: {r.counts.porReg}</span>
+              <span className={`px-2 py-0.5 rounded-full ${chipClass("ATR")}`}>{labelEstado("ATR")}: {r.counts.atraso}</span>
+              <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 ml-1">Em dívida: {eur(r.emDivida)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------------------- App ---------------------------------- */
 
 export default function App() {
@@ -1275,6 +1295,8 @@ export default function App() {
           conta: email ? { email } : prev.conta,
           perfil: perfilDb ?? prev.perfil,
           atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
+          tesouraria: perfilDb?.situacaoTesouraria ?? prev.tesouraria,
+          noticias: perfilDb?.noticias ?? prev.noticias,
         };
       });
     } catch (e) {
@@ -1317,9 +1339,8 @@ export default function App() {
     setAthModalOpen(true);
   };
 
-  // Guardar do formulário (modal global)
+  // Guardar do formulário (modal global) + (re)gerar calendário / inscrição
   const handleAthSave = async (novo: Atleta) => {
-    // valores anteriores (se estiveres a editar)
     const wasEditingId = athEditing?.id;
     const planoAntes = athEditing?.planoPagamento;
     const escalaoAntes = athEditing?.escalao;
@@ -1327,7 +1348,6 @@ export default function App() {
     try {
       const saved = await saveAtleta(novo); // usa o devolvido (id UUID real)
 
-      // Atualiza estado local
       const nextAtletas = wasEditingId
         ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x))
         : [saved, ...state.atletas];
@@ -1335,7 +1355,6 @@ export default function App() {
       setState((prev) => ({ ...prev, atletas: nextAtletas }));
       saveState({ ...state, atletas: nextAtletas });
 
-      // Gerar/ajustar calendário desta época
       const force =
         !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
@@ -1368,13 +1387,13 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Tabs não-controladas (defaultValue) + key para re-selecionar ao mudar activeTab */}
+            {/* Tabs não-controladas (defaultValue) + atributo data para “click programático” */}
             <Tabs key={activeTab} defaultValue={activeTab}>
               <TabsList>
                 <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
                 {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
                 {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
-                {hasPerfil && hasAtletas && <TabsTrigger value="pag">Pagamentos</TabsTrigger>}
+                {hasPerfil && hasAtletas && <TabsTrigger value="pag" data-tab-trigger="pag">Pagamentos</TabsTrigger>}
               </TabsList>
 
               <TabsContent value="home">

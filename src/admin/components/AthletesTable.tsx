@@ -4,7 +4,6 @@ import { Download, RefreshCw, Search, Users, Eye } from "lucide-react";
 import {
   listAtletasAdmin,
   getMissingCountsForAtletas,
-  getTesourariaForAtletas,   // ← NOVO
   AtletaRow,
   TitularMinimal,
 } from "../services/adminAtletasService";
@@ -14,14 +13,7 @@ type RowVM = {
   atleta: AtletaRow;
   titular?: TitularMinimal;
   missing?: number;
-  tesourariaAtleta?: string;    // ← estado vindo da view por atleta
 };
-
-type TesourariaStatus =
-  | "Regularizado"
-  | "Pendente de validação"
-  | "Por regularizar"
-  | "Em atraso";
 
 export default function AthletesTable() {
   const [rows, setRows] = useState<RowVM[]>([]);
@@ -36,7 +28,6 @@ export default function AthletesTable() {
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState<RowVM | null>(null);
 
-  // carregar listagem
   async function reload() {
     setLoading(true);
     try {
@@ -45,20 +36,8 @@ export default function AthletesTable() {
       setRows(vm);
 
       const ids = vm.map((r) => r.atleta.id);
-
-      // docs em falta (em lote)
       const miss = await getMissingCountsForAtletas(ids);
-
-      // tesouraria por atleta (em lote via view)
-      const tes = await getTesourariaForAtletas(ids);
-
-      setRows((prev) =>
-        prev.map((r) => ({
-          ...r,
-          missing: miss[r.atleta.id] ?? 0,
-          tesourariaAtleta: tes[r.atleta.id], // pode ser undefined se RLS bloquear; mostramos "—"
-        }))
-      );
+      setRows((prev) => prev.map((r) => ({ ...r, missing: miss[r.atleta.id] ?? 0 })));
     } finally {
       setLoading(false);
     }
@@ -86,8 +65,8 @@ export default function AthletesTable() {
       "TipoSócio",
       "EmailTitular",
       "TelefoneTitular",
+      "Tesouraria",
       "DocsEmFalta",
-      "Tesouraria",           // ← agora é por atleta
     ];
     const lines = [cols.join(";")];
     for (const r of rows) {
@@ -103,8 +82,8 @@ export default function AthletesTable() {
         t?.tipo_socio || "",
         t?.email || "",
         t?.telefone || "",
+        t?.situacao_tesouraria || "",
         (r.missing ?? "").toString(),
-        r.tesourariaAtleta || "", // ← aqui
       ]
         .map((v) => (v ?? "").toString().replace(/;/g, ","))
         .join(";");
@@ -187,8 +166,8 @@ export default function AthletesTable() {
               <Th>Escalão</Th>
               <Th>Opção pagamento</Th>
               <Th>Tipo de sócio</Th>
-              <Th>Docs em falta</Th>
               <Th>Tesouraria</Th>
+              <Th>Docs em falta</Th>
               <Th>Ações</Th>
             </tr>
           </thead>
@@ -200,8 +179,8 @@ export default function AthletesTable() {
                 <Td>{r.atleta.escalao || "—"}</Td>
                 <Td>{r.atleta.opcao_pagamento || "—"}</Td>
                 <Td>{r.titular?.tipo_socio || "—"}</Td>
+                <Td>{r.titular?.situacao_tesouraria || "—"}</Td>
                 <Td>{r.missing ?? "—"}</Td>
-                <Td><TesourariaBadge value={r.tesourariaAtleta} /></Td>
                 <Td>
                   <button
                     className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
@@ -243,21 +222,4 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 function Td({ children }: { children: React.ReactNode }) {
   return <td className="px-3 py-2">{children}</td>;
-}
-
-function TesourariaBadge({ value }: { value?: string }) {
-  const v = (value || "").trim() as TesourariaStatus | "";
-  const map: Record<TesourariaStatus, string> = {
-    "Regularizado": "bg-green-100 text-green-800",
-    "Pendente de validação": "bg-yellow-100 text-yellow-800",
-    "Por regularizar": "bg-gray-100 text-gray-800",
-    "Em atraso": "bg-red-100 text-red-800",
-  };
-  if (!v) return <span className="text-xs text-gray-500">—</span>;
-  const cls = map[v as TesourariaStatus] || "bg-gray-100 text-gray-800";
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {v}
-    </span>
-  );
 }

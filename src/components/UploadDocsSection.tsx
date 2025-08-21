@@ -33,12 +33,13 @@ type Props = {
 };
 
 const DOCS_SOCIO = ['Ficha de Sócio', 'Comprovativo de pagamento de sócio'] as const;
+
+// ⚠️ Removido: "Comprovativo de pagamento de inscrição" (agora em Pagamentos)
 const DOCS_ATLETA = [
   'Ficha de sócio de atleta',
   'Ficha de jogador FPB',
   'Ficha inscrição AAC',
   'Exame médico',
-  'Comprovativo de pagamento de inscrição',
 ] as const;
 
 type DocSocio = (typeof DOCS_SOCIO)[number];
