@@ -1156,7 +1156,7 @@ function PagamentosSection({ state }: { state: State }) {
         {/* ===== Atletas ===== */}
         {state.atletas.map((a) => {
           const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-          const slots = getSlotsForPlano(planoEfetivo);
+          const slots = isAnuidadeObrigatoria(a.escalao) ? 0 : getSlotsForPlano(planoEfetivo);
           const rows = payments[a.id] || Array.from({ length: slots }, () => null);
 
           // custos para este atleta
@@ -1176,9 +1176,10 @@ function PagamentosSection({ state }: { state: State }) {
               <div className="flex items-center justify-between mb-2">
                 <div className="font-medium">Atleta — {a.nomeCompleto}</div>
                 <div className="text-xs text-gray-500">
-                  Plano: {planoEfetivo}
-                  {isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
-                </div>
+  {isAnuidadeObrigatoria(a.escalao)
+    ? "Sem quotas (apenas taxa de inscrição)"
+    : <>Plano: {planoEfetivo} · {slots} comprovativo(s)</>}
+</div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-3">

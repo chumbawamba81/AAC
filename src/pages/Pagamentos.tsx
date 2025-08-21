@@ -199,15 +199,18 @@ export default function PagamentosPage() {
       <CardContent className="space-y-6">
         {atletas.map((a) => {
           const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-          const slots = getSlotsForPlano(planoEfetivo);
+          const slots = isAnuidadeObrigatoria(a.escalao) ? 0 : getSlotsForPlano(planoEfetivo);
           const rows = payments[a.id] || Array.from({ length: slots }, () => null);
           return (
             <div key={a.id} className="border rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="font-medium">{a.nomeCompleto}</div>
                 <div className="text-xs text-gray-500">
-                  Plano: {planoEfetivo}{isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
-                </div>
+  {isAnuidadeObrigatoria(a.escalao)
+    ? "Sem quotas (apenas taxa de inscrição)"
+    : <>Plano: {planoEfetivo}{isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)</>}
+</div>
+
               </div>
               <div className="grid md:grid-cols-2 gap-3">
                 {Array.from({ length: slots }).map((_, i) => {
