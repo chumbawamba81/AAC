@@ -791,22 +791,26 @@ function DadosPessoaisSection({
 
           {/* Sócio — Inscrição (2.ª linha com valor e limite) */}
           {showSocioArea && (
-            <div className="flex items-center justify-between border rounded-xl px-3 py-2 mb-2">
-              <div className="text-sm">
-                <div className="font-medium">Sócio — Inscrição</div>
-                <div className="text-gray-700">
-                  {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
-                  {socioInscrResumo?.due && <span className="ml-2">· Limite: {socioInscrResumo.due}</span>}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
-                <Button variant="outline" onClick={goTesouraria}>
-                  Ir para Situação de Tesouraria
-                </Button>
-              </div>
-            </div>
-          )}
+  <div className="grid grid-cols-[1fr,auto] items-start border rounded-xl px-3 py-2 mb-2 gap-x-3">
+    {/* Esquerda: título + valor/limite */}
+    <div className="text-sm">
+      <div className="font-medium">Sócio — Inscrição</div>
+      <div className="text-gray-700">
+        {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
+        {socioInscrResumo?.due && <span className="ml-2">· Limite: {socioInscrResumo.due}</span>}
+      </div>
+    </div>
+
+    {/* Direita: botão (em cima) + estado (logo por baixo) */}
+    <div className="flex flex-col items-end gap-1">
+      <Button variant="outline" onClick={goTesouraria}>
+        Ir para Situação de Tesouraria
+      </Button>
+      <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+    </div>
+  </div>
+)}
+
 
           {/* Atletas — duas linhas: Inscrição e Quotas */}
           {state.atletas.length > 0 && (
