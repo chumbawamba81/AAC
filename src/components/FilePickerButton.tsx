@@ -1,86 +1,71 @@
-// src/components/FilePickerButton.tsx
 import React, { useRef } from "react";
 import { Button } from "./ui/button";
 
-type Props = {
-  accept?: string;
-  multiple?: boolean;
-  disabled?: boolean;
-  className?: string;
-  variant?: "outline" | "secondary" | "destructive" | "default";
-  children: React.ReactNode;
-  onPick?: (file: File) => void | Promise<void>;
-  onFiles?: (files: FileList) => void | Promise<void>;
-};
-
+/**
+ * Botão robusto para abrir o seletor de ficheiros.
+ * Usa showOpenFilePicker quando disponível e faz fallback para input.click().
+ */
 export default function FilePickerButton({
+  onFiles,
   accept = "image/*,application/pdf",
   multiple = false,
-  disabled,
-  className,
-  variant = "outline",
   children,
-  onPick,
-  onFiles,
-}: Props) {
+  variant = "outline",
+}: {
+  onFiles: (files: FileList) => void;
+  accept?: string;
+  multiple?: boolean;
+  children: React.ReactNode;
+  variant?: "outline" | "secondary" | "destructive" | "default";
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const stopAll = (e: any) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const openPicker = (e: React.MouseEvent | React.TouchEvent) => {
-    stopAll(e);
-    inputRef.current?.click();
-  };
-
-  const handleChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const files = e.currentTarget.files;
-    if (!files || files.length === 0) return;
-    try {
-      if (onPick) await onPick(files[0]);
-      else if (onFiles) await onFiles(files);
-    } finally {
-      e.currentTarget.value = ""; // permitir o mesmo ficheiro de novo
+  async function handleClick() {
+    const anyWin = window as any;
+    if (typeof anyWin.showOpenFilePicker === "function") {
+      try {
+        const handles = await anyWin.showOpenFilePicker({
+          multiple,
+          types: [
+            {
+              description: "Ficheiros",
+              accept: {
+                "image/*": [".png", ".jpg", ".jpeg", ".webp"],
+                "application/pdf": [".pdf"],
+              },
+            },
+          ],
+        });
+        const files = await Promise.all(handles.map((h: any) => h.getFile()));
+        const dt = new DataTransfer();
+        files.forEach((f) => dt.items.add(f));
+        onFiles(dt.files);
+        return;
+      } catch {
+        /* cancelado → usa fallback */
+      }
     }
-  };
+    inputRef.current?.click();
+  }
 
   return (
-    <span
-      // Bloqueia qualquer handler de tabs/links em CAPTURE
-      onClickCapture={stopAll}
-      onMouseDownCapture={stopAll}
-      onPointerDownCapture={stopAll}
-      onTouchStartCapture={stopAll}
-      onTouchEndCapture={stopAll}
-    >
+    <>
       <input
         ref={inputRef}
         type="file"
         accept={accept}
         multiple={multiple}
-        style={{ position: "fixed", opacity: 0, pointerEvents: "none", width: 1, height: 1, top: 0, left: 0 }}
-        onChange={handleChange}
-        onClick={(e) => {
-          // reset antes de abrir o picker (alguns Androids precisam disto)
-          (e.currentTarget as HTMLInputElement).value = "";
+        style={{ position: "fixed", opacity: 0, width: 1, height: 1, top: 0, left: 0 }}
+        onChange={(e) => {
+          if (e.currentTarget.files && e.currentTarget.files.length > 0) {
+            onFiles(e.currentTarget.files);
+          }
+          e.currentTarget.value = ""; // permite selecionar o mesmo ficheiro novamente
         }}
       />
-      <Button
-        type="button"
-        variant={variant as any}
-        className={className}
-        disabled={disabled}
-        // Também bloqueia em CAPTURE no próprio botão
-        onMouseDownCapture={stopAll}
-        onPointerDownCapture={stopAll}
-        onTouchStartCapture={stopAll}
-        onTouchEnd={openPicker}
-        onClick={openPicker}
-      >
+      <Button type="button" variant={variant as any} onClick={handleClick}>
         {children}
       </Button>
-    </span>
+    </>
   );
 }
