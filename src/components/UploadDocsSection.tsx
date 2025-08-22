@@ -293,52 +293,59 @@ export default function UploadDocsSection({ state, setState }: Props) {
   para upload na secção <strong>Situação de Tesouraria</strong>.
   <br />
   <span className="text-gray-600">
-  Recomenda-se a utilização das aplicações de digitalização no smartphone, como as apps
-  <strong> Adobe Scan</strong> (
-  <a
-    className="underline"
-    href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
-    target="_blank"
-    rel="noreferrer"
-    title="Adobe Scan (Android)"
-  >
-    Android
-  </a>
-  {" / "}
-  <a
-    className="underline"
-    href="https://apps.apple.com/app/adobe-scan-pdf-scanner-ocr/id1199564834"
-    target="_blank"
-    rel="noreferrer"
-    title="Adobe Scan (iOS)"
-  >
-    iOS
-  </a>
-  ) ou <strong>CamScanner</strong> (
-  <a
-    className="underline"
-    href="https://play.google.com/store/apps/details?id=com.intsig.camscanner"
-    target="_blank"
-    rel="noreferrer"
-    title="CamScanner (Android)"
-  >
-    Android
-  </a>
-  {" / "}
-  <a
-    className="underline"
-    href="https://apps.apple.com/app/camscanner-pdf-scanner-app/id388627783"
-    target="_blank"
-    rel="noreferrer"
-    title="CamScanner (iOS)"
-  >
-    iOS
-  </a>
-  ), para garantir boa legibilidade dos documentos.
-</p>
-
+    Recomenda-se a utilização das aplicações de digitalização no smartphone, como as apps
+    <strong> Adobe Scan</strong>{" "}
+    <span className="whitespace-nowrap">
+      (
+      <a
+        className="underline inline"
+        href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
+        target="_blank"
+        rel="noreferrer"
+        title="Adobe Scan (Android)"
+      >
+        Android
+      </a>
+      {" / "}
+      <a
+        className="underline inline"
+        href="https://apps.apple.com/app/adobe-scan-pdf-scanner-ocr/id1199564834"
+        target="_blank"
+        rel="noreferrer"
+        title="Adobe Scan (iOS)"
+      >
+        iOS
+      </a>
+      )
+    </span>
+    {" "}ou<strong> CamScanner</strong>{" "}
+    <span className="whitespace-nowrap">
+      (
+      <a
+        className="underline inline"
+        href="https://play.google.com/store/apps/details?id=com.intsig.camscanner"
+        target="_blank"
+        rel="noreferrer"
+        title="CamScanner (Android)"
+      >
+        Android
+      </a>
+      {" / "}
+      <a
+        className="underline inline"
+        href="https://apps.apple.com/app/camscanner-pdf-scanner-app/id388627783"
+        target="_blank"
+        rel="noreferrer"
+        title="CamScanner (iOS)"
+      >
+        iOS
+      </a>
+      )
+    </span>
+    , para garantir boa legibilidade dos documentos.
   </span>
 </p>
+
           </div>
         </div>
 
