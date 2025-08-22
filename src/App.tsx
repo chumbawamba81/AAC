@@ -1075,13 +1075,21 @@ async function handleUploadInscricao(athlete: Atleta, file: File) {
   if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
   setBusy(true);
   try {
-    await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: "Taxa de inscrição", file });
+    const currentDesc =
+      athleteInscricao[athlete.id]?.descricao || "Inscrição de Atleta"; // fallback seguro
+    await saveComprovativoPagamento({
+      userId,
+      atletaId: athlete.id,
+      descricao: currentDesc,
+      file,
+    });
     await refreshPayments();
   } catch (e: any) {
     console.error("[Pagamentos] upload inscrição", e);
     alert(e?.message || "Falha no upload");
   } finally { setBusy(false); }
 }
+
 
 
   async function handleDelete(athlete: Atleta, idx: number) {
