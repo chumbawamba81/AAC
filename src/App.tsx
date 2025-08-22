@@ -1778,6 +1778,7 @@ export default function App() {
               email: state.perfil?.email,
             }}
             tipoSocio={state.perfil?.tipoSocio ?? "Não pretendo ser sócio"}
+			agregadoAtletas={state.atletas}   // <= NOVO
             onCancel={() => setAthModalOpen(false)}
             onSave={handleAthSave}
           />

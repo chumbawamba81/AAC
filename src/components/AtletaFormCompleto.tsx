@@ -19,9 +19,10 @@ type Props = {
   };
   /** Tipo de sócio do agregado; usado na estimativa de preços */
   tipoSocio?: string | null;
-  /** Nº de atletas no agregado (para Sócio PRO distinguir “1 atleta” vs “2 ou +”) */
-  numAtletasAgregado?: number;
+  /** Lista de atletas do agregado (para distinguir PRO1 vs PRO2) */
+  agregadoAtletas?: Atleta[];   // <= NOVO
 };
+
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
@@ -29,7 +30,7 @@ function uid() { return Math.random().toString(36).slice(2) + Date.now().toStrin
 const IMG_PRECOS_MENS = '/precos/pagamentos-2025.png';
 const IMG_PRECOS_SOCIOS = '/precos/socios-2025.png';
 
-export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPessoais, tipoSocio, numAtletasAgregado }: Props) {
+export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPessoais, tipoSocio, agregadoAtletas }: Props) {
   function formatPostal(v: string){
     const d = v.replace(/\D/g, '').slice(0,7);
     if (d.length <= 4) return d;
@@ -74,21 +75,64 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
   }, [a.dataNascimento, a.genero]);
 
   const isMinor = useMemo(()=> a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false, [a.dataNascimento]);
-  const isMastersOrSub23 = useMemo(()=>{
-    const s = (a.escalao || '').toLowerCase();
-    return s.includes('masters') || s.includes('sub23') || s.includes('sub 23') || s.includes('sub-23') || s.includes('seniores');
-  }, [a.escalao]);
+  const isMastersOrSub23 = useMemo(() => {
+  const s = (a.escalao || '').toLowerCase();
+  return (
+    s.includes('masters') ||
+    s.includes('sub 23') || s.includes('sub-23') || s.includes('sub23') ||
+    s.includes('seniores sub 23') || s.includes('seniores sub-23')
+  );
+}, [a.escalao]);
+
 
   // -------- Estimativa (recalcula quando muda escalão ou tipo de sócio) --------
-  const [est, setEst] = useState<EstimateResult | null>(null);
-  useEffect(() => {
-    const result = estimateCosts({
-      escalao: a.escalao,
-      tipoSocio: tipoSocio || 'Não pretendo ser sócio',
-      numAtletasAgregado: Math.max(1, numAtletasAgregado ?? 1),
-    });
-    setEst(result);
-  }, [a.escalao, tipoSocio, numAtletasAgregado]);
+  // -------- Estimativa (recalcula quando muda escalão / data / tipo de sócio / agregado) --------
+const [est, setEst] = useState<EstimateResult | null>(null);
+useEffect(() => {
+  function isAnuidadeObrigatoria(esc?: string | null) {
+    const s = (esc || '').toLowerCase();
+    return (
+      s.includes('masters') ||
+      s.includes('sub 23') || s.includes('sub-23') || s.includes('sub23') ||
+      s.includes('seniores sub 23') || s.includes('seniores sub-23')
+    );
+  }
+  const parseISO = (s?: string | null) => (s ? new Date(s + 'T00:00:00') : null);
+  const isSocioPro = (t?: string | null) => !!t && /pro/i.test(t || '');
+
+  let efetivoNum = 1; // 1 => PRO1 (mais velho); 2 => PRO2 (restantes)
+
+  if (isSocioPro(tipoSocio) && !isAnuidadeObrigatoria(a.escalao)) {
+    // Atletas do agregado que contam para PRO (exclui Masters/Sub-23 e o próprio)
+    const elegiveis = (agregadoAtletas || []).filter(
+      (x) => x.id !== (initial?.id ?? '') && !isAnuidadeObrigatoria(x.escalao)
+    );
+
+    if (elegiveis.length >= 1) {
+      const dobThis = parseISO(a.dataNascimento);
+      const ds = elegiveis
+        .map((x) => parseISO(x.dataNascimento))
+        .filter((d): d is Date => !!d && !Number.isNaN(d.getTime()));
+
+      if (dobThis && ds.length) {
+        const oldest = new Date(Math.min(...ds.map((d) => d.getTime())));
+        // se ESTE atleta é mais velho que todos os outros => PRO1, caso contrário PRO2
+        efetivoNum = dobThis.getTime() < oldest.getTime() ? 1 : 2;
+      } else {
+        // enquanto não houver datas suficientes, assume PRO2
+        efetivoNum = 2;
+      }
+    }
+  }
+
+  const result = estimateCosts({
+    escalao: a.escalao,
+    tipoSocio: tipoSocio || 'Não pretendo ser sócio',
+    numAtletasAgregado: efetivoNum, // 1 => PRO1 ; 2 => PRO2
+  });
+  setEst(result);
+}, [a.escalao, a.dataNascimento, tipoSocio, agregadoAtletas, initial?.id]);
+
 
   function save(ev: React.FormEvent) {
     ev.preventDefault();
