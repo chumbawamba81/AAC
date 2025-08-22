@@ -67,10 +67,10 @@ function deriveInscStatus(row: {
 }
 
 const Label = ({ children }: { children: React.ReactNode }) => (
-  <div className="text-left text-xs text-gray-500">{children}</div>
+  <div className="!text-left text-xs text-gray-500">{children}</div>
 );
 const Value = ({ children }: { children: React.ReactNode }) => (
-  <div className="mb-4 text-left">{children}</div>
+  <div className="mb-4 !text-left">{children}</div>
 );
 
 /** Campo que só aparece se tiver valor */
@@ -85,7 +85,7 @@ function Field({
 }) {
   if (isEmpty(value)) return null;
   return (
-    <div>
+    <div className="!text-left">
       <Label>{label}</Label>
       <Value>{fmt ? fmt(value) : value}</Value>
     </div>
@@ -247,9 +247,12 @@ export default function MemberDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
+      <DialogContent
+        className="max-w-5xl max-h-[90vh] overflow-y-auto !text-left"
+        style={{ textAlign: "left" }}
+      >
+        <DialogHeader className="!text-left" style={{ textAlign: "left" }}>
+          <DialogTitle className="!text-left" style={{ textAlign: "left" }}>
             Detalhes do Titular
             <span className="block text-xs text-gray-500">
               {(perfil?.nome_completo || member.nome_completo || "—")} ·{" "}
@@ -260,19 +263,19 @@ export default function MemberDetailsDialog({
         </DialogHeader>
 
         <Tabs defaultValue="resumo">
-          <TabsList>
+          <TabsList className="!text-left" style={{ textAlign: "left" }}>
             <TabsTrigger value="resumo">Resumo</TabsTrigger>
             <TabsTrigger value="atletas">Atletas</TabsTrigger>
             <TabsTrigger value="docs">Documentos</TabsTrigger>
           </TabsList>
 
           {/* ------------------------------ Resumo ------------------------------ */}
-          <TabsContent value="resumo">
-            <Card>
+          <TabsContent value="resumo" className="!text-left" style={{ textAlign: "left" }}>
+            <Card className="!text-left" style={{ textAlign: "left" }}>
               <CardHeader>
                 <CardTitle className="text-left">Dados do titular</CardTitle>
               </CardHeader>
-              <CardContent className="grid md:grid-cols-2 gap-6 text-sm text-left">
+              <CardContent className="grid md:grid-cols-2 gap-6 text-sm !text-left" style={{ textAlign: "left" }}>
                 <Field label="Nome" value={perfil?.nome_completo} />
                 <Field label="Email" value={perfil?.email} />
                 <Field label="Telefone" value={perfil?.telefone} />
@@ -290,7 +293,7 @@ export default function MemberDetailsDialog({
 
                 {/* Inscrição de sócio (só mostra se aplicável) */}
                 {isSocio && inscStatus && (
-                  <div className="md:col-span-2">
+                  <div className="md:col-span-2 !text-left" style={{ textAlign: "left" }}>
                     <Label>Inscrição de sócio</Label>
                     <Value>
                       <span className="inline-flex items-center gap-2 flex-wrap">
@@ -319,8 +322,8 @@ export default function MemberDetailsDialog({
           </TabsContent>
 
           {/* ------------------------------ Atletas ----------------------------- */}
-          <TabsContent value="atletas">
-            <Card>
+          <TabsContent value="atletas" className="!text-left" style={{ textAlign: "left" }}>
+            <Card className="!text-left" style={{ textAlign: "left" }}>
               <CardHeader className="flex items-center justify-between">
                 <CardTitle className="text-left">Atletas do titular</CardTitle>
                 <Button
@@ -336,12 +339,12 @@ export default function MemberDetailsDialog({
                   <p className="text-sm text-gray-500">Sem atletas associados.</p>
                 ) : (
                   athletes.map((a) => (
-                    <div key={a.id} className="border rounded-lg p-4">
+                    <div key={a.id} className="border rounded-lg p-4 !text-left" style={{ textAlign: "left" }}>
                       <div className="text-base font-semibold mb-4">{a.nome || "—"}</div>
-                      <div className="grid md:grid-cols-2 gap-6 text-sm text-left">
+                      <div className="grid md:grid-cols-2 gap-6 text-sm !text-left" style={{ textAlign: "left" }}>
                         <Field label="Data de nascimento" value={a.data_nascimento} />
                         <Field label="Escalão" value={a.escalao} />
-                        <Field label="Género" value={a.genero} />
+                        {/* Género removido aqui também, conforme pedido */}
                         <Field label="NIF" value={a.nif} />
 
                         <Field label="Opção de pagamento" value={a.opcao_pagamento} />
@@ -378,10 +381,10 @@ export default function MemberDetailsDialog({
           </TabsContent>
 
           {/* ------------------------------ Documentos ------------------------------ */}
-          <TabsContent value="docs">
+          <TabsContent value="docs" className="!text-left" style={{ textAlign: "left" }}>
             <div className="space-y-6">
               {/* Documentos do Sócio */}
-              <Card>
+              <Card className="!text-left" style={{ textAlign: "left" }}>
                 <CardHeader className="flex items-center justify-between">
                   <CardTitle className="text-left">Documentos do Sócio</CardTitle>
                   <Button variant="outline" onClick={fetchSocioDocs} disabled={loadingSocio}>
