@@ -293,7 +293,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
   para upload na secção <strong>Situação de Tesouraria</strong>.
   <br />
   <span className="text-gray-600">
-    Recomenda-se a utilização das aplicações de digitalização no smartphone, como&nbsp;
+    Recomenda-se a utilização das aplicações de digitalização no smartphone, como a app Adobe Scan &nbsp;
     <a
       className="underline"
       href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
@@ -301,7 +301,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
       rel="noreferrer"
       title="Adobe Scan (Android)"
     >
-      Adobe Scan
+      (Android
     </a>
     &nbsp;/
     <a
@@ -311,17 +311,17 @@ export default function UploadDocsSection({ state, setState }: Props) {
       rel="noreferrer"
       title="Adobe Scan (iOS)"
     >
-      iOS
+      iOS)
     </a>
-    &nbsp;ou&nbsp;
+    &nbsp;ou CamScanner &nbsp;
     <a
       className="underline"
-      href="https://play.google.com/store/apps/details?id=com.intsig.camscanner"
+      href="https://play.google.com/store/apps/details?id=com.zordo.pdftools"
       target="_blank"
       rel="noreferrer"
       title="CamScanner (Android)"
     >
-      CamScanner
+      (Android
     </a>
     &nbsp;/
     <a
@@ -331,7 +331,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
       rel="noreferrer"
       title="CamScanner (iOS)"
     >
-      iOS
+      iOS)
     </a>
     , para garantir boa legibilidade dos documentos.
   </span>
