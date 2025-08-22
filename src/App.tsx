@@ -964,7 +964,6 @@ function PagamentosSection({ state }: { state: State }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
   const [socioRows, setSocioRows] = useState<PagamentoRowWithUrl[]>([]);
-  const [athleteInscricao, setAthleteInscricao] = useState<Record<string, PagamentoRowWithUrl | null>>({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -998,7 +997,6 @@ function PagamentosSection({ state }: { state: State }) {
     }
 
     // Atletas
-    const inscrNext: Record<string, PagamentoRowWithUrl | null> = {};
     const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
     for (const a of state.atletas) {
       const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
@@ -1014,14 +1012,6 @@ function PagamentosSection({ state }: { state: State }) {
         byDesc.set(r.descricao, arr);
       }
 
-
-
-// Inscrição do atleta (Taxa de inscrição)
-const inscrArr = rowsWithUrl.filter(
-  (r) => (r as any).tipo === "inscricao" || (r.descricao || "").toLowerCase() === "taxa de inscrição"
-);
-inscrArr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-inscrNext[a.id] = inscrArr[0] || null;
       next[a.id] = labels.map((lab) => {
         const arr = byDesc.get(lab) || [];
         if (arr.length === 0) return null;
@@ -1030,7 +1020,6 @@ inscrNext[a.id] = inscrArr[0] || null;
       });
     }
     setPayments(next);
-    setAthleteInscricao(inscrNext);
   }, [userId, state.atletas, state.perfil?.tipoSocio]);
 
   useEffect(() => { refreshPayments(); }, [refreshPayments]);
@@ -1069,20 +1058,6 @@ inscrNext[a.id] = inscrArr[0] || null;
       alert(e?.message || "Falha no upload");
     } finally { setBusy(false); }
   }
-
-
-async function handleUploadInscricao(athlete: Atleta, file: File) {
-  if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
-  setBusy(true);
-  try {
-    await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: "Taxa de inscrição", file });
-    await refreshPayments();
-  } catch (e: any) {
-    console.error("[Pagamentos] upload inscrição", e);
-    alert(e?.message || "Falha no upload");
-  } finally { setBusy(false); }
-}
-
 
   async function handleDelete(athlete: Atleta, idx: number) {
     const row = payments[athlete.id]?.[idx];
@@ -1206,40 +1181,7 @@ async function handleUploadInscricao(athlete: Atleta, file: File) {
                 </div>
               </div>
 
-              
-{/* Inscrição do atleta */}
-{(() => {
-  const row = athleteInscricao[a.id] || null;
-  const overdue = row?.devido_em ? (new Date() > new Date(row.devido_em + "T23:59:59")) : false;
-  return (
-    <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
-      <div>
-        <div className="font-medium">Taxa de inscrição</div>
-        <div className="text-xs text-gray-500">
-          {row?.comprovativo_url
-            ? (row.validado ? "Comprovativo validado" : (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente"))
-            : (overdue ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")}
-          {row?.devido_em && <span className="ml-2">· Limite: {row.devido_em}</span>}
-          {row?.signedUrl && (
-            <a className="underline inline-flex items-center gap-1 p-1 ml-2" href={row.signedUrl} target="_blank" rel="noreferrer">
-              <LinkIcon className="h-3 w-3" /> Abrir
-            </a>
-          )}
-        </div>
-      </div>
-      <FilePickerButton
-        variant={row?.comprovativo_url ? "secondary" : "outline"}
-        accept="image/*,application/pdf"
-        onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-      >
-        <Upload className="h-4 w-4 mr-1" />
-        {row?.comprovativo_url ? "Substituir" : "Carregar"}
-      </FilePickerButton>
-    </div>
-  );
-})()}
-
-<div className="grid md:grid-cols-2 gap-3">
+              <div className="grid md:grid-cols-2 gap-3">
                 {Array.from({ length: slots }).map((_, i) => {
                   const meta = rows[i];
                   const label = getPagamentoLabel(planoEfetivo, i);
