@@ -48,8 +48,6 @@ export default function PagamentosPage() {
   const [atletas, setAtletas] = useState<Atleta[]>([]);
   const [busy, setBusy] = useState(false);
   const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
-  // NOVO: inscrição (Taxa de inscrição) mais recente por atleta
-  const [inscricaoByAtleta, setInscricaoByAtleta] = useState<Record<string, PagamentoRowWithUrl | null>>({});
 
   // sessão
   useEffect(() => {
@@ -86,8 +84,6 @@ export default function PagamentosPage() {
   const refreshPayments = useCallback(async () => {
     if (!userId) return;
     const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
-    const inscrNext: Record<string, PagamentoRowWithUrl | null> = {};
-
     for (const a of atletas) {
       const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
       const slots = getSlotsForPlano(planoEfetivo);
@@ -96,13 +92,11 @@ export default function PagamentosPage() {
       const rows = await listPagamentosByAtleta(a.id);
       const rowsWithUrl = await withSignedUrlsPagamentos(rows);
 
-      // map por descrição (para quotas)
       const byDesc = new Map<string, PagamentoRowWithUrl[]>();
       for (const r of rowsWithUrl) {
-        const key = (r.descricao || "").toString();
-        const arr = byDesc.get(key) || [];
+        const arr = byDesc.get(r.descricao) || [];
         arr.push(r);
-        byDesc.set(key, arr);
+        byDesc.set(r.descricao, arr);
       }
 
       next[a.id] = labels.map((lab) => {
@@ -111,19 +105,8 @@ export default function PagamentosPage() {
         arr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
         return arr[0];
       });
-
-      // NOVO: capturar a inscrição do atleta ("Taxa de inscrição" / tipo='inscricao')
-      const inscrArr = rowsWithUrl.filter(
-        (r) =>
-          (r as any).tipo === "inscricao" ||
-          (r.descricao || "").toLowerCase() === "taxa de inscrição"
-      );
-      inscrArr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-      inscrNext[a.id] = inscrArr[0] || null;
     }
-
     setPayments(next);
-    setInscricaoByAtleta(inscrNext);
   }, [userId, atletas]);
 
   useEffect(() => {
@@ -156,19 +139,6 @@ export default function PagamentosPage() {
       await refreshPayments();
     } catch (e: any) {
       console.error("[PagamentosPage] upload", e);
-      alert(e?.message || "Falha no upload");
-    } finally { setBusy(false); }
-  }
-
-  // NOVO: upload/substituição do comprovativo de INSCRIÇÃO
-  async function handleUploadInscricao(athlete: Atleta, file: File) {
-    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
-    setBusy(true);
-    try {
-      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: "Taxa de inscrição", file });
-      await refreshPayments();
-    } catch (e: any) {
-      console.error("[PagamentosPage] upload inscrição", e);
       alert(e?.message || "Falha no upload");
     } finally { setBusy(false); }
   }
@@ -231,8 +201,6 @@ export default function PagamentosPage() {
           const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
           const slots = getSlotsForPlano(planoEfetivo);
           const rows = payments[a.id] || Array.from({ length: slots }, () => null);
-          const inscr = inscricaoByAtleta[a.id] || null;
-
           return (
             <div key={a.id} className="border rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
@@ -241,44 +209,6 @@ export default function PagamentosPage() {
                   Plano: {planoEfetivo}{isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
                 </div>
               </div>
-
-              {/* NOVO: bloco de INSCRIÇÃO do atleta (antes da grelha de quotas) */}
-              <div className="border rounded-lg p-3 flex items-center justify-between mb-3">
-                <div>
-                  <div className="font-medium">Taxa de inscrição</div>
-                  <div className="text-xs text-gray-500">
-                    {inscr ? (
-                      <span className="inline-flex items-center gap-2">
-                        Comprovativo carregado
-                        {inscr.signedUrl && (
-                          <a
-                            className="underline inline-flex items-center gap-1"
-                            href={inscr.signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <LinkIcon className="h-3 w-3" />
-                            Abrir
-                          </a>
-                        )}
-                      </span>
-                    ) : (
-                      "Comprovativo em falta"
-                    )}
-                  </div>
-                </div>
-
-                <FilePickerButton
-                  variant={inscr ? "secondary" : "outline"}
-                  accept="image/*,application/pdf"
-                  onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-                >
-                  <Upload className="h-4 w-4 mr-1" />
-                  {inscr ? "Substituir" : "Carregar"}
-                </FilePickerButton>
-              </div>
-
-              {/* Grelha de quotas (já existente) */}
               <div className="grid md:grid-cols-2 gap-3">
                 {Array.from({ length: slots }).map((_, i) => {
                   const meta = rows[i];
