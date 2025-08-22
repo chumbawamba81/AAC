@@ -1,4 +1,3 @@
-// src/admin/components/SociosTable.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Eye } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -9,9 +8,9 @@ import MemberDetailsDialog from "./MemberDetailsDialog";
 /* ================= Tipos ================= */
 type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio";
 type OrderDir = "asc" | "desc";
-type SituacaoLegacy = "Regularizado" | "Pendente" | "Parcial";
 
 type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
+
 type SocioInsc = { status: InscStatus; due?: string | null } | null;
 
 /* ================= UI helpers ================= */
@@ -50,18 +49,40 @@ function deriveInscStatus(row: { validado?: boolean; comprovativo_url?: string |
   return "Por regularizar";
 }
 
+/* ================= Normalização do filtro ================= */
+// Aceita qualquer string vinda do seletor (novo ou legado) e devolve o conjunto a manter.
+function normalizeInscFilter(raw: string): { include: InscStatus[] | null; onlyNA: boolean } {
+  const v = (raw || "").trim().toLowerCase();
+
+  if (!v || v === "todos" || v === "todas") return { include: null, onlyNA: false };
+  if (v === "n/a" || v === "na" || v === "nao aplicavel" || v === "não aplicável") {
+    return { include: [], onlyNA: true };
+  }
+  if (v.startsWith("regular")) return { include: ["Regularizado"], onlyNA: false };
+  if (v.startsWith("pendente de")) return { include: ["Pendente de validação"], onlyNA: false };
+  if (v.startsWith("por reg") || v.includes("regularizar")) return { include: ["Por regularizar"], onlyNA: false };
+  if (v.includes("atras") || v.includes("atraso")) return { include: ["Em atraso"], onlyNA: false };
+
+  // legado: "Pendente" e "Parcial" = tudo o que não é Regularizado
+  if (v.startsWith("pendente") || v.startsWith("parcial")) {
+    return { include: ["Pendente de validação", "Por regularizar", "Em atraso"], onlyNA: false };
+  }
+
+  // Valor desconhecido -> não filtra
+  return { include: null, onlyNA: false };
+}
+
 /* ================= Página ================= */
 export default function SociosTable({
   search,
-  status, // legacy: "Regularizado" | "Pendente" | "Parcial" | ""
+  status, // string do seletor vindo de cima (pode ser "Regularizado", "Pendente", "Parcial", "N/A", "Por regularizar", etc.)
   tipoSocio,
   orderBy,
   orderDir,
   limit = 20,
-  inscFilter = "", // moderno (opcional): "" | InscStatus | "N/A"
 }: {
   search: string;
-  status: "" | SituacaoLegacy;
+  status: string; // aceitar valores novos/antigos
   tipoSocio:
     | ""
     | "Sócio Pro"
@@ -72,14 +93,13 @@ export default function SociosTable({
   orderBy: OrderBy;
   orderDir: OrderDir;
   limit?: number;
-  inscFilter?: "" | InscStatus | "N/A";
 }) {
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<SocioRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [inscMap, setInscMap] = useState<Record<string, SocioInsc>>({});
-  const [openId, setOpenId] = useState<string | null>(null); // <-- declarado no topo
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -87,10 +107,10 @@ export default function SociosTable({
   async function load() {
     setLoading(true);
     try {
-      const statusFilter: SituacaoLegacy | undefined = status === "" ? undefined : status;
       const { data, count } = await listSocios({
         search,
-        status: statusFilter,
+        // já não filtramos por situacao_tesouraria no servidor — é derivada da inscrição
+        status: undefined,
         tipoSocio,
         orderBy,
         orderDir,
@@ -141,36 +161,35 @@ export default function SociosTable({
   useEffect(() => {
     load().catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, inscFilter, tipoSocio, orderBy, orderDir, limit, page]);
+  }, [search, status, tipoSocio, orderBy, orderDir, limit, page]);
 
   function exportCsv() {
-    const statusFilter: SituacaoLegacy | undefined = status === "" ? undefined : status;
-    exportSociosAsCsv({ search, status: statusFilter, tipoSocio, orderBy, orderDir }).catch((e: any) =>
+    exportSociosAsCsv({ search, status: undefined, tipoSocio, orderBy, orderDir }).catch((e: any) =>
       alert(e?.message || "Falha ao exportar CSV")
     );
   }
 
-  // filtro efetivo (suporta novo e legacy)
+  // filtro efetivo (suporta novo e legado)
   const effectiveRows = useMemo(() => {
-    const legacyPending = status === "Pendente" || status === "Parcial";
-    const hasModern = inscFilter !== "";
+    const { include, onlyNA } = normalizeInscFilter(status);
     return rows.filter((r) => {
       const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
       const insc = inscMap[r.user_id];
-      if (!isSocio) return hasModern ? inscFilter === "N/A" : false;
-      if (!insc) return true; // ainda a carregar
-      if (hasModern) return inscFilter === insc.status;
-      if (status === "" || status === undefined) return true;
-      if (status === "Regularizado") return insc.status === "Regularizado";
-      // legacy "Pendente"/"Parcial" = tudo o que não está regularizado
-      return legacyPending ? insc.status !== "Regularizado" : true;
+      if (!isSocio) return onlyNA; // só mostra N/A quando pedido
+      if (!include) return true;   // sem filtro específico → mostra tudo de sócios
+      if (!insc) return true;      // ainda a carregar estado → não filtra fora
+      return include.includes(insc.status);
     });
-  }, [rows, inscMap, status, inscFilter]);
+  }, [rows, inscMap, status]);
+
+  const filteredCount = effectiveRows.length;
 
   return (
     <Container>
       <Header>
-        <div className="text-sm text-gray-600">{loading ? "A carregar…" : `${total} registo(s)`}</div>
+        <div className="text-sm text-gray-600">
+          {loading ? "A carregar…" : `${filteredCount} registo(s)`}
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={exportCsv} className="text-sm">
             Exportar CSV
@@ -226,11 +245,7 @@ export default function SociosTable({
                   <td className="px-3 py-2">{r.tipo_socio || "—"}</td>
                   <td className="px-3 py-2">
                     {isSocio ? (
-                      insc ? (
-                        <InscBadge status={insc.status} />
-                      ) : (
-                        <span className="text-gray-500">—</span>
-                      )
+                      insc ? <InscBadge status={insc.status} /> : <span className="text-gray-500">—</span>
                     ) : (
                       <span className="text-gray-500">N/A</span>
                     )}
