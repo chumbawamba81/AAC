@@ -1174,68 +1174,78 @@ async function handleUploadSocio(file: File) {
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* ===== Sócio: Inscrição ===== */}
-        {isSocio(state.perfil?.tipoSocio) && (
-          <div className="border rounded-xl p-3">
-            {(() => {
-              const row = socioRows[0] || null;
-              const overdue = isOverdue(row);
-              const val = socioInscricaoAmount(state.perfil?.tipoSocio);
-              const due = row?.devido_em || sep8OfCurrentYear();
-              return (
-                <div className="border rounded-lg p-3 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">Inscrição de Sócio — {eur(val)}</div>
-                    <div className="text-xs text-gray-500">
-                      {row?.comprovativo_url
-                        ? row.validado
-                          ? "Comprovativo validado"
-                          : overdue
-                          ? "Comprovativo pendente (em atraso)"
-                          : "Comprovativo pendente"
-                        : overdue
-                        ? "Comprovativo em falta (em atraso)"
-                        : "Comprovativo em falta"}
-                      {due && <span className="ml-2">· Limite: {due}</span>}
-                      {row?.signedUrl && (
-                        <a className="underline inline-flex items-center gap-1 ml-2" href={row.signedUrl} target="_blank" rel="noreferrer">
-                          <LinkIcon className="h-3 w-3" /> Abrir
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FilePickerButton
-                      variant={row?.comprovativo_url ? "secondary" : "outline"}
-                      accept="image/*,application/pdf"
-                      onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
-                    >
-                      <Upload className="h-4 w-4 mr-1" />
-                      {row?.comprovativo_url && (
-  <Button
-    variant="destructive"
-    onClick={async () => {
-      if (!confirm("Remover este comprovativo?")) return;
-      setBusy(true);
-      try {
-        await clearComprovativo(row);
-        await refreshPayments();
-      } catch (e:any) {
-        alert(e?.message || "Falha a remover");
-      } finally { setBusy(false); }
-    }}
-  >
-    <Trash2 className="h-4 w-4 mr-1" />
-    Remover
-  </Button>
+{/* ===== Sócio: Inscrição ===== */}
+{isSocio(state.perfil?.tipoSocio) && (
+  <div className="border rounded-xl p-3">
+    {(() => {
+      const row = socioRows[0] || null;
+      const overdue = isOverdue(row);
+      const val = socioInscricaoAmount(state.perfil?.tipoSocio);
+      const due = row?.devido_em || sep8OfCurrentYear();
+      return (
+        <div className="border rounded-lg p-3 flex items-center justify-between">
+          <div>
+            <div className="font-medium">Inscrição de Sócio — {eur(val)}</div>
+            <div className="text-xs text-gray-500">
+              {row?.comprovativo_url
+                ? row.validado
+                  ? "Comprovativo validado"
+                  : overdue
+                  ? "Comprovativo pendente (em atraso)"
+                  : "Comprovativo pendente"
+                : overdue
+                ? "Comprovativo em falta (em atraso)"
+                : "Comprovativo em falta"}
+              {due && <span className="ml-2">· Limite: {due}</span>}
+              {row?.signedUrl && (
+                <a
+                  className="underline inline-flex items-center gap-1 ml-2"
+                  href={row.signedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <LinkIcon className="h-3 w-3" /> Abrir
+                </a>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <FilePickerButton
+              variant={row?.comprovativo_url ? "secondary" : "outline"}
+              accept="image/*,application/pdf"
+              onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
+            >
+              <Upload className="h-4 w-4 mr-1" />
+              {row?.comprovativo_url ? "Substituir" : "Carregar"}
+            </FilePickerButton>
+
+            {row?.comprovativo_url && (
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  if (!confirm("Remover este comprovativo?")) return;
+                  setBusy(true);
+                  try {
+                    await clearComprovativo(row);
+                    await refreshPayments();
+                  } catch (e: any) {
+                    alert(e?.message || "Falha a remover");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Remover
+              </Button>
+            )}
+          </div>
+        </div>
+      );
+    })()}
+  </div>
 )}
 
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
 
         {/* ===== Atletas ===== */}
         {state.atletas.map((a) => {
@@ -1273,38 +1283,39 @@ async function handleUploadSocio(file: File) {
 </div>
 
 
-              {/* Inscrição do atleta */}
+{/* Inscrição do atleta */}
 {(() => {
   const row = athleteInscricao[a.id] || null;
-  const overdue = row?.devido_em ? (new Date() > new Date(row.devido_em + "T23:59:59")) : false;
-
-  // valor da inscrição do atleta (o mesmo que mostras no resumo)
-  const numAgregado = Math.max(1, state.atletas.filter(x => !isAnuidadeObrigatoria(x.escalao)).length);
-  const estLocal = estimateCosts({
-    escalao: a.escalao || "",
-    tipoSocio: state.perfil?.tipoSocio,
-    numAtletasAgregado: numAgregado,
-  });
-
+  const overdue = row?.devido_em
+    ? new Date() > new Date(row.devido_em + "T23:59:59")
+    : false;
   return (
     <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
       <div>
-        <div className="font-medium">
-          Taxa de inscrição — {eur(estLocal.taxaInscricao)}
-        </div>
+        <div className="font-medium">Taxa de inscrição</div>
         <div className="text-xs text-gray-500">
           {row?.comprovativo_url
-            ? (row.validado ? "Comprovativo validado" : (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente"))
-            : (overdue ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")}
+            ? row.validado
+              ? "Comprovativo validado"
+              : overdue
+              ? "Comprovativo pendente (em atraso)"
+              : "Comprovativo pendente"
+            : overdue
+            ? "Comprovativo em falta (em atraso)"
+            : "Comprovativo em falta"}
           {row?.devido_em && <span className="ml-2">· Limite: {row.devido_em}</span>}
           {row?.signedUrl && (
-            <a className="underline inline-flex items-center gap-1 p-1 ml-2" href={row.signedUrl} target="_blank" rel="noreferrer">
+            <a
+              className="underline inline-flex items-center gap-1 p-1 ml-2"
+              href={row.signedUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
               <LinkIcon className="h-3 w-3" /> Abrir
             </a>
           )}
         </div>
       </div>
-
       <div className="flex items-center gap-2">
         <FilePickerButton
           variant={row?.comprovativo_url ? "secondary" : "outline"}
@@ -1319,13 +1330,16 @@ async function handleUploadSocio(file: File) {
           <Button
             variant="destructive"
             onClick={async () => {
-              if (!row) return;
-              if (!confirm("Remover o comprovativo da inscrição?")) return;
+              if (!confirm("Remover este comprovativo?")) return;
               setBusy(true);
               try {
-                await clearComprovativo(row); // limpa o ficheiro mas mantém a linha
+                await clearComprovativo(row);
                 await refreshPayments();
-              } finally { setBusy(false); }
+              } catch (e: any) {
+                alert(e?.message || "Falha a remover");
+              } finally {
+                setBusy(false);
+              }
             }}
           >
             <Trash2 className="h-4 w-4 mr-1" />
@@ -1336,6 +1350,7 @@ async function handleUploadSocio(file: File) {
     </div>
   );
 })()}
+
 
 
               {/* Quotas / Mensal / Trimestral / Anual (ocultar para Masters/Sub-23) */}
