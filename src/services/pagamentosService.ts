@@ -147,6 +147,8 @@ export async function saveComprovativo(params: {
   if (error) throw error;
 }
 
+
+
 export async function saveComprovativoSocioInscricao(userId: string, file: File) {
   const path = `${userId}/socio/${Date.now()}_${file.name}`;
   const up = await supabase.storage.from("pagamentos").upload(path, file, { upsert: false });
@@ -158,6 +160,35 @@ export async function saveComprovativoSocioInscricao(userId: string, file: File)
     .eq("user_id", userId)
     .is("atleta_id", null)
     .eq("tipo", "inscricao");
+  if (error) throw error;
+}
+
+// === NOVO: upload do comprovativo da INSCRIÇÃO do atleta (independente da descrição)
+export async function saveComprovativoInscricaoAtleta(params: {
+  userId: string;
+  atletaId: string;
+  file: File;
+}) {
+  // 1) enviar para o storage
+  const path = `${params.userId}/atletas/${params.atletaId}/inscricao/${Date.now()}_${params.file.name}`;
+  const up = await supabase.storage.from("pagamentos").upload(path, params.file, { upsert: false });
+  if (up.error) throw up.error;
+
+  // 2) atualizar a linha de inscrição (tipo='inscricao') do atleta
+  const { error } = await supabase
+    .from("pagamentos")
+    .update({ comprovativo_url: path, validado: false })
+    .eq("atleta_id", params.atletaId)
+    .eq("tipo", "inscricao"); // <— não dependemos da descrição
+  if (error) throw error;
+}
+
+// === NOVO: limpar comprovativo (sem apagar o registo)
+export async function clearComprovativo(row: PagamentoRow) {
+  const { error } = await supabase
+    .from("pagamentos")
+    .update({ comprovativo_url: null, validado: false })
+    .eq("id", row.id);
   if (error) throw error;
 }
 
