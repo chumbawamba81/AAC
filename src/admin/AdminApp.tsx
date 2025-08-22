@@ -1,6 +1,8 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import AdminGate from "./AdminGate";
+
+import Dashboard from "./pages/Dashboard";
 import SociosPage from "./pages/Socios";
 import AtletasPage from "./pages/Atletas";
 import PagamentosPage from "./pages/Pagamentos";
@@ -27,10 +29,6 @@ function Layout({ children }: { children: React.ReactNode }) {
       <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
     </div>
   );
-}
-
-function Dashboard() {
-  return <div className="text-sm text-gray-700">Bem-vindo à área de administração.</div>;
 }
 
 export default function AdminApp() {

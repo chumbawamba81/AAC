@@ -288,8 +288,54 @@ export default function UploadDocsSection({ state, setState }: Props) {
         {/* ---- Aviso: comprovativos migrados ---- */}
         <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
           <div className="text-sm">
-            Os <strong>comprovativos de pagamento</strong> (inscrição do sócio e inscrição do atleta) encontram-se disponíveis para upload na
-            secção <strong>Situação de Tesouraria</strong>.
+            <p className="text-sm text-gray-700">
+  Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
+  para upload na secção <strong>Situação de Tesouraria</strong>.
+  <br />
+  <span className="text-gray-600">
+    Recomenda-se a utilização das aplicações de digitalização no smartphone, como&nbsp;
+    <a
+      className="underline"
+      href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
+      target="_blank"
+      rel="noreferrer"
+      title="Adobe Scan (Android)"
+    >
+      Adobe Scan
+    </a>
+    &nbsp;/
+    <a
+      className="underline ml-1"
+      href="https://apps.apple.com/app/adobe-scan-pdf-scanner-ocr/id1199564834"
+      target="_blank"
+      rel="noreferrer"
+      title="Adobe Scan (iOS)"
+    >
+      iOS
+    </a>
+    &nbsp;ou&nbsp;
+    <a
+      className="underline"
+      href="https://play.google.com/store/apps/details?id=com.intsig.camscanner"
+      target="_blank"
+      rel="noreferrer"
+      title="CamScanner (Android)"
+    >
+      CamScanner
+    </a>
+    &nbsp;/
+    <a
+      className="underline ml-1"
+      href="https://apps.apple.com/app/camscanner-pdf-scanner-app/id388627783"
+      target="_blank"
+      rel="noreferrer"
+      title="CamScanner (iOS)"
+    >
+      iOS
+    </a>
+    , para garantir boa legibilidade dos documentos.
+  </span>
+</p>
           </div>
         </div>
 

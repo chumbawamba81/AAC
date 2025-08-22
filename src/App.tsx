@@ -1218,6 +1218,12 @@ const rankMap = (function build() {
       </CardHeader>
 
       <CardContent className="space-y-6">
+	  {/* Aviso / Instruções de pagamento */}
+<div className="rounded-xl border bg-slate-50 p-3 text-sm text-gray-800">
+  Os pagamentos devem ser realizados até à data limite indicada, para o seguinte IBAN:
+  <strong className="ml-1">PT50 0036 0414 99106005021 95</strong>
+  <span className="ml-1">(Banco Montepio)</span>.
+</div>
 {/* ===== Sócio: Inscrição ===== */}
 {isSocio(state.perfil?.tipoSocio) && (
   <div className="border rounded-xl p-3">
