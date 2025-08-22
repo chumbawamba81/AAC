@@ -33,8 +33,13 @@ function deriveInscStatus(row: { validado?: boolean | null; comprovativo_url?: s
   }
   return "Por regularizar";
 }
-const Label = ({ children }: { children: React.ReactNode }) => <div className="text-xs text-gray-500">{children}</div>;
-const Value = ({ children }: { children: React.ReactNode }) => <div className="mb-4">{children}</div>;
+const Label = ({ children }: { children: React.ReactNode }) => (
+  <div className="text-left text-xs text-gray-500">{children}</div>
+);
+const Value = ({ children }: { children: React.ReactNode }) => (
+  <div className="mb-4 text-left">{children}</div>
+);
+
 function Field({ label, value, fmt }: { label: string; value: any; fmt?: (v: any) => React.ReactNode }) {
   if (isEmpty(value)) return null;
   return (
@@ -165,7 +170,7 @@ export default function MemberDetailsDialog({ open, onOpenChange, member }: { op
           <TabsContent value="resumo">
             <Card>
               <CardHeader><CardTitle>Dados do titular</CardTitle></CardHeader>
-              <CardContent className="grid md:grid-cols-2 gap-6 text-sm">
+              <CardContent className="grid md:grid-cols-2 gap-6 text-sm text-left">
                 <Field label="Nome" value={perfil?.nome_completo} />
                 <Field label="Email" value={perfil?.email} />
                 <Field label="Telefone" value={perfil?.telefone} />
@@ -217,7 +222,7 @@ export default function MemberDetailsDialog({ open, onOpenChange, member }: { op
                   athletes.map((a) => (
                     <div key={a.id} className="border rounded-lg p-4">
                       <div className="text-base font-semibold mb-4">{a.nome || "—"}</div>
-                      <div className="grid md:grid-cols-2 gap-6 text-sm">
+                      <div className="grid md:grid-cols-2 gap-6 text-sm text-left">
                         <Field label="Data de nascimento" value={a.data_nascimento} />
                         <Field label="Escalão" value={a.escalao} />
                         <Field label="NIF" value={a.nif} />
