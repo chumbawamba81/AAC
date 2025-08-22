@@ -523,6 +523,24 @@ function DadosPessoaisSection({
     return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${map[s]}`}>{label[s]}</span>;
   }
 
+function buildProRankMap(atletas: Atleta[]) {
+  // só contam os que NÃO são Sub-23/Masters
+  const elegiveis = atletas
+    .filter((a) => !isAnuidadeObrigatoria(a.escalao))
+    .slice()
+    .sort((a, b) => {
+      // mais velho primeiro (data menor)
+      const da = new Date(a.dataNascimento).getTime();
+      const db = new Date(b.dataNascimento).getTime();
+      return da - db;
+    });
+
+  const map: Record<string, number> = {};
+  elegiveis.forEach((a, i) => { map[a.id] = i; });
+  return map;
+}
+
+
   useEffect(() => {
     let mounted = true;
     const sub = supabase.auth.onAuthStateChange((_e, session) => {
@@ -629,6 +647,8 @@ function DadosPessoaisSection({
       const out: Record<string, { status: ResumoStatus; due?: string | null; valor?: number }> = {};
       const numAgregado = Math.max(1, state.atletas.filter((x) => !isAnuidadeObrigatoria(x.escalao)).length);
 
+	  const rankMap = buildProRankMap(state.atletas);
+
       for (const a of state.atletas) {
         const { data, error } = await supabase
           .from("pagamentos")
@@ -640,10 +660,12 @@ function DadosPessoaisSection({
 
         const row = error ? null : (data || [])[0];
         const est = estimateCosts({
-          escalao: a.escalao || "",
-          tipoSocio: state.perfil?.tipoSocio,
-          numAtletasAgregado: numAgregado,
-        });
+  escalao: a.escalao || "",
+  tipoSocio: state.perfil?.tipoSocio,
+  numAtletasAgregado: numAgregado,
+  proRank: rankMap[a.id],
+});
+
 
         const status: ResumoStatus = row
           ? row.validado
@@ -675,6 +697,8 @@ function DadosPessoaisSection({
 
       const numAgregado = Math.max(1, state.atletas.filter((a) => !isAnuidadeObrigatoria(a.escalao)).length);
 
+	  const rankMap = buildProRankMap(state.atletas);
+
       for (const a of state.atletas) {
         const rowsAll = await listPagamentosByAtleta(a.id);
         const rows = rowsAll.filter((r) => (r as any).tipo !== "inscricao" && r.devido_em);
@@ -694,10 +718,12 @@ function DadosPessoaisSection({
 
         const planoEfetivo: PlanoPagamento = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
         const est = estimateCosts({
-          escalao: a.escalao || "",
-          tipoSocio: state.perfil?.tipoSocio,
-          numAtletasAgregado: numAgregado,
-        });
+  escalao: a.escalao || "",
+  tipoSocio: state.perfil?.tipoSocio,
+  numAtletasAgregado: numAgregado,
+  proRank: rankMap[a.id],
+});
+
         const valor =
           planoEfetivo === "Mensal" ? est.mensal10 : planoEfetivo === "Trimestral" ? est.trimestre3 : est.anual1;
 
@@ -791,25 +817,26 @@ function DadosPessoaisSection({
 
           {/* Sócio — Inscrição (2.ª linha com valor e limite) */}
           {showSocioArea && (
-  <div className="grid grid-cols-[1fr,auto] items-start border rounded-xl px-3 py-2 mb-2 gap-x-3">
-    {/* Esquerda: título + valor/limite */}
-    <div className="text-sm">
-      <div className="font-medium">Sócio — Inscrição</div>
-      <div className="text-gray-700">
-        {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
-        {socioInscrResumo?.due && <span className="ml-2">· Limite: {socioInscrResumo.due}</span>}
-      </div>
-    </div>
-
-    {/* Direita: botão (em cima) + estado (logo por baixo) */}
-    <div className="flex flex-col items-end gap-1">
+  <div className="border rounded-xl px-3 py-2 mb-2">
+    {/* Linha 1: Título + Botão */}
+    <div className="flex items-center justify-between">
+      <div className="text-sm font-medium">Sócio — Inscrição</div>
       <Button variant="outline" onClick={goTesouraria}>
         Ir para Situação de Tesouraria
       </Button>
+    </div>
+
+    {/* Linha 2: Valor + Limite  |  Estado à direita */}
+    <div className="mt-1 flex items-center justify-between">
+      <div className="text-sm text-gray-700">
+        {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
+        {socioInscrResumo?.due && <span className="ml-2">· Limite: {socioInscrResumo.due}</span>}
+      </div>
       <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
     </div>
   </div>
 )}
+
 
 
           {/* Atletas — duas linhas: Inscrição e Quotas */}
@@ -1162,6 +1189,15 @@ async function handleUploadSocio(file: File) {
 
   // helpers de valor
   const numAtletasAgregado = state.atletas.filter(a => !isAnuidadeObrigatoria(a.escalao)).length;
+const rankMap = (function build() {
+  const elegiveis = state.atletas
+    .filter(a => !isAnuidadeObrigatoria(a.escalao))
+    .slice()
+    .sort((a, b) => new Date(a.dataNascimento).getTime() - new Date(b.dataNascimento).getTime());
+  const m: Record<string, number> = {};
+  elegiveis.forEach((a, i) => { m[a.id] = i; });
+  return m;
+})();
 
   if (state.atletas.length === 0 && !isSocio(state.perfil?.tipoSocio)) {
     return (
@@ -1261,10 +1297,12 @@ async function handleUploadSocio(file: File) {
 
           // custos para este atleta
           const est = estimateCosts({
-            escalao: a.escalao || "",
-            tipoSocio: state.perfil?.tipoSocio,
-            numAtletasAgregado: Math.max(1, numAtletasAgregado),
-          });
+  escalao: a.escalao || "",
+  tipoSocio: state.perfil?.tipoSocio,
+  numAtletasAgregado: Math.max(1, numAtletasAgregado),
+  proRank: rankMap[a.id],
+});
+
 
           // Masters/Sub-23 → só inscrição
           const onlyInscricao = isAnuidadeObrigatoria(a.escalao);

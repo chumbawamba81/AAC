@@ -294,7 +294,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
         </div>
 
         {/* ---- DIAGNÓSTICO ---- */}
-        <div className="border rounded-lg p-3 bg-slate-50">
+			{/*        <div className="border rounded-lg p-3 bg-slate-50">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-medium">Diagnóstico rápido</div>
             <div className="flex gap-2">
@@ -304,7 +304,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
           </div>
           {!!diagMsg && <div className="text-xs text-gray-600 mt-2">{diagMsg}</div>}
         </div>
-
+*/}
         {/* ---- SOCIO ---- */}
         <section>
           <div className="mb-2">

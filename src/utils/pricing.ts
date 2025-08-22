@@ -3,7 +3,10 @@ export type EstimateInput = {
   escalao: string;
   tipoSocio?: string | null;
   numAtletasAgregado?: number;
+  /** posição do atleta dentro dos elegíveis PRO (0 = mais velho, 1 = seguinte, …). */
+  proRank?: number;
 };
+
 
 export type EstimateResult = {
   taxaInscricao: number;
@@ -61,34 +64,48 @@ function isSocioPro(tipo?: string | null): boolean {
   return (tipo || "").toLowerCase().includes("pro");
 }
 
-function choosePrices(band: BandKey, tipoSocio?: string | null, numAtletasAgregado = 1): Prices {
+function choosePrices(
+  band: BandKey,
+  tipoSocio?: string | null,
+  numAtletasAgregado: number = 1,
+  proRank?: number
+): Prices {
   const pro = isSocioPro(tipoSocio);
   const twoPlus = numAtletasAgregado >= 2;
 
+  // Sub23 e Masters: só “anuidade”/inscrição (já definido abaixo)
+  if (band === "SUB23") return { mensal10: 0, trimestre3: 0, anual1: 0, taxaInscricao: SUB23_ANUIDADE };
+  if (band === "MASTERS") return { mensal10: 0, trimestre3: 0, anual1: 0, taxaInscricao: MASTERS_ANUIDADE };
+
+  // Grupos com mensal/trimestral/anual
+  const pick = (p1: Prices, p2: Prices, ns: Prices) => {
+    if (!pro) return ns;
+    // PRO: se ≥2 atletas elegíveis e proRank definido:
+    if (twoPlus && proRank !== undefined && proRank > 0) return p2; // 2º, 3º, …
+    return p1; // único PRO ou o 1º (mais velho)
+  };
+
   switch (band) {
-    case "MINI_LOW":
-      if (pro) return twoPlus ? PRO2_MINI_LOW : PRO1_MINI_LOW;
-      return NS_MINI_LOW;
-    case "MINI12":
-      if (pro) return twoPlus ? PRO2_MINI12 : PRO1_MINI12;
-      return NS_MINI12;
-    case "SUBS":
-      if (pro) return twoPlus ? PRO2_SUBS : PRO1_SUBS;
-      return NS_SUBS;
-    case "SUB23":
-      return { mensal10: 0, trimestre3: 0, anual1: 0, taxaInscricao: SUB23_ANUIDADE };
-    case "MASTERS":
-      return { mensal10: 0, trimestre3: 0, anual1: 0, taxaInscricao: MASTERS_ANUIDADE };
+    case "MINI_LOW":  return pick(PRO1_MINI_LOW, PRO2_MINI_LOW, NS_MINI_LOW);
+    case "MINI12":    return pick(PRO1_MINI12,   PRO2_MINI12,   NS_MINI12);
+    case "SUBS":      return pick(PRO1_SUBS,     PRO2_SUBS,     NS_SUBS);
   }
 }
 
+
 export function estimateCosts(input: EstimateInput): EstimateResult {
   const band = classifyEscalao(input.escalao);
-  const prices = choosePrices(band, input.tipoSocio, input.numAtletasAgregado ?? 1);
+  const prices = choosePrices(
+    band,
+    input.tipoSocio,
+    input.numAtletasAgregado ?? 1,
+    input.proRank
+  );
 
   const onlyAnnual = band === "SUB23" || band === "MASTERS";
-  const socioLabel = isSocioPro(input.tipoSocio) ? "Sócio PRO" :
-    ((input.tipoSocio && !/não\s*pretendo/i.test(input.tipoSocio)) ? input.tipoSocio! : "Não Sócio");
+  const socioLabel = isSocioPro(input.tipoSocio)
+    ? "Sócio PRO"
+    : ((input.tipoSocio && !/não\s*pretendo/i.test(input.tipoSocio)) ? input.tipoSocio! : "Não Sócio");
 
   return {
     taxaInscricao: prices.taxaInscricao,
@@ -96,10 +113,11 @@ export function estimateCosts(input: EstimateInput): EstimateResult {
     trimestre3: prices.trimestre3,
     anual1: prices.anual1,
     tarifa: `Tarifa ${socioLabel}.`,
-    info: `Baseado no tipo de sócio e no agregado ( ${Math.max(1, input.numAtletasAgregado ?? 1)} atleta(s) ).`,
+    info: `Baseado no tipo de sócio e no agregado (${Math.max(1, input.numAtletasAgregado ?? 1)} atleta(s)).`,
     onlyAnnual,
   };
 }
+
 
 /** ===== NOVO: valor da inscrição de SÓCIO =====
  *  Preenche estes valores conforme a tua tabela de preços de sócios.
