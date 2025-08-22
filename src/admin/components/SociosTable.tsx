@@ -1,27 +1,20 @@
-import React, { useEffect, useState } from "react";
+// src/admin/components/SociosTable.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { Eye } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import {
-  listSocios,
-  type SocioRow,
-  exportSociosAsCsv,
-} from "../services/adminSociosService";
+import { listSocios, type SocioRow, exportSociosAsCsv } from "../services/adminSociosService";
 import { supabase } from "../../supabaseClient";
 import MemberDetailsDialog from "./MemberDetailsDialog";
 
 /* ================= Tipos ================= */
-
 type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio";
 type OrderDir = "asc" | "desc";
-type Situacao = "Regularizado" | "Pendente" | "Parcial";
+type SituacaoLegacy = "Regularizado" | "Pendente" | "Parcial";
 
-type SocioInsc = {
-  status: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
-  due?: string | null;
-} | null;
+type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
+type SocioInsc = { status: InscStatus; due?: string | null } | null;
 
-/* ================ UI helpers ================ */
-
+/* ================= UI helpers ================= */
 function Container({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border bg-white">{children}</div>;
 }
@@ -31,13 +24,7 @@ function Header({ children }: { children: React.ReactNode }) {
 function TableWrap({ children }: { children: React.ReactNode }) {
   return <div className="overflow-x-auto">{children}</div>;
 }
-
-/** Badge com o mesmo estilo usado na Tesouraria/Admin para inscrição */
-function InscBadge({
-  status,
-}: {
-  status: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
-}) {
+function InscBadge({ status }: { status: InscStatus }) {
   const map = {
     Regularizado: "bg-green-100 text-green-800",
     "Pendente de validação": "bg-yellow-100 text-yellow-800",
@@ -50,33 +37,32 @@ function InscBadge({
     </span>
   );
 }
-
-function deriveInscStatus(row: { validado?: boolean; comprovativo_url?: string | null; devido_em?: string | null }) {
+function deriveInscStatus(row: { validado?: boolean; comprovativo_url?: string | null; devido_em?: string | null }): InscStatus {
   const validado = !!row.validado;
-  const comprovativo = !!(row.comprovativo_url && `${row.comprovativo_url}`.trim().length > 0);
+  const comp = !!(row.comprovativo_url && `${row.comprovativo_url}`.trim().length > 0);
   const due = row.devido_em ?? null;
-
-  if (validado) return "Regularizado" as const;
-  if (comprovativo) return "Pendente de validação" as const;
+  if (validado) return "Regularizado";
+  if (comp) return "Pendente de validação";
   if (due) {
     const dt = new Date(due + "T23:59:59");
-    if (Date.now() > dt.getTime()) return "Em atraso" as const;
+    if (Date.now() > dt.getTime()) return "Em atraso";
   }
-  return "Por regularizar" as const;
+  return "Por regularizar";
 }
 
-/* ================ Página principal ================ */
-
+/* ================= Página ================= */
 export default function SociosTable({
   search,
-  status,
+  status, // filtro legacy vindo de cima ("Regularizado" | "Pendente" | "Parcial" | "")
   tipoSocio,
   orderBy,
   orderDir,
   limit = 20,
+  // NOVO (opcional): filtro moderno diretamente pelas etiquetas da inscrição
+  inscFilter = "",
 }: {
   search: string;
-  status: "" | Situacao;
+  status: "" | SituacaoLegacy;
   tipoSocio:
     | ""
     | "Sócio Pro"
@@ -87,18 +73,23 @@ export default function SociosTable({
   orderBy: OrderBy;
   orderDir: OrderDir;
   limit?: number;
+  inscFilter?: "" | InscStatus | "N/A";
 }) {
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<SocioRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  // mapa user_id -> inscrição
+  const [inscMap, setInscMap] = useState<Record<string, SocioInsc>>({});
+
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
+  // carregar linhas + inscrições em lote
   async function load() {
     setLoading(true);
     try {
-      const statusFilter: Situacao | undefined = status === "" ? undefined : status;
+      const statusFilter: SituacaoLegacy | undefined = status === "" ? undefined : status;
       const { data, count } = await listSocios({
         search,
         status: statusFilter,
@@ -110,22 +101,74 @@ export default function SociosTable({
       });
       setRows(data);
       setTotal(count ?? 0);
+
+      // buscar INSCRIÇÃO DE SÓCIO em lote
+      const userIds = data.map((r) => r.user_id).filter(Boolean);
+      if (userIds.length === 0) {
+        setInscMap({});
+      } else {
+        type Pay = { user_id: string; validado: boolean | null; comprovativo_url: string | null; devido_em: string | null; created_at: string };
+        const { data: pays, error } = await supabase
+          .from("pagamentos")
+          .select("user_id, validado, comprovativo_url, devido_em, created_at")
+          .in("user_id", userIds)
+          .is("atleta_id", null)
+          .eq("tipo", "inscricao")
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        const latest: Record<string, Pay> = {};
+        for (const p of (pays || []) as Pay[]) {
+          if (!latest[p.user_id]) latest[p.user_id] = p; // já vem ordenado desc
+        }
+        const next: Record<string, SocioInsc> = {};
+        for (const id of userIds) {
+          const r = latest[id];
+          if (!r) {
+            next[id] = { status: "Por regularizar", due: null };
+          } else {
+            next[id] = { status: deriveInscStatus(r), due: r.devido_em ?? null };
+          }
+        }
+        setInscMap(next);
+      }
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    load();
+    load().catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, tipoSocio, orderBy, orderDir, limit, page]);
+  }, [search, status, inscFilter, tipoSocio, orderBy, orderDir, limit, page]);
 
   function exportCsv() {
-    const statusFilter: Situacao | undefined = status === "" ? undefined : status;
+    const statusFilter: SituacaoLegacy | undefined = status === "" ? undefined : status;
     exportSociosAsCsv({ search, status: statusFilter, tipoSocio, orderBy, orderDir }).catch((e: any) =>
       alert(e?.message || "Falha ao exportar CSV")
     );
   }
+
+  // lógica do filtro efetivo (suporta novo e legacy)
+  const effectiveRows = useMemo(() => {
+    const legacyPending = status === "Pendente" || status === "Parcial";
+    const hasModern = inscFilter !== "";
+    return rows.filter((r) => {
+      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+      const insc = inscMap[r.user_id] ?? (isSocio ? null : null);
+      if (!isSocio) {
+        // só mostrar "N/A" quando filtro moderno pedir explicitamente N/A
+        if (hasModern) return inscFilter === "N/A";
+        // filtro legacy: “Pendente/Parcial” = não-Regularizado → N/A entra aqui? não, excluímos N/A por defeito
+        return false;
+      }
+      if (!insc) return true; // ainda a carregar → não filtra fora
+      if (hasModern) return inscFilter === insc.status;
+      if (status === "" || status === undefined) return true;
+      if (status === "Regularizado") return insc.status === "Regularizado";
+      // legacy "Pendente" ou "Parcial" = tudo o que não está regularizado
+      return insc.status !== "Regularizado";
+    });
+  }, [rows, inscMap, status, inscFilter]);
 
   return (
     <Container>
@@ -135,21 +178,11 @@ export default function SociosTable({
           <Button variant="outline" onClick={exportCsv} className="text-sm">
             Exportar CSV
           </Button>
-          <Button
-            variant="outline"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            aria-label="Página anterior"
-          >
+          <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} aria-label="Página anterior">
             ◀
           </Button>
           <div className="text-sm">Página {page}</div>
-          <Button
-            variant="outline"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            aria-label="Página seguinte"
-          >
+          <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} aria-label="Página seguinte">
             ▶
           </Button>
         </div>
@@ -169,98 +202,38 @@ export default function SociosTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <Row key={r.id} row={r} />
-            ))}
+            {effectiveRows.map((r) => {
+              const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+              const insc = inscMap[r.user_id] ?? null;
+              const dueLabel =
+                isSocio && insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : isSocio ? "—" : "N/A";
+              return (
+                <tr key={r.id} className="border-t">
+                  <td className="px-3 py-2">{r.nome_completo}</td>
+                  <td className="px-3 py-2">{r.email}</td>
+                  <td className="px-3 py-2">{r.telefone || "—"}</td>
+                  <td className="px-3 py-2">{r.tipo_socio || "—"}</td>
+                  <td className="px-3 py-2">
+                    {isSocio ? (insc ? <InscBadge status={insc.status} /> : <span className="text-gray-500">—</span>) : <span className="text-gray-500">N/A</span>}
+                  </td>
+                  <td className="px-3 py-2">{dueLabel}</td>
+                  <td className="px-3 py-2 text-right">
+                    <Button variant="outline" onClick={() => setModalOpenId(r.user_id)} aria-label="Ver detalhes" className="inline-flex h-9 w-9 items-center justify-center p-0">
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    {/* Dialog por user_id */}
+                    <MemberDetailsDialog open={openId === r.user_id} onOpenChange={(v) => setOpenId(v ? r.user_id : null)} member={r as any} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </TableWrap>
     </Container>
   );
-}
 
-/* ================ Linha/Row ================ */
-
-function Row({ row }: { row: SocioRow }) {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [insc, setInsc] = useState<SocioInsc>(null);
-
-  const isSocio = !!row.tipo_socio && !/não\s*pretendo/i.test(row.tipo_socio);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!isSocio) {
-        setInsc(null);
-        return;
-      }
-      // último registo da INSCRIÇÃO DE SÓCIO (atleta_id nulo; tipo = 'inscricao')
-      const { data, error } = await supabase
-        .from("pagamentos")
-        .select("id, comprovativo_url, validado, devido_em")
-        .eq("user_id", row.user_id)
-        .is("atleta_id", null)
-        .eq("tipo", "inscricao")
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (!mounted) return;
-      if (error) {
-        console.error("[SociosTable] inscrição sócio:", error);
-        setInsc(null);
-        return;
-      }
-      const r = (data || [])[0];
-      if (!r) {
-        setInsc({ status: "Por regularizar", due: null });
-        return;
-      }
-      setInsc({
-        status: deriveInscStatus(r),
-        due: r.devido_em ?? null,
-      });
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [row.user_id, isSocio]);
-
-  const dueLabel =
-    insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
-
-  return (
-    <>
-      <tr className="border-t">
-        <td className="px-3 py-2">{row.nome_completo}</td>
-        <td className="px-3 py-2">{row.email}</td>
-        <td className="px-3 py-2">{row.telefone || "—"}</td>
-        <td className="px-3 py-2">{row.tipo_socio || "—"}</td>
-
-        {/* Situação = estado da inscrição de sócio */}
-        <td className="px-3 py-2">
-          {isSocio ? (
-            insc ? <InscBadge status={insc.status} /> : <span className="text-gray-500">—</span>
-          ) : (
-            <span className="text-gray-500">N/A</span>
-          )}
-        </td>
-
-        {/* Data limite (inscrição de sócio) */}
-        <td className="px-3 py-2">{isSocio ? dueLabel : "N/A"}</td>
-
-        <td className="px-3 py-2 text-right">
-          <Button
-            variant="outline"
-            onClick={() => setModalOpen(true)}
-            aria-label="Ver detalhes"
-            className="inline-flex h-9 w-9 items-center justify-center p-0"
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-        </td>
-      </tr>
-
-      <MemberDetailsDialog open={modalOpen} onOpenChange={setModalOpen} member={row as any} />
-    </>
-  );
+  // estado para abrir dialog por linha
+  function setModalOpenId(id: string) { setOpenId(id); }
+  const [openId, setOpenId] = useState<string | null>(null);
 }
