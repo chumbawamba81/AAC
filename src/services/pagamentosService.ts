@@ -261,13 +261,18 @@ async function bumpAtletaInscricaoToSep30(atletaId: string) {
  */
 // src/services/pagamentosService.ts
 
+// Garante que existe uma linha de INSCRIÇÃO para o atleta (tipo='inscricao').
+// Se não existir, cria com descrição "Taxa de inscrição" e prazo 30/09.
 export async function ensureScheduleForAtleta(
   atleta: { id: string; escalao?: string | null; planoPagamento: PlanoPagamento },
   opts?: { forceRebuild?: boolean }
 ) {
   const onlyInscricao = isAnuidadeObrigatoria(atleta.escalao); // Masters/Sub-23 => só inscrição
 
-  // 1) Se for rebuild, remove TODAS as quotas existentes do atleta (mantém inscrição)
+  // 0) Garante SEMPRE a linha de inscrição do atleta
+  await ensureInscricaoAtletaIfMissing(atleta.id);
+
+  // 1) Se for rebuild, remove TODAS as quotas existentes (mantém inscrição)
   if (opts?.forceRebuild) {
     const { error: delErr } = await supabase
       .from("pagamentos")
@@ -277,13 +282,13 @@ export async function ensureScheduleForAtleta(
     if (delErr) throw delErr;
   }
 
-  // 2) Masters/Sub-23: não geram quotas, apenas garantimos a inscrição com due a 30/09
+  // 2) Masters/Sub-23: não geram quotas; só alinhamos o prazo da inscrição
   if (onlyInscricao) {
     await bumpAtletaInscricaoToSep30(atleta.id);
     return;
   }
 
-  // 3) Restantes escalões — gerar agenda de quotas conforme o plano selecionado
+  // 3) Restantes: gera/atualiza as quotas do plano
   const planoEfetivo: PlanoPagamento = atleta.planoPagamento;
   const labels = Array.from({ length: getSlotsForPlano(planoEfetivo) }, (_, i) =>
     getPagamentoLabel(planoEfetivo, i)
@@ -291,7 +296,7 @@ export async function ensureScheduleForAtleta(
   const dues = buildDueDates(planoEfetivo);
 
   const rows = labels.map((descricao, i) => ({
-    user_id: null as any,          // pode ficar null (se a coluna permitir / trigger preenche)
+    user_id: null as any,
     atleta_id: atleta.id,
     tipo: "quota" as const,
     descricao,
@@ -300,12 +305,13 @@ export async function ensureScheduleForAtleta(
     devido_em: dues[i] || null,
   }));
 
-  // upsert idempotente: (atleta_id, descricao) tem UNIQUE
+  // upsert idempotente sobre (atleta_id, descricao) — corresponde ao UNIQUE
   const { error } = await supabase
     .from("pagamentos")
     .upsert(rows, { onConflict: "atleta_id,descricao" });
   if (error) throw error;
 
-  // 4) Alinhar a inscrição do atleta para 30/09 (se existir)
+  // 4) Alinhar a inscrição para 30/09 (seja nova ou pré-existente)
   await bumpAtletaInscricaoToSep30(atleta.id);
 }
+
