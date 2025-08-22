@@ -21,7 +21,7 @@ const TEMPLATES: Template[] = [
   { file: "ficha-socio.pdf",            title: "Ficha de Sócio" },
   { file: "ficha-atleta.pdf",           title: "Ficha de Sócio de Atleta" },
   { file: "ficha-jogador-fpb.pdf",      title: "Ficha de Jogador FPB" },
-  { file: "ficha-inscricao-aac.pdf",    title: "Ficha de Inscrição AAC" },
+  { file: "termo-responsabilidade.pdf",    title: "Termo de Responsabilidade" },
   { file: "exame-medico.pdf",           title: "Exame Médico (modelo)" },
 ];
 
