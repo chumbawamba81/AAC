@@ -7,7 +7,8 @@ type OrderDir = "asc" | "desc";
 
 export default function SociosPage() {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"" | "Regularizado" | "Pendente" | "Parcial">("");
+  // agora aceitamos qualquer string (valores novos e legados)
+  const [status, setStatus] = useState<string>("");
   const [tipoSocio, setTipoSocio] = useState<
     "" | "Sócio Pro" | "Sócio Família" | "Sócio Geral Renovação" | "Sócio Geral Novo" | "Não pretendo ser sócio"
   >("");
@@ -45,12 +46,18 @@ export default function SociosPage() {
           <select
             className="w-full rounded-xl border px-3 py-2 text-sm"
             value={status}
-            onChange={(e) => setStatus(e.target.value as any)}
+            onChange={(e) => setStatus(e.target.value)}
           >
             <option value="">(todas)</option>
+            {/* etiquetas novas — batem certo com a coluna Situação */}
             <option value="Regularizado">Regularizado</option>
-            <option value="Pendente">Pendente</option>
-            <option value="Parcial">Parcial</option>
+            <option value="Pendente de validação">Pendente de validação</option>
+            <option value="Por regularizar">Por regularizar</option>
+            <option value="Em atraso">Em atraso</option>
+            <option value="N/A">N/A</option>
+            {/* compat legada (opcional): continuam a funcionar via normalização no SociosTable */}
+            <option value="Pendente">Pendente (legado)</option>
+            <option value="Parcial">Parcial (legado)</option>
           </select>
         </div>
 
@@ -83,6 +90,7 @@ export default function SociosPage() {
               <option value="created_at">Data (criação)</option>
               <option value="nome_completo">Nome</option>
               <option value="email">Email</option>
+              {/* Nota: “Tesouraria” é derivado cliente; se quiseres, retiro esta opção. */}
               <option value="situacao_tesouraria">Tesouraria</option>
               <option value="tipo_socio">Tipo de sócio</option>
             </select>
