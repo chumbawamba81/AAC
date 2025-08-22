@@ -1086,6 +1086,23 @@ function PagamentosSection({ state }: { state: State }) {
   } finally { setBusy(false); }
 }
 
+// Apagar comprovativo de quota/anuidade (apaga a linha da tabela pagamentos)
+async function handleDelete(athlete: Atleta, idx: number) {
+  const row = payments[athlete.id]?.[idx];
+  if (!row) return;
+  if (!confirm("Remover este comprovativo?")) return;
+  setBusy(true);
+  try {
+    await deletePagamento(row);
+    await refreshPayments();
+  } catch (e: any) {
+    console.error("[Pagamentos] delete", e);
+    alert(e?.message || "Falha a remover");
+  } finally {
+    setBusy(false);
+  }
+}
+
 
 async function handleUploadSocio(file: File) {
   if (!userId || !file) {
