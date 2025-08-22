@@ -53,13 +53,12 @@ function deriveInscStatus(row: { validado?: boolean; comprovativo_url?: string |
 /* ================= Página ================= */
 export default function SociosTable({
   search,
-  status, // filtro legacy vindo de cima ("Regularizado" | "Pendente" | "Parcial" | "")
+  status, // legacy: "Regularizado" | "Pendente" | "Parcial" | ""
   tipoSocio,
   orderBy,
   orderDir,
   limit = 20,
-  // NOVO (opcional): filtro moderno diretamente pelas etiquetas da inscrição
-  inscFilter = "",
+  inscFilter = "", // moderno (opcional): "" | InscStatus | "N/A"
 }: {
   search: string;
   status: "" | SituacaoLegacy;
@@ -79,9 +78,8 @@ export default function SociosTable({
   const [rows, setRows] = useState<SocioRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-
-  // mapa user_id -> inscrição
   const [inscMap, setInscMap] = useState<Record<string, SocioInsc>>({});
+  const [openId, setOpenId] = useState<string | null>(null); // <-- declarado no topo
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -107,7 +105,13 @@ export default function SociosTable({
       if (userIds.length === 0) {
         setInscMap({});
       } else {
-        type Pay = { user_id: string; validado: boolean | null; comprovativo_url: string | null; devido_em: string | null; created_at: string };
+        type Pay = {
+          user_id: string;
+          validado: boolean | null;
+          comprovativo_url: string | null;
+          devido_em: string | null;
+          created_at: string;
+        };
         const { data: pays, error } = await supabase
           .from("pagamentos")
           .select("user_id, validado, comprovativo_url, devido_em, created_at")
@@ -116,6 +120,7 @@ export default function SociosTable({
           .eq("tipo", "inscricao")
           .order("created_at", { ascending: false });
         if (error) throw error;
+
         const latest: Record<string, Pay> = {};
         for (const p of (pays || []) as Pay[]) {
           if (!latest[p.user_id]) latest[p.user_id] = p; // já vem ordenado desc
@@ -123,11 +128,8 @@ export default function SociosTable({
         const next: Record<string, SocioInsc> = {};
         for (const id of userIds) {
           const r = latest[id];
-          if (!r) {
-            next[id] = { status: "Por regularizar", due: null };
-          } else {
-            next[id] = { status: deriveInscStatus(r), due: r.devido_em ?? null };
-          }
+          if (!r) next[id] = { status: "Por regularizar", due: null };
+          else next[id] = { status: deriveInscStatus(r), due: r.devido_em ?? null };
         }
         setInscMap(next);
       }
@@ -148,25 +150,20 @@ export default function SociosTable({
     );
   }
 
-  // lógica do filtro efetivo (suporta novo e legacy)
+  // filtro efetivo (suporta novo e legacy)
   const effectiveRows = useMemo(() => {
     const legacyPending = status === "Pendente" || status === "Parcial";
     const hasModern = inscFilter !== "";
     return rows.filter((r) => {
       const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
-      const insc = inscMap[r.user_id] ?? (isSocio ? null : null);
-      if (!isSocio) {
-        // só mostrar "N/A" quando filtro moderno pedir explicitamente N/A
-        if (hasModern) return inscFilter === "N/A";
-        // filtro legacy: “Pendente/Parcial” = não-Regularizado → N/A entra aqui? não, excluímos N/A por defeito
-        return false;
-      }
-      if (!insc) return true; // ainda a carregar → não filtra fora
+      const insc = inscMap[r.user_id];
+      if (!isSocio) return hasModern ? inscFilter === "N/A" : false;
+      if (!insc) return true; // ainda a carregar
       if (hasModern) return inscFilter === insc.status;
       if (status === "" || status === undefined) return true;
       if (status === "Regularizado") return insc.status === "Regularizado";
-      // legacy "Pendente" ou "Parcial" = tudo o que não está regularizado
-      return insc.status !== "Regularizado";
+      // legacy "Pendente"/"Parcial" = tudo o que não está regularizado
+      return legacyPending ? insc.status !== "Regularizado" : true;
     });
   }, [rows, inscMap, status, inscFilter]);
 
@@ -178,11 +175,21 @@ export default function SociosTable({
           <Button variant="outline" onClick={exportCsv} className="text-sm">
             Exportar CSV
           </Button>
-          <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} aria-label="Página anterior">
+          <Button
+            variant="outline"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            aria-label="Página anterior"
+          >
             ◀
           </Button>
           <div className="text-sm">Página {page}</div>
-          <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} aria-label="Página seguinte">
+          <Button
+            variant="outline"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            aria-label="Página seguinte"
+          >
             ▶
           </Button>
         </div>
@@ -206,7 +213,11 @@ export default function SociosTable({
               const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
               const insc = inscMap[r.user_id] ?? null;
               const dueLabel =
-                isSocio && insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : isSocio ? "—" : "N/A";
+                isSocio && insc?.due
+                  ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT")
+                  : isSocio
+                  ? "—"
+                  : "N/A";
               return (
                 <tr key={r.id} className="border-t">
                   <td className="px-3 py-2">{r.nome_completo}</td>
@@ -214,15 +225,31 @@ export default function SociosTable({
                   <td className="px-3 py-2">{r.telefone || "—"}</td>
                   <td className="px-3 py-2">{r.tipo_socio || "—"}</td>
                   <td className="px-3 py-2">
-                    {isSocio ? (insc ? <InscBadge status={insc.status} /> : <span className="text-gray-500">—</span>) : <span className="text-gray-500">N/A</span>}
+                    {isSocio ? (
+                      insc ? (
+                        <InscBadge status={insc.status} />
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )
+                    ) : (
+                      <span className="text-gray-500">N/A</span>
+                    )}
                   </td>
                   <td className="px-3 py-2">{dueLabel}</td>
                   <td className="px-3 py-2 text-right">
-                    <Button variant="outline" onClick={() => setModalOpenId(r.user_id)} aria-label="Ver detalhes" className="inline-flex h-9 w-9 items-center justify-center p-0">
+                    <Button
+                      variant="outline"
+                      onClick={() => setOpenId(r.user_id)}
+                      aria-label="Ver detalhes"
+                      className="inline-flex h-9 w-9 items-center justify-center p-0"
+                    >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    {/* Dialog por user_id */}
-                    <MemberDetailsDialog open={openId === r.user_id} onOpenChange={(v) => setOpenId(v ? r.user_id : null)} member={r as any} />
+                    <MemberDetailsDialog
+                      open={openId === r.user_id}
+                      onOpenChange={(v) => setOpenId(v ? r.user_id : null)}
+                      member={r as any}
+                    />
                   </td>
                 </tr>
               );
@@ -232,8 +259,4 @@ export default function SociosTable({
       </TableWrap>
     </Container>
   );
-
-  // estado para abrir dialog por linha
-  function setModalOpenId(id: string) { setOpenId(id); }
-  const [openId, setOpenId] = useState<string | null>(null);
 }
