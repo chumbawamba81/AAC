@@ -7,6 +7,8 @@ import { supabase } from "../supabaseClient";
 // Services (auth-adjacent)
 import { getMyProfile } from "../services/profileService";
 import { listAtletas } from "../services/atletasService";
+import { saveComprovativo } from "../services/pagamentosService";
+
 
 // Services (pagamentos)
 import {
@@ -259,6 +261,21 @@ export default function PagamentosPage() {
     }
   }
 
+// precisa de: import { saveComprovativo } from "../services/pagamentosService";
+async function handleUploadQuota(a: Atleta, descricao: string, file: File) {
+  // Faz o upload do comprovativo para a quota com esta descrição
+  await saveComprovativo({
+    userId,              // usa a mesma variável já usada nos outros handlers
+    atletaId: a.id,
+    descricao,
+    file,
+  });
+
+  // Se tiveres uma função que recarrega os dados (ex.: fetchPagamentos()),
+  // chama-a aqui. Caso contrário, podes deixar assim.
+}
+
+
   /* ------------------------------- Derivados -------------------------------- */
 
   const numAtletasAgregado = useMemo(
@@ -494,13 +511,11 @@ export default function PagamentosPage() {
                           <FilePickerButton
   variant={meta?.comprovativo_url ? "secondary" : "outline"}
   accept="image/*,application/pdf"
-  onPick={async (file) => { await handleUpload(a, i, file); }}
+  onPick={async (file) => { await handleUploadQuota(a, meta.descricao, file); }}
 >
   <Upload className="h-4 w-4 mr-1" />
   {meta?.comprovativo_url ? "Substituir" : "Carregar"}
 </FilePickerButton>
-
-
                           {meta?.comprovativo_url && (
                             <Button variant="destructive" onClick={() => handleDeleteQuota(a, i)}>
                               <Trash2 className="h-4 w-4 mr-1" />
