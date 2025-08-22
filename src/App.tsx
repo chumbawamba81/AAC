@@ -27,11 +27,11 @@ import {
   saveComprovativoSocioInscricao,
   listByAtleta as listPagamentosByAtleta,
   saveComprovativo as saveComprovativoPagamento,
-  deletePagamento,
+  clearComprovativo, // ⬅️ usar isto em vez de deletePagamento
   withSignedUrls as withSignedUrlsPagamentos,
-  type PagamentoRowWithUrl, saveComprovativoInscricaoAtleta,
-  clearComprovativo,
+  type PagamentoRowWithUrl,
 } from "./services/pagamentosService";
+
 
 // Ícones
 import {
@@ -1093,15 +1093,14 @@ async function handleDelete(athlete: Atleta, idx: number) {
   if (!confirm("Remover este comprovativo?")) return;
   setBusy(true);
   try {
-    await deletePagamento(row);
+    await clearComprovativo(row);   // ⬅️ só limpa comprovativo_url e validado
     await refreshPayments();
   } catch (e: any) {
-    console.error("[Pagamentos] delete", e);
+    console.error("[Pagamentos] clear", e);
     alert(e?.message || "Falha a remover");
-  } finally {
-    setBusy(false);
-  }
+  } finally { setBusy(false); }
 }
+
 
 
 async function handleUploadSocio(file: File) {
@@ -1212,13 +1211,25 @@ async function handleUploadSocio(file: File) {
                       onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
                     >
                       <Upload className="h-4 w-4 mr-1" />
-                      {row?.comprovativo_url ? "Substituir" : "Carregar"}
-                    </FilePickerButton>
-                    {row?.comprovativo_url && (
-                      <Button variant="destructive" onClick={() => handleRemoveSocioInscricao(row)}>
-                        <Trash2 className="h-4 w-4 mr-1" /> Remover
-                      </Button>
-                    )}
+                      {row?.comprovativo_url && (
+  <Button
+    variant="destructive"
+    onClick={async () => {
+      if (!confirm("Remover este comprovativo?")) return;
+      setBusy(true);
+      try {
+        await clearComprovativo(row);
+        await refreshPayments();
+      } catch (e:any) {
+        alert(e?.message || "Falha a remover");
+      } finally { setBusy(false); }
+    }}
+  >
+    <Trash2 className="h-4 w-4 mr-1" />
+    Remover
+  </Button>
+)}
+
                   </div>
                 </div>
               );
