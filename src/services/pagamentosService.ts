@@ -198,6 +198,20 @@ export async function createInscricaoSocioIfMissing(userId: string) {
   }
 }
 
+/** Listar a inscrição de sócio (última) — usado na App e em Pagamentos.tsx */
+export async function listSocioInscricao(userId: string): Promise<PagamentoRow[]> {
+  const { data, error } = await supabase
+    .from("pagamentos")
+    .select("*")
+    .eq("user_id", userId)
+    .is("atleta_id", null)
+    .eq("tipo", "inscricao")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return (data || []) as PagamentoRow[];
+}
+
 /* ======================= Ajustes (inscrição atleta, se existir) ======================= */
 
 // Se já existir uma inscrição do atleta, força a data-limite para 30/09 do ano corrente.
