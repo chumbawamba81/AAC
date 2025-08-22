@@ -1,5 +1,5 @@
 // src/admin/components/SociosTable.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   listSocios,
   updateSituacaoTesouraria,
@@ -18,6 +18,7 @@ import { supabase } from "../../supabaseClient";
 
 type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio";
 type OrderDir = "asc" | "desc";
+type Situacao = "Regularizado" | "Pendente" | "Parcial";
 
 function Container({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border bg-white">{children}</div>;
@@ -69,7 +70,7 @@ export default function SociosTable({
   limit = 20,
 }: {
   search: string;
-  status: "" | "Regularizado" | "Pendente" | "Parcial";
+  status: "" | Situacao;
   tipoSocio:
     | ""
     | "Sócio Pro"
@@ -89,9 +90,10 @@ export default function SociosTable({
   async function load() {
     setLoading(true);
     try {
+      const statusFilter: Situacao | undefined = status === "" ? undefined : status;
       const { data, count } = await listSocios({
         search,
-        status,
+        status: statusFilter, // << normalizado
         tipoSocio,
         orderBy,
         orderDir,
@@ -111,7 +113,8 @@ export default function SociosTable({
   }, [search, status, tipoSocio, orderBy, orderDir, limit, page]);
 
   function exportCsv() {
-    exportSociosAsCsv({ search, status, tipoSocio, orderBy, orderDir }).catch((e: any) =>
+    const statusFilter: Situacao | undefined = status === "" ? undefined : status;
+    exportSociosAsCsv({ search, status: statusFilter, tipoSocio, orderBy, orderDir }).catch((e: any) =>
       alert(e?.message || "Falha ao exportar CSV")
     );
   }
@@ -169,8 +172,6 @@ type SocioInscricaoStatus = {
   valor?: number | null;
 } | null;
 
-type Situacao = "Regularizado" | "Pendente" | "Parcial";
-
 /** Deriva o estado do pagamento usando a mesma lógica da Tesouraria/Admin */
 function deriveStatusFromRow(row: { validado?: boolean; comprovativo_url?: string | null; devido_em?: string | null }) {
   const validado = !!row.validado;
@@ -189,7 +190,7 @@ function deriveStatusFromRow(row: { validado?: boolean; comprovativo_url?: strin
 }
 
 function Row({ row, onChanged }: { row: SocioRow; onChanged: () => void }) {
-  const [up, setUp] = useState<Situacao | null>(null); // << corrigido
+  const [up, setUp] = useState<Situacao | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
   // NOVO: estado da inscrição de sócio (só quando aplicável)
@@ -236,7 +237,7 @@ function Row({ row, onChanged }: { row: SocioRow; onChanged: () => void }) {
   }, [row.user_id, isSocio]);
 
   async function saveStatus() {
-    if (!up) return; // garante tipagem
+    if (!up) return;
     await updateSituacaoTesouraria(row.user_id, up);
     await onChanged();
     setUp(null);
@@ -276,7 +277,7 @@ function Row({ row, onChanged }: { row: SocioRow; onChanged: () => void }) {
         <td className="px-3 py-2 text-right">
           <div className="inline-flex items-center gap-2">
             <select
-              value={up ?? ""} // << corrigido
+              value={up ?? ""}
               onChange={(e) => {
                 const v = e.target.value as "" | Situacao;
                 setUp(v === "" ? null : v);
