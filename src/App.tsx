@@ -21,7 +21,6 @@ import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
 import { ensureScheduleForAtleta } from "./services/pagamentosService";
 import { estimateCosts, eur, socioInscricaoAmount } from "./utils/pricing";
-import { saveComprovativoSocioInscricao } from "./services/pagamentosService";
 import {
   createInscricaoSocioIfMissing,
   listSocioInscricao,
