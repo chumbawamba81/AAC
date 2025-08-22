@@ -1,76 +1,49 @@
-// src/components/FilePickerButton.tsx
 import React, { useRef } from "react";
 import { Button } from "./ui/button";
 
-type Variant = "outline" | "secondary" | "destructive" | "default" | "ghost";
-
-type PropsBase = {
+type Props = {
   accept?: string;
   multiple?: boolean;
-  /** Podes usar "environment" para abrir a câmara traseira em mobile */
-  capture?: "environment" | "user" | boolean | string;
+  disabled?: boolean;
   className?: string;
+  variant?: "outline" | "secondary" | "destructive" | "default";
   children: React.ReactNode;
-  variant?: Variant;
-};
-
-type Props = PropsBase & {
-  /** Usa UM deles: onPick (um ficheiro) OU onFiles (FileList) */
-  onPick?: (file: File) => void;
-  onFiles?: (files: FileList) => void;
+  /** Usa um dos dois handlers: */
+  onPick?: (file: File) => void | Promise<void>;
+  onFiles?: (files: FileList) => void | Promise<void>;
 };
 
 export default function FilePickerButton({
-  onPick,
-  onFiles,
   accept = "image/*,application/pdf",
   multiple = false,
-  capture,
-  children,
-  variant = "outline",
+  disabled,
   className,
+  variant = "outline",
+  children,
+  onPick,
+  onFiles,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function emit(files: FileList) {
-    if (onFiles) onFiles(files);
-    if (onPick && files.length > 0) onPick(files[0]);
-  }
-
-  async function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
-    // Evita que um pai (tabs/link) apanhe o clique:
+  const openPicker = (e: React.MouseEvent | React.TouchEvent) => {
+    // Evita navegar/trocar de tab em Android (bubbling para <a>/<Link> ou tabs)
     e.preventDefault();
     e.stopPropagation();
-
-    const anyWin = window as any;
-    const supportsNativePicker = typeof anyWin.showOpenFilePicker === "function";
-
-    if (supportsNativePicker && !capture) {
-      try {
-        const handles = await anyWin.showOpenFilePicker({
-          multiple,
-          types: [
-            {
-              description: "Ficheiros",
-              accept: {
-                "image/*": [".png", ".jpg", ".jpeg", ".webp"],
-                "application/pdf": [".pdf"],
-              },
-            },
-          ],
-        });
-        const files = await Promise.all(handles.map((h: any) => h.getFile()));
-        const dt = new DataTransfer();
-        files.forEach((f: File) => dt.items.add(f));
-        emit(dt.files);
-        return;
-      } catch {
-        // cancelado → fallback para input
-      }
-    }
-
     inputRef.current?.click();
-  }
+  };
+
+  const handleChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const files = e.currentTarget.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      if (onPick) await onPick(files[0]);
+      else if (onFiles) await onFiles(files);
+    } finally {
+      // permite escolher novamente o mesmo ficheiro
+      e.currentTarget.value = "";
+    }
+  };
 
   return (
     <>
@@ -79,28 +52,21 @@ export default function FilePickerButton({
         type="file"
         accept={accept}
         multiple={multiple}
-        // @ts-expect-error atributo suportado em mobile
-        capture={capture}
-        style={{ position: "fixed", opacity: 0, width: 1, height: 1, top: 0, left: 0 }}
+        // invisível mas presente no DOM
+        style={{ position: "fixed", opacity: 0, pointerEvents: "none", width: 1, height: 1, top: 0, left: 0 }}
+        onChange={handleChange}
+        // Em alguns Androids, o onClick do input ajuda a “resetar” a seleção anterior
         onClick={(e) => {
-          // iOS/Android às vezes disparam click no input → travar borbulhação
-          e.stopPropagation();
-        }}
-        onChange={(e) => {
-          e.stopPropagation();
-          const f = e.currentTarget.files;
-          if (f && f.length > 0) emit(f);
-          // limpa para poder voltar a escolher o mesmo ficheiro
-          e.currentTarget.value = "";
+          (e.currentTarget as HTMLInputElement).value = "";
         }}
       />
       <Button
         type="button"
         variant={variant as any}
         className={className}
-        onMouseDown={(e) => { e.stopPropagation(); }}
-        onTouchStart={(e) => { e.stopPropagation(); }}
-        onClick={handleClick}
+        disabled={disabled}
+        onClick={openPicker}
+        onTouchEnd={openPicker}
       >
         {children}
       </Button>
