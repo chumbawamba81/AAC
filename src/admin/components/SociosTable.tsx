@@ -250,24 +250,32 @@ function Row({ row }: { row: SocioRow }) {
         <td className="px-3 py-2">{row.telefone || "—"}</td>
         <td className="px-3 py-2">{row.tipo_socio || "—"}</td>
 
-        {/* Situação: estado de tesouraria + inscrição de sócio (quando aplicável) */}
-        <td className="px-3 py-2">
-          <div className="flex flex-col gap-1">
-            <TesourariaBadge status={row.situacao_tesouraria || "Pendente"} />
-            <div className="text-xs text-gray-700">
-              <span className="mr-1 text-gray-600">Inscrição de sócio:</span>
-              {isSocio ? (
-                insc ? (
-                  <StatusBadgeInscricao status={insc.status} />
-                ) : (
-                  <span className="text-gray-500">—</span>
-                )
-              ) : (
-                <span className="text-gray-500">N/A</span>
-              )}
-            </div>
-          </div>
-        </td>
+        {/* Situação: estado da inscrição de sócio (quando aplicável) */}
+<td className="px-3 py-2">
+  <div className="flex flex-col gap-1">
+    <div className="text-xs text-gray-700">
+      {isSocio ? (
+        insc ? (
+          <span className="inline-flex items-center gap-2">
+            <StatusBadgeInscricao status={insc.status} />
+            {insc.due && (
+              <span className="text-xs text-gray-500">
+                Data limite: {new Date(insc.due).toLocaleDateString("pt-PT")}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="text-gray-500">—</span>
+        )
+      ) : (
+        <span className="text-gray-500">N/A</span>
+      )}
+    </div>
+
+    {/* (Opcional) Se quiseres manter também a badge antiga da conta global, deixa esta linha; senão remove. */}
+    {/* <TesourariaBadge status={row.situacao_tesouraria || "Pendente"} /> */}
+  </div>
+</td>
 
         <td className="px-3 py-2 text-right">
           <Button
