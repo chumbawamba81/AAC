@@ -1,71 +1,54 @@
-import React, { useRef } from "react";
-import { Button } from "./ui/button";
+// src/components/FilePickerButton.tsx
+import React from "react";
 
-/**
- * Botão robusto para abrir o seletor de ficheiros.
- * Usa showOpenFilePicker quando disponível e faz fallback para input.click().
- */
-export default function FilePickerButton({
-  onFiles,
-  accept = "image/*,application/pdf",
-  multiple = false,
-  children,
-  variant = "outline",
-}: {
-  onFiles: (files: FileList) => void;
+type Props = {
+  onPick: (file: File) => Promise<void> | void;
   accept?: string;
-  multiple?: boolean;
-  children: React.ReactNode;
-  variant?: "outline" | "secondary" | "destructive" | "default";
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  capture?: "environment" | "user";
+  className?: string;
+  children?: React.ReactNode;
+};
 
-  async function handleClick() {
-    const anyWin = window as any;
-    if (typeof anyWin.showOpenFilePicker === "function") {
-      try {
-        const handles = await anyWin.showOpenFilePicker({
-          multiple,
-          types: [
-            {
-              description: "Ficheiros",
-              accept: {
-                "image/*": [".png", ".jpg", ".jpeg", ".webp"],
-                "application/pdf": [".pdf"],
-              },
-            },
-          ],
-        });
-        const files = await Promise.all(handles.map((h: any) => h.getFile()));
-        const dt = new DataTransfer();
-        files.forEach((f) => dt.items.add(f));
-        onFiles(dt.files);
-        return;
-      } catch {
-        /* cancelado → usa fallback */
-      }
+export default function FilePickerButton({
+  onPick,
+  accept = "image/*,application/pdf",
+  capture,
+  className = "",
+  children,
+}: Props) {
+  const [busy, setBusy] = React.useState(false);
+
+  async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    // limpa o value para permitir escolher o mesmo ficheiro novamente
+    e.currentTarget.value = "";
+    if (!f) return;
+    try {
+      setBusy(true);
+      await onPick(f);
+    } finally {
+      setBusy(false);
     }
-    inputRef.current?.click();
   }
 
   return (
-    <>
+    // NÃO é <button>; é <label> com input por cima (opacity 0)
+    <label
+      className={
+        "relative inline-flex items-center gap-2 rounded-2xl border px-4 py-2 font-semibold bg-white hover:bg-gray-50 cursor-pointer " +
+        (busy ? "opacity-60 pointer-events-none " : "") +
+        className
+      }
+    >
+      {children ?? "Carregar"}
       <input
-        ref={inputRef}
         type="file"
         accept={accept}
-        multiple={multiple}
-        style={{ position: "fixed", opacity: 0, width: 1, height: 1, top: 0, left: 0 }}
-        onChange={(e) => {
-          if (e.currentTarget.files && e.currentTarget.files.length > 0) {
-            onFiles(e.currentTarget.files);
-          }
-          e.currentTarget.value = ""; // permite selecionar o mesmo ficheiro novamente
-        }}
+        capture={capture}
+        onChange={handleChange}
+        className="absolute inset-0 opacity-0 cursor-pointer"
+        aria-label="Selecionar ficheiro"
       />
-      <Button type="button" variant={variant as any} onClick={handleClick}>
-        {children}
-      </Button>
-    </>
+    </label>
   );
 }
