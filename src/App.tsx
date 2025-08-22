@@ -25,12 +25,15 @@ import {
   createInscricaoSocioIfMissing,
   listSocioInscricao,
   saveComprovativoSocioInscricao,
+  saveComprovativoInscricaoAtleta,   // <— NOVO
+  clearComprovativo,                  // <— NOVO
   listByAtleta as listPagamentosByAtleta,
   saveComprovativo as saveComprovativoPagamento,
-  clearComprovativo, // ⬅️ usar isto em vez de deletePagamento
+  deletePagamento,
   withSignedUrls as withSignedUrlsPagamentos,
   type PagamentoRowWithUrl,
 } from "./services/pagamentosService";
+
 
 
 // Ícones
@@ -1073,11 +1076,11 @@ function PagamentosSection({ state }: { state: State }) {
     } finally { setBusy(false); }
   }
 
-  async function handleUploadInscricao(athlete: Atleta, file: File) {
+async function handleUploadInscricao(athlete: Atleta, file: File) {
   if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
   setBusy(true);
   try {
-    // usa o helper que atualiza pela chave funcional (atleta_id + tipo='inscricao')
+    // usar o helper específico da inscrição do atleta
     await saveComprovativoInscricaoAtleta({ userId, atletaId: athlete.id, file });
     await refreshPayments();
   } catch (e: any) {
@@ -1085,6 +1088,7 @@ function PagamentosSection({ state }: { state: State }) {
     alert(e?.message || "Falha no upload");
   } finally { setBusy(false); }
 }
+
 
 // Apagar comprovativo de quota/anuidade (apaga a linha da tabela pagamentos)
 async function handleDelete(athlete: Atleta, idx: number) {
