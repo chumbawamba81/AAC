@@ -126,10 +126,12 @@ useEffect(() => {
   }
 
   const result = estimateCosts({
-    escalao: a.escalao,
-    tipoSocio: tipoSocio || 'Não pretendo ser sócio',
-    numAtletasAgregado: efetivoNum, // 1 => PRO1 ; 2 => PRO2
-  });
+  escalao: a.escalao,
+  tipoSocio: tipoSocio || 'Não pretendo ser sócio',
+  numAtletasAgregado: efetivoNum,  // já tínhamos
+  proTier: (efetivoNum === 2 ? 2 : 1), // <= NOVO: sinaliza PRO1/PRO2
+});
+
   setEst(result);
 }, [a.escalao, a.dataNascimento, tipoSocio, agregadoAtletas, initial?.id]);
 
