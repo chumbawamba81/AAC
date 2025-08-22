@@ -363,13 +363,13 @@ export default function PagamentosPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <FilePickerButton
-                        variant={row?.comprovativo_url ? "secondary" : "outline"}
-                        accept="image/*,application/pdf"
-                        onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
-                      >
-                        <Upload className="h-4 w-4 mr-1" />
-                        {row?.comprovativo_url ? "Substituir" : "Carregar"}
-                      </FilePickerButton>
+  variant={row?.comprovativo_url ? "secondary" : "outline"}
+  accept="image/*,application/pdf"
+  onPick={async (file) => { await handleUploadSocio(file); }}
+>
+  <Upload className="h-4 w-4 mr-1" />
+  {row?.comprovativo_url ? "Substituir" : "Carregar"}
+</FilePickerButton>
                     </div>
                   </div>
                 );
@@ -437,13 +437,13 @@ export default function PagamentosPage() {
                         </div>
                       </div>
                       <FilePickerButton
-                        variant={row?.comprovativo_url ? "secondary" : "outline"}
-                        accept="image/*,application/pdf"
-                        onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-                      >
-                        <Upload className="h-4 w-4 mr-1" />
-                        {row?.comprovativo_url ? "Substituir" : "Carregar"}
-                      </FilePickerButton>
+  variant={row?.comprovativo_url ? "secondary" : "outline"}
+  accept="image/*,application/pdf"
+  onPick={async (file) => { await handleUploadInscricao(a, file); }}
+>
+  <Upload className="h-4 w-4 mr-1" />
+  {row?.comprovativo_url ? "Substituir" : "Carregar"}
+</FilePickerButton>
                     </div>
                   );
                 })()}
@@ -492,13 +492,14 @@ export default function PagamentosPage() {
 
                         <div className="flex items-center gap-2">
                           <FilePickerButton
-                            variant={meta?.comprovativo_url ? "secondary" : "outline"}
-                            accept="image/*,application/pdf"
-                            onFiles={(files) => files?.[0] && handleUploadQuota(a, i, files[0])}
-                          >
-                            <Upload className="h-4 w-4 mr-1" />
-                            {meta?.comprovativo_url ? "Substituir" : "Carregar"}
-                          </FilePickerButton>
+  variant={meta?.comprovativo_url ? "secondary" : "outline"}
+  accept="image/*,application/pdf"
+  onPick={async (file) => { await handleUpload(a, i, file); }}
+>
+  <Upload className="h-4 w-4 mr-1" />
+  {meta?.comprovativo_url ? "Substituir" : "Carregar"}
+</FilePickerButton>
+
 
                           {meta?.comprovativo_url && (
                             <Button variant="destructive" onClick={() => handleDeleteQuota(a, i)}>
