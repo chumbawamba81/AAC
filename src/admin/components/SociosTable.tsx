@@ -5,8 +5,6 @@ import { Button } from "../../components/ui/button";
 import {
   listSocios,
   type SocioRow,
-  type SocioFullRow,
-  type AtletaRow,
   exportSociosAsCsv,
 } from "../services/adminSociosService";
 import { supabase } from "../../supabaseClient";
@@ -39,7 +37,7 @@ function TableWrap({ children }: { children: React.ReactNode }) {
 function TesourariaBadge({ status }: { status: "Regularizado" | "Pendente" | "Parcial" | string }) {
   const map: Record<string, string> = {
     Regularizado: "bg-green-100 text-green-800",
-    Pendente: "bg-red-100 text-red-800", // manter coerência com restante UI
+    Pendente: "bg-red-100 text-red-800",
     Parcial: "bg-amber-100 text-amber-800",
   };
   const cls = map[status] ?? "bg-gray-100 text-gray-800";
@@ -141,7 +139,6 @@ export default function SociosTable({
           </Button>
           <Button
             variant="outline"
-            size="icon"
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             aria-label="Página anterior"
@@ -151,7 +148,6 @@ export default function SociosTable({
           <div className="text-sm">Página {page}</div>
           <Button
             variant="outline"
-            size="icon"
             disabled={page >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             aria-label="Página seguinte"
@@ -274,7 +270,12 @@ function Row({ row }: { row: SocioRow }) {
         </td>
 
         <td className="px-3 py-2 text-right">
-          <Button variant="outline" size="icon" onClick={() => setModalOpen(true)} aria-label="Ver detalhes">
+          <Button
+            variant="outline"
+            onClick={() => setModalOpen(true)}
+            aria-label="Ver detalhes"
+            className="inline-flex h-9 w-9 items-center justify-center p-0"
+          >
             <Eye className="h-4 w-4" />
           </Button>
         </td>
