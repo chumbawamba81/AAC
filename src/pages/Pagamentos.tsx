@@ -17,7 +17,6 @@ import {
   type PagamentoRowWithUrl,
 } from "../services/pagamentosService";
 
-// usamos apenas eur e estimateCosts do pricing.ts
 import { eur, estimateCosts } from "../utils/pricing";
 
 // Helpers locais
@@ -70,6 +69,7 @@ export default function Pagamentos() {
       const rowsWithUrl = await withSignedUrlsPagamentos(rows);
       map[a.id] = rowsWithUrl;
 
+      // procurar inscrição
       const inscrArr = rowsWithUrl.filter(
         (r) =>
           (r as any).tipo === "inscricao" ||
@@ -164,7 +164,7 @@ export default function Pagamentos() {
                     </div>
                   </div>
 
-                  {/* Bloco de INSCRIÇÃO */}
+                  {/* NOVO bloco de INSCRIÇÃO */}
                   <div className="border rounded-lg p-3 flex items-center justify-between">
                     <div>
                       <div className="font-medium">Taxa de inscrição</div>
@@ -202,7 +202,7 @@ export default function Pagamentos() {
                     </FilePickerButton>
                   </div>
 
-                  {/* Quotas (apenas se tiver) */}
+                  {/* Grelha de QUOTAS (já existente e mantida) */}
                   {temQuotas && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {["mensal10", "trimestre3", "anual1"].map((key, idx) => {
