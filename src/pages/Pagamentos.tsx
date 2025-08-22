@@ -2,13 +2,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-// UI
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { RefreshCw, Upload, Trash2, Link as LinkIcon } from "lucide-react";
 import FilePickerButton from "../components/FilePickerButton";
 
-// Tipos/serviços
 import type { Atleta } from "../types/Atleta";
 import { listAtletas } from "../services/atletasService";
 import {
@@ -19,10 +17,10 @@ import {
   type PagamentoRowWithUrl,
 } from "../services/pagamentosService";
 
-// Helpers (regra: Masters/Sub-23 sem quotas)
-import { hasQuotas, quotasSlotsForPlano, quotaLabel, quotaAmountCents, eur } from "../utils/pricing";
+// usamos apenas eur e estimateCosts do pricing.ts
+import { eur, estimateCosts } from "../utils/pricing";
 
-// Utils locais
+// Helpers locais
 function isFutureDateStr(s?: string | null) {
   if (!s) return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -58,13 +56,11 @@ export default function Pagamentos() {
     };
   }, []);
 
-  // atletas do utilizador
   const refreshAtletas = useCallback(async () => {
     const data = await listAtletas();
     setAtletas(data);
   }, []);
 
-  // pagamentos por atleta (quotas + inscrição)
   const refreshPagamentos = useCallback(async () => {
     const map: Record<string, PagamentoRowWithUrl[]> = {};
     const inscrMap: Record<string, PagamentoRowWithUrl | null> = {};
@@ -149,11 +145,11 @@ export default function Pagamentos() {
           <div className="space-y-4">
             {atletas.map((a) => {
               const rows = rowsByAtleta[a.id] || [];
-              const temQuotas = hasQuotas(a.escalao);
               const inscr = athleteInscricao[a.id] || null;
 
-              // quotas (só quando o escalão tiver quotas)
-              const quotasRows = temQuotas ? rows.filter((r) => (r as any).tipo === "quota") : [];
+              // custos segundo pricing.ts
+              const est = estimateCosts({ escalao: a.escalao || "" });
+              const temQuotas = !(est.onlyAnnual ?? false);
 
               return (
                 <div key={a.id} className="border rounded-xl p-3 space-y-2">
@@ -168,7 +164,7 @@ export default function Pagamentos() {
                     </div>
                   </div>
 
-                  {/* Bloco de INSCRIÇÃO (sempre visível) */}
+                  {/* Bloco de INSCRIÇÃO */}
                   <div className="border rounded-lg p-3 flex items-center justify-between">
                     <div>
                       <div className="font-medium">Taxa de inscrição</div>
@@ -206,30 +202,27 @@ export default function Pagamentos() {
                     </FilePickerButton>
                   </div>
 
-                  {/* Grelha de QUOTAS — só aparece quando o escalão tem quotas */}
+                  {/* Quotas (apenas se tiver) */}
                   {temQuotas && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {Array.from({
-                        length: quotasSlotsForPlano(
-                          (a as any).planoPagamento || "Anual",
-                          a.escalao
-                        ),
-                      }).map((_v, idx) => {
-                        const label = quotaLabel(
-                          (a as any).planoPagamento || "Anual",
-                          idx
-                        );
+                      {["mensal10", "trimestre3", "anual1"].map((key, idx) => {
+                        const label =
+                          key === "mensal10"
+                            ? "Pagamento Mensal"
+                            : key === "trimestre3"
+                            ? "Pagamento Trimestral"
+                            : "Pagamento da anuidade";
                         const row =
-                          quotasRows.find(
+                          rows.find(
                             (r) =>
                               (r.descricao || "").toLowerCase() ===
                               label.toLowerCase()
                           ) || null;
                         const overdue = isOverdue(row);
-                        const valor = quotaAmountCents(a.escalao);
+                        const valor = (est as any)[key];
                         return (
                           <div
-                            key={`${a.id}-${idx}`}
+                            key={`${a.id}-${key}-${idx}`}
                             className="border rounded-lg p-3 flex items-center justify-between"
                           >
                             <div>
