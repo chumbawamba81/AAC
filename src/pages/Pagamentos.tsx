@@ -1,389 +1,282 @@
-// src/pages/Pagamentos.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+// src/services/pagamentosService.ts
 import { supabase } from "../supabaseClient";
+import type { PlanoPagamento } from "../types/Atleta";
 
-// UI
-import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { RefreshCw, Upload, Trash2, Link as LinkIcon } from "lucide-react";
-import FilePickerButton from "../components/FilePickerButton";
+/* ============================= Types ============================= */
 
-// Tipos/serviços
-import type { Atleta, PlanoPagamento } from "../types/Atleta";
-import { listAtletas } from "../services/atletasService";
-import {
-  listByAtleta as listPagamentosByAtleta,
-  saveComprovativo as saveComprovativoPagamento,
-  deletePagamento,
-  withSignedUrls as withSignedUrlsPagamentos,
-  type PagamentoRowWithUrl,
-} from "../services/pagamentosService";
+export type PagamentoRow = {
+  id: string;
+  atleta_id: string | null;
+  user_id: string | null;
+  descricao: string | null;
+  tipo: string | null; // "inscricao" | "inscricao_socio" | null (quotas)
+  comprovativo_url: string | null;
+  devido_em: string | null; // YYYY-MM-DD
+  validado: boolean | null;
+  validado_em: string | null;
+  validado_por: string | null;
+  created_at: string | null;
+};
 
-// NOVO: para calcular valores
-import { estimateCosts, eur } from "../utils/pricing";
-// NOVO: para obter tipo de sócio do utilizador (para preços corretos)
-import { getMyProfile } from "../services/profileService";
+export type PagamentoRowWithUrl = PagamentoRow & { signedUrl?: string };
 
-/* ---------------- Helpers de plano/labels ---------------- */
-function getSlotsForPlano(p: PlanoPagamento) {
-  if (p === "Mensal") return 10;
-  if (p === "Trimestral") return 3;
-  return 1; // "Anual"
+/* ====================== Pequenos helpers locais ====================== */
+
+function seasonStartYear(): number {
+  // época começa em Setembro
+  const now = new Date();
+  const y = now.getFullYear();
+  return now.getMonth() >= 7 ? y : y - 1; // >= Agosto(7) => esse ano
+}
+function fmt(y: number, m: number, d = 8): string {
+  // m: 1..12
+  const mm = m.toString().padStart(2, "0");
+  const dd = d.toString().padStart(2, "0");
+  return `${y}-${mm}-${dd}`;
+}
+function defaultDue(): string {
+  return fmt(seasonStartYear(), 9, 8); // 8 de Setembro da época
+}
+function isMastersOrSub23(esc?: string | null) {
+  const s = (esc || "").toLowerCase();
+  return s.includes("masters") || s.includes("sub 23") || s.includes("sub-23") || s.includes("seniores sub 23") || s.includes("seniores sub-23");
 }
 function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
   if (plano === "Anual") return "Pagamento da anuidade";
   if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
   return `Pagamento - ${idx + 1}º Mês`;
 }
-function isAnuidadeObrigatoria(escalao: string | undefined) {
-  if (!escalao) return false;
-  const s = escalao.toLowerCase();
-  return (
-    s.includes("masters") ||
-    s.includes("sub 23") ||
-    s.includes("sub-23") ||
-    s.includes("seniores sub 23") ||
-    s.includes("seniores sub-23")
-  );
-}
-// NOVO: limite default (igual ao usado no App.tsx)
-function sep8OfCurrentYear(): string {
-  const y = new Date().getFullYear();
-  return `${y}-09-08`;
+function getSlotsForPlano(p: PlanoPagamento) {
+  return p === "Mensal" ? 10 : p === "Trimestral" ? 3 : 1;
 }
 
-/* ---------------- Página pública ---------------- */
-export default function PagamentosPage() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [atletas, setAtletas] = useState<Atleta[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
-  // NOVO: inscrição mais recente por atleta
-  const [inscricaoByAtleta, setInscricaoByAtleta] = useState<Record<string, PagamentoRowWithUrl | null>>({});
-  // NOVO: tipo de sócio (para preços corretos)
-  const [tipoSocio, setTipoSocio] = useState<string | null>(null);
+/* ============================= Queries básicas ============================= */
 
-  // sessão
-  useEffect(() => {
-    let mounted = true;
-    const sub = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!mounted) return;
-      setUserId(session?.user?.id ?? null);
-    });
-    supabase.auth.getUser().then(({ data }) => {
-      if (!mounted) return;
-      setUserId(data?.user?.id ?? null);
-    });
-    return () => {
-      mounted = false;
-      sub.data.subscription.unsubscribe();
-    };
-  }, []);
+export async function listByAtleta(atletaId: string): Promise<PagamentoRow[]> {
+  const { data, error } = await supabase
+    .from("pagamentos")
+    .select("*")
+    .eq("atleta_id", atletaId)
+    .order("devido_em", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
 
-  // obter tipo de sócio do perfil (para pricing)
-  useEffect(() => {
-    if (!userId) return;
-    getMyProfile().then((p) => setTipoSocio(p?.tipoSocio ?? null)).catch(() => {});
-  }, [userId]);
+export async function listSocioInscricao(userId: string): Promise<PagamentoRow[]> {
+  const { data, error } = await supabase
+    .from("pagamentos")
+    .select("*")
+    .eq("user_id", userId)
+    .is("atleta_id", null)
+    .or("tipo.eq.inscricao_socio,descricao.eq.Inscrição de Sócio")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
 
-  // atletas do utilizador
-  const refreshAtletas = useCallback(async () => {
-    try {
-      const rows = await listAtletas();
-      setAtletas(Array.isArray(rows) ? rows : []);
-    } catch (e) {
-      console.error("[PagamentosPage] listAtletas", e);
+export async function withSignedUrls(rows: PagamentoRow[]): Promise<PagamentoRowWithUrl[]> {
+  const out: PagamentoRowWithUrl[] = [];
+  for (const r of rows) {
+    if (r.comprovativo_url) {
+      const { data } = await supabase.storage
+        .from("pagamentos")
+        .createSignedUrl(r.comprovativo_url, 60 * 60);
+      out.push({ ...r, signedUrl: data?.signedUrl });
+    } else {
+      out.push(r);
     }
-  }, []);
+  }
+  return out;
+}
 
-  useEffect(() => {
-    if (!userId) return;
-    refreshAtletas();
-  }, [userId, refreshAtletas]);
+/* ============================= Mutations ============================= */
 
-  const refreshPayments = useCallback(async () => {
-    if (!userId) return;
-    const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
-    const inscrNext: Record<string, PagamentoRowWithUrl | null> = {};
+/** Grava/substitui comprovativo (atleta+descricao). Sem UPSERT. */
+export async function saveComprovativo(args: {
+  userId: string;
+  atletaId?: string | null;
+  descricao: string; // p.ex. "Inscrição de atleta", "Pagamento - 2º Mês", ...
+  file: File;
+}): Promise<PagamentoRow> {
+  const desc = args.descricao.trim();
 
-    for (const a of atletas) {
-      const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-      const slots = getSlotsForPlano(planoEfetivo);
-      const labels = Array.from({ length: slots }, (_, i) => getPagamentoLabel(planoEfetivo, i));
+  // 1) obter linha existente
+  const { data: existing, error: findErr } = await supabase
+    .from("pagamentos")
+    .select("*")
+    .eq("atleta_id", args.atletaId ?? null)
+    .eq("descricao", desc)
+    .limit(1)
+    .maybeSingle();
+  if (findErr) throw findErr;
 
-      const rows = await listPagamentosByAtleta(a.id);
-      const rowsWithUrl = await withSignedUrlsPagamentos(rows);
+  // 2) criar se não existir
+  let row: PagamentoRow | null = existing ?? null;
+  if (!row) {
+    const { data: created, error: insErr } = await supabase
+      .from("pagamentos")
+      .insert({
+        user_id: args.userId,
+        atleta_id: args.atletaId ?? null,
+        descricao: desc,
+        devido_em: defaultDue(),
+      })
+      .select()
+      .single();
+    if (insErr) throw insErr;
+    row = created as PagamentoRow;
+  }
 
-      const byDesc = new Map<string, PagamentoRowWithUrl[]>();
-      for (const r of rowsWithUrl) {
-        const key = (r.descricao || "").toString();
-        const arr = byDesc.get(key) || [];
-        arr.push(r);
-        byDesc.set(key, arr);
-      }
+  // 3) upload para o Storage
+  const safeName = args.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const filePath = `${args.userId}/${row.id}-${safeName}`;
+  const { error: uploadError } = await supabase.storage
+    .from("pagamentos")
+    .upload(filePath, args.file, { upsert: true });
+  if (uploadError) throw uploadError;
 
-      // NOVO: inscrição do atleta — aceitar “inscricao”, “inscrição de atleta” e legado “taxa de inscrição”
-      const inscrArr = rowsWithUrl.filter(
-        (r) =>
-          (r as any).tipo === "inscricao" ||
-          (r.descricao || "").toLowerCase() === "inscrição de atleta" ||
-          (r.descricao || "").toLowerCase() === "inscrição" ||
-          (r.descricao || "").toLowerCase() === "taxa de inscrição"
-      );
-      inscrArr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-      inscrNext[a.id] = inscrArr[0] || null;
+  // 4) update com a URL do comprovativo
+  const { data: updated, error: updErr } = await supabase
+    .from("pagamentos")
+    .update({ comprovativo_url: filePath })
+    .eq("id", row.id)
+    .select()
+    .single();
+  if (updErr) throw updErr;
 
-      next[a.id] = labels.map((lab) => {
-        const arr = byDesc.get(lab) || [];
-        if (arr.length === 0) return null;
-        arr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-        return arr[0];
-      });
+  return updated as PagamentoRow;
+}
+
+/** Remove um pagamento (aceita id ou objeto). */
+export async function deletePagamento(rowOrId: string | PagamentoRow): Promise<void> {
+  const id = typeof rowOrId === "string" ? rowOrId : rowOrId.id;
+  const { error } = await supabase.from("pagamentos").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/* ===================== Inscrição de SÓCIO (user-level) ===================== */
+
+export async function createInscricaoSocioIfMissing(userId: string): Promise<PagamentoRow> {
+  // existe?
+  const { data: existing, error: findErr } = await supabase
+    .from("pagamentos")
+    .select("*")
+    .eq("user_id", userId)
+    .is("atleta_id", null)
+    .or("tipo.eq.inscricao_socio,descricao.eq.Inscrição de Sócio")
+    .limit(1)
+    .maybeSingle();
+  if (findErr) throw findErr;
+  if (existing) return existing as PagamentoRow;
+
+  // criar
+  const { data, error } = await supabase
+    .from("pagamentos")
+    .insert({
+      user_id: userId,
+      atleta_id: null,
+      tipo: "inscricao_socio",
+      descricao: "Inscrição de Sócio",
+      devido_em: defaultDue(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as PagamentoRow;
+}
+
+export async function saveComprovativoSocioInscricao(userId: string, file: File): Promise<PagamentoRow> {
+  const row = await createInscricaoSocioIfMissing(userId);
+
+  // upload
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const filePath = `${userId}/${row.id}-${safeName}`;
+  const { error: uploadError } = await supabase.storage
+    .from("pagamentos")
+    .upload(filePath, file, { upsert: true });
+  if (uploadError) throw uploadError;
+
+  // update URL
+  const { data: updated, error: updErr } = await supabase
+    .from("pagamentos")
+    .update({ comprovativo_url: filePath })
+    .eq("id", row.id)
+    .select()
+    .single();
+  if (updErr) throw updErr;
+
+  return updated as PagamentoRow;
+}
+
+/* ===================== Agenda de QUOTAS por atleta ===================== */
+
+export async function ensureScheduleForAtleta(
+  atleta: { id: string; escalao?: string | null; planoPagamento: PlanoPagamento },
+  opts?: { forceRebuild?: boolean }
+): Promise<void> {
+  // descobrir user atual para preencher user_id nas inserções
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth?.user?.id ?? null;
+
+  // se alteraste o escalão para Masters/Sub-23, força anual
+  const efetivo: PlanoPagamento = isMastersOrSub23(atleta.escalao) ? "Anual" : atleta.planoPagamento;
+  const slots = getSlotsForPlano(efetivo);
+  const y0 = seasonStartYear();
+
+  // apagar grelha anterior se pedido (quotas apenas: tipo null)
+  if (opts?.forceRebuild) {
+    // apagar onde tipo é null (quotas) para este atleta
+    await supabase.from("pagamentos").delete().eq("atleta_id", atleta.id).is("tipo", null);
+  }
+
+  // construir o plano de vencimentos
+  type Item = { descricao: string; devido_em: string };
+  const items: Item[] = [];
+  if (efetivo === "Mensal") {
+    // meses: Set(9) .. Jun(6) => 10 itens
+    const months = [9,10,11,12,1,2,3,4,5,6];
+    let idx = 0;
+    for (const m of months) {
+      const year = m >= 9 ? y0 : y0 + 1;
+      items.push({ descricao: getPagamentoLabel(efetivo, idx++), devido_em: fmt(year, m, 8) });
     }
-    setPayments(next);
-    setInscricaoByAtleta(inscrNext);
-  }, [userId, atletas]);
-
-  useEffect(() => {
-    if (!userId) return;
-    refreshPayments();
-  }, [userId, atletas.map(a => a.id).join(","), refreshPayments]);
-
-  // realtime: pagamentos
-  useEffect(() => {
-    if (!userId) return;
-    const channel = supabase
-      .channel("rt-pagamentos-public")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pagamentos" },
-        () => refreshPayments()
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [userId, refreshPayments]);
-
-  // ações
-  async function handleUpload(athlete: Atleta, idx: number, file: File) {
-    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
-    setBusy(true);
-    try {
-      const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
-      const label = getPagamentoLabel(planoEfetivo, idx);
-      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file });
-      await refreshPayments();
-    } catch (e: any) {
-      console.error("[PagamentosPage] upload", e);
-      alert(e?.message || "Falha no upload");
-    } finally { setBusy(false); }
+  } else if (efetivo === "Trimestral") {
+    const triplets = [9,12,3];
+    triplets.forEach((m, i) => {
+      const year = m >= 9 ? y0 : y0 + 1;
+      items.push({ descricao: getPagamentoLabel(efetivo, i), devido_em: fmt(year, m, 8) });
+    });
+  } else {
+    items.push({ descricao: getPagamentoLabel("Anual", 0), devido_em: fmt(y0, 9, 8) });
   }
 
-  // NOVO: upload/substituição do comprovativo de INSCRIÇÃO
-  async function handleUploadInscricao(athlete: Atleta, file: File) {
-    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
-    setBusy(true);
-    try {
-      await saveComprovativoPagamento({
-        userId,
-        atletaId: athlete.id,
-        descricao: "Inscrição de atleta", // novo rótulo
-        file,
-      });
-      await refreshPayments();
-    } catch (e: any) {
-      console.error("[PagamentosPage] upload inscrição atleta", e);
-      alert(e?.message || "Falha no upload");
-    } finally { setBusy(false); }
+  // inserir itens que não existam ainda (por descricao)
+  for (const it of items) {
+    const { data: existing } = await supabase
+      .from("pagamentos")
+      .select("id")
+      .eq("atleta_id", atleta.id)
+      .eq("descricao", it.descricao)
+      .limit(1)
+      .maybeSingle();
+
+    if (!existing) {
+      await supabase
+        .from("pagamentos")
+        .insert({
+          user_id: userId,
+          atleta_id: atleta.id,
+          descricao: it.descricao,
+          devido_em: it.devido_em,
+          tipo: null, // quotas
+        });
+    } else {
+      // garantir devido_em atualizado (não quebra nada)
+      await supabase
+        .from("pagamentos")
+        .update({ devido_em: it.devido_em })
+        .eq("id", (existing as any).id);
+    }
   }
-
-  async function handleDelete(athlete: Atleta, idx: number) {
-    const row = payments[athlete.id]?.[idx];
-    if (!row) return;
-    if (!confirm("Remover este comprovativo?")) return;
-    setBusy(true);
-    try {
-      await deletePagamento(row);
-      await refreshPayments();
-    } catch (e: any) {
-      console.error("[PagamentosPage] delete", e);
-      alert(e?.message || "Falha a remover");
-    } finally { setBusy(false); }
-  }
-
-  // helpers de valor
-  const hasSession = !!userId;
-  const numAtletasAgregado = useMemo(
-    () => atletas.filter(a => !isAnuidadeObrigatoria(a.escalao)).length || 1,
-    [atletas]
-  );
-  const totalSlots = useMemo(
-    () =>
-      atletas.reduce((acc, a) => {
-        const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-        return acc + getSlotsForPlano(planoEfetivo);
-      }, 0),
-    [atletas]
-  );
-
-  function isOverdue(row: PagamentoRowWithUrl | null): boolean {
-    if (!row || row.validado) return false;
-    const due = row.devido_em || sep8OfCurrentYear();
-    const dt = new Date(due + "T23:59:59");
-    return new Date().getTime() > dt.getTime();
-  }
-
-  if (!hasSession) {
-    return (
-      <Card>
-        <CardHeader><CardTitle>Pagamentos</CardTitle></CardHeader>
-        <CardContent>
-          <p className="text-sm text-gray-600">Precisa de iniciar sessão para gerir os comprovativos de pagamento.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (atletas.length === 0) {
-    return (
-      <Card>
-        <CardHeader><CardTitle>Pagamentos</CardTitle></CardHeader>
-        <CardContent>
-          <p className="text-sm text-gray-600">Crie primeiro um atleta para registar pagamentos.</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Pagamentos {busy && <RefreshCw className="h-4 w-4 animate-spin" />}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {atletas.map((a) => {
-          const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-          const slots = getSlotsForPlano(planoEfetivo);
-          const rows = payments[a.id] || Array.from({ length: slots }, () => null);
-
-          // valores para este atleta (usam tipo de sócio real, quando disponível)
-          const est = estimateCosts({
-            escalao: a.escalao || "",
-            tipoSocio: tipoSocio,
-            numAtletasAgregado: Math.max(1, numAtletasAgregado),
-          });
-          const amountForIdx = (idx: number) => {
-            if (planoEfetivo === "Mensal") return est.mensal10;
-            if (planoEfetivo === "Trimestral") return est.trimestre3;
-            return est.anual1;
-          };
-
-          const inscr = inscricaoByAtleta[a.id] || null;
-          const inscrDue = inscr?.devido_em || sep8OfCurrentYear();
-
-          return (
-            <div key={a.id} className="border rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="font-medium">{a.nomeCompleto}</div>
-                <div className="text-xs text-gray-500">
-                  Plano: {planoEfetivo}{isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
-                </div>
-              </div>
-
-              {/* NOVO — Inscrição de atleta (antes das quotas) */}
-              <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">Inscrição de atleta — {eur(est.taxaInscricao)}</div>
-                  <div className="text-xs text-gray-500">
-                    {inscr?.comprovativo_url
-                      ? inscr.validado
-                        ? "Comprovativo validado"
-                        : isOverdue(inscr)
-                        ? "Comprovativo pendente (em atraso)"
-                        : "Comprovativo pendente"
-                      : isOverdue(inscr)
-                      ? "Comprovativo em falta (em atraso)"
-                      : "Comprovativo em falta"}
-                    {inscrDue && <span className="ml-2">· Limite: {inscrDue}</span>}
-                    {inscr?.signedUrl && (
-                      <a
-                        className="underline inline-flex items-center gap-1 ml-2"
-                        href={inscr.signedUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <LinkIcon className="h-3 w-3" /> Abrir
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <FilePickerButton
-                  variant={inscr?.comprovativo_url ? "secondary" : "outline"}
-                  accept="image/*,application/pdf"
-                  onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-                >
-                  <Upload className="h-4 w-4 mr-1" />
-                  {inscr?.comprovativo_url ? "Substituir" : "Carregar"}
-                </FilePickerButton>
-              </div>
-
-              {/* Grelha de quotas (mantida), agora com valor e prazo */}
-              <div className="grid md:grid-cols-2 gap-3">
-                {Array.from({ length: slots }).map((_, i) => {
-                  const meta = rows[i];
-                  const label = getPagamentoLabel(planoEfetivo, i);
-                  const overdue = isOverdue(meta);
-                  const due = meta?.devido_em || undefined;
-
-                  return (
-                    <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
-                      <div>
-                        <div className="font-medium">{label} — {eur(amountForIdx(i))}</div>
-                        <div className="text-xs text-gray-500">
-                          {meta?.comprovativo_url
-                            ? (
-                              <span className="inline-flex items-center gap-2">
-                                {meta.validado ? "Comprovativo validado" : (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente")}
-                                {meta.signedUrl && (
-                                  <a className="underline inline-flex items-center gap-1" href={meta.signedUrl} target="_blank" rel="noreferrer">
-                                    <LinkIcon className="h-3 w-3" /> Abrir
-                                  </a>
-                                )}
-                              </span>
-                            )
-                            : (overdue ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")
-                          }
-                          {due && <span className="ml-2">· Limite: {due}</span>}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <FilePickerButton
-                          variant={meta ? "secondary" : "outline"}
-                          accept="image/*,application/pdf"
-                          onFiles={(files) => handleUpload(a, i, files[0])}
-                        >
-                          <Upload className="h-4 w-4 mr-1" />
-                          {meta ? "Substituir" : "Carregar"}
-                        </FilePickerButton>
-
-                        {meta && (
-                          <Button variant="destructive" onClick={() => handleDelete(a, i)}>
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Remover
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        <div className="text-xs text-gray-500">Total de slots nesta conta: {totalSlots}</div>
-      </CardContent>
-    </Card>
-  );
 }
