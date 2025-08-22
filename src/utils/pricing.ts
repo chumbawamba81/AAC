@@ -39,6 +39,11 @@ export function eur(n: number): string {
   });
 }
 
+function ordinal(n: number) {
+  return `${n}º`;
+}
+
+
 /* -------------------- Classificação de escalões -------------------- */
 
 type BandKey = "MINI_LOW" | "MINI12" | "SUBS" | "SUB23" | "MASTERS";
@@ -138,15 +143,31 @@ export function estimateCosts(input: EstimateInput): EstimateResult {
     ? "Sócio PRO"
     : (input.tipoSocio && !/não\s*pretendo/i.test(input.tipoSocio) ? input.tipoSocio! : "Não Sócio");
 
+  // NEW: prefixo “1º atleta no PRO1 / 2º atleta no PRO2 …” quando é Sócio PRO
+  let proPrefix = "";
+  if (isSocioPro(input.tipoSocio)) {
+    const tier = deriveProTier(input); // 1 ou 2
+    // posição (1º, 2º, 3º…):
+    let pos = 1;
+    if (typeof input.proRank === "number") {
+      pos = input.proRank + 1;
+    } else if ((input.numAtletasAgregado ?? 1) >= 2 && tier === 2) {
+      // se não foi passado proRank mas temos ≥2 atletas e apanhou PRO2, assume 2º
+      pos = 2;
+    }
+    proPrefix = `${ordinal(pos)} atleta no ${tier === 1 ? "PRO1" : "PRO2"} — `;
+  }
+
   return {
     taxaInscricao: prices.taxaInscricao,
     mensal10: prices.mensal10,
     trimestre3: prices.trimestre3,
     anual1: prices.anual1,
-    tarifa: `Tarifa ${socioLabel}.`,
+    tarifa: `${proPrefix}Tarifa ${socioLabel}.`,
     info: `Baseado no tipo de sócio e no agregado (${Math.max(1, input.numAtletasAgregado ?? 1)} atleta(s)).`,
     onlyAnnual,
   };
+
 }
 
 /* -------------------- Valor da inscrição de SÓCIO -------------------- */
