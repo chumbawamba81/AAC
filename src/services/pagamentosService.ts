@@ -8,7 +8,7 @@ export type PagamentoRow = {
   user_id: string | null;
   atleta_id: string | null;
   tipo: "inscricao" | "quota";
-  descricao: string;                 // único por atleta (ux_pagamentos_atleta_descricao)
+  descricao: string;                 // único por atleta (ux_pagamentos_atleta_descricao) ou por sócio (índice parcial)
   comprovativo_url: string | null;
   validado: boolean;                 // NOT NULL (false = pendente)
   devido_em: string | null;          // 'YYYY-MM-DD'
@@ -20,13 +20,13 @@ export type PagamentoRowWithUrl = PagamentoRow & { signedUrl?: string | null };
 /* ======================= Utils de datas ======================= */
 
 // 30 de setembro do ano corrente
-function sep30OfCurrentYear(): string {
+export function sep30OfCurrentYear(): string {
   const y = new Date().getFullYear();
   return `${y}-09-30`;
 }
 
-// 8 de setembro — mantido caso precises noutros contextos
-function sep8OfCurrentYear(): string {
+// 8 de setembro — útil para outras datas antigas
+export function sep8OfCurrentYear(): string {
   const y = new Date().getFullYear();
   return `${y}-09-08`;
 }
@@ -59,7 +59,7 @@ export function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
 }
 
 // Datas-limite por plano.
-// Regras: 1.º pagamento a 30/09; restantes a dia 08 (Out–Jun / Jan e Abr para trimestral)
+// Regra: 1.º pagamento vence a 30/09; restantes mantêm 08 (ou 08 Jan/Abr).
 function buildDueDates(plano: PlanoPagamento): string[] {
   const now = new Date();
   const year = now.getFullYear();
@@ -73,20 +73,20 @@ function buildDueDates(plano: PlanoPagamento): string[] {
     return [`${year}-09-30`, `${year + 1}-01-08`, `${year + 1}-04-08`];
   }
 
-  // Mensal: 10 meses (Set–Jun); o 1.º vence a 30/09
+  // Mensal: 10 meses de Setembro a Junho; o 1.º vence a 30/09
   const out: string[] = [];
   out.push(`${year}-09-30`); // Setembro
   // Outubro a Junho → dia 08
   const monthlyDays = [
-    { y: year,     m: 9,  d: 8 },  // Out
-    { y: year,     m: 10, d: 8 },  // Nov
-    { y: year,     m: 11, d: 8 },  // Dez
-    { y: year + 1, m: 0,  d: 8 },  // Jan
-    { y: year + 1, m: 1,  d: 8 },  // Fev
-    { y: year + 1, m: 2,  d: 8 },  // Mar
-    { y: year + 1, m: 3,  d: 8 },  // Abr
-    { y: year + 1, m: 4,  d: 8 },  // Mai
-    { y: year + 1, m: 5,  d: 8 },  // Jun
+    { y: year, m: 9, d: 8 },     // Out
+    { y: year, m: 10, d: 8 },    // Nov
+    { y: year, m: 11, d: 8 },    // Dez
+    { y: year + 1, m: 0, d: 8 }, // Jan
+    { y: year + 1, m: 1, d: 8 }, // Fev
+    { y: year + 1, m: 2, d: 8 }, // Mar
+    { y: year + 1, m: 3, d: 8 }, // Abr
+    { y: year + 1, m: 4, d: 8 }, // Mai
+    { y: year + 1, m: 5, d: 8 }, // Jun
   ];
   for (const x of monthlyDays) out.push(fmt(new Date(x.y, x.m, x.d)));
   return out;
@@ -129,7 +129,7 @@ export async function deletePagamento(row: PagamentoRow) {
 export async function saveComprovativo(params: {
   userId: string;
   atletaId: string;
-  descricao: string; // tem de existir na tabela (foi criado pelo schedule)
+  descricao: string; // tem de existir na tabela (foi criado pelo schedule) — ou corresponder ao que já existe
   file: File;
 }) {
   // 1) escrever ficheiro no bucket "pagamentos"
@@ -174,20 +174,11 @@ export async function createInscricaoSocioIfMissing(userId: string) {
     validado: false,   // NOT NULL
     devido_em: due,
   };
-  // upsert por (user_id, atleta_id, descricao) — ignora se já existir
+  // upsert por (user_id, descricao) — índice único parcial cobre atleta_id IS NULL AND tipo='inscricao'
   const { error } = await supabase
     .from("pagamentos")
-    .upsert(row, { onConflict: "user_id,atleta_id,descricao", ignoreDuplicates: true });
+    .upsert(row, { onConflict: "user_id,descricao" });
   if (error) throw error;
-
-  // garantir prazo certo sempre (idempotente)
-  const { error: updErr } = await supabase
-    .from("pagamentos")
-    .update({ devido_em: due })
-    .eq("user_id", userId)
-    .is("atleta_id", null)
-    .eq("tipo", "inscricao");
-  if (updErr) throw updErr;
 }
 
 export async function listSocioInscricao(userId: string): Promise<PagamentoRow[]> {
@@ -203,89 +194,55 @@ export async function listSocioInscricao(userId: string): Promise<PagamentoRow[]
   return (data || []) as PagamentoRow[];
 }
 
-/* ======================= Inscrição do atleta ======================= */
+/* ======================= Ajustes (inscrição atleta, se existir) ======================= */
 
-// Garante que existe a linha de INSCRIÇÃO do atleta e que o prazo está em 30/09
-async function ensureAtletaInscricaoIfMissing(atletaId: string) {
-  const due = sep30OfCurrentYear();
-  const row = {
-    user_id: null as any,
-    atleta_id: atletaId,
-    tipo: "inscricao" as const,
-    descricao: "Inscrição de Atleta",
-    comprovativo_url: null,
-    validado: false,
-    devido_em: due,
-  };
-
-  // upsert por (atleta_id, descricao) — DO NOTHING se já existir
+// Se já existir uma inscrição do atleta, força a data-limite para 30/09 do ano corrente.
+async function bumpAtletaInscricaoToSep30(atletaId: string) {
   const { error } = await supabase
     .from("pagamentos")
-    .upsert(row, { onConflict: "atleta_id,descricao", ignoreDuplicates: true });
-  if (error) throw error;
-
-  // alinhar sempre o prazo (não mexe em comprovativo/validado)
-  const { error: updErr } = await supabase
-    .from("pagamentos")
-    .update({ devido_em: due })
+    .update({ devido_em: sep30OfCurrentYear() })
     .eq("atleta_id", atletaId)
-    .eq("descricao", "Inscrição de Atleta");
-  if (updErr) throw updErr;
+    .eq("tipo", "inscricao");
+  if (error) throw error;
 }
 
-/* ======================= Schedule do atleta (UPSERT + fix prazo) ======================= */
+/* ======================= Schedule do atleta (idempotente) ======================= */
 
 export async function ensureScheduleForAtleta(
   atleta: { id: string; escalao?: string | null; planoPagamento: PlanoPagamento },
   opts?: { forceRebuild?: boolean }
 ) {
   const planoEfetivo: PlanoPagamento = isAnuidadeObrigatoria(atleta.escalao) ? "Anual" : atleta.planoPagamento;
-  const labels = Array.from({ length: getSlotsForPlano(planoEfetivo) }, (_, i) =>
-    getPagamentoLabel(planoEfetivo, i)
-  );
+  const labels = Array.from({ length: getSlotsForPlano(planoEfetivo) }, (_, i) => getPagamentoLabel(planoEfetivo, i));
   const dues = buildDueDates(planoEfetivo);
 
-  // (A) Se pediste rebuild, apaga quotas (mantém inscrição)
+  // Se for “rebuild”, apaga primeiro as quotas deste conjunto (mantém inscrição).
   if (opts?.forceRebuild) {
     const { error: delErr } = await supabase
       .from("pagamentos")
       .delete()
       .eq("atleta_id", atleta.id)
-      .eq("tipo", "quota");
+      .eq("tipo", "quota")
+      .in("descricao", labels);
     if (delErr) throw delErr;
   }
 
-  // (B) UPSERT por parcela com ignoreDuplicates, depois fixar prazo por UPDATE (evita colisões)
-  for (let i = 0; i < labels.length; i++) {
-    const desc = labels[i];
-    const due = dues[i] || null;
+  // upsert — evita violar ux_pagamentos_atleta_descricao e atualiza devido_em
+  const rows = labels.map((descricao, i) => ({
+    user_id: null as any, // pode ser populado por trigger; deixamos null aqui se a coluna permitir
+    atleta_id: atleta.id,
+    tipo: "quota" as const,
+    descricao,
+    comprovativo_url: null,
+    validado: false,              // NOT NULL (pendente)
+    devido_em: dues[i] || null,   // 30/09 para o primeiro, restantes conforme a regra
+  }));
 
-    // upsert faz DO NOTHING se já existir (atleta_id,descricao)
-    const { error: upErr } = await supabase
-      .from("pagamentos")
-      .upsert(
-        [{
-          user_id: null as any,
-          atleta_id: atleta.id,
-          tipo: "quota",
-          descricao: desc,
-          comprovativo_url: null,
-          validado: false,      // só usado na criação nova
-          devido_em: due,
-        }],
-        { onConflict: "atleta_id,descricao", ignoreDuplicates: true }
-      );
-    if (upErr) throw upErr;
+  const { error } = await supabase
+    .from("pagamentos")
+    .upsert(rows, { onConflict: "atleta_id,descricao" });
+  if (error) throw error;
 
-    // garantir o prazo certo SEM mexer em validado/comprovativo
-    const { error: updErr } = await supabase
-      .from("pagamentos")
-      .update({ devido_em: due })
-      .eq("atleta_id", atleta.id)
-      .eq("descricao", desc);
-    if (updErr) throw updErr;
-  }
-
-  // (C) Garantir a INSCRIÇÃO do atleta e alinhar prazo
-  await ensureAtletaInscricaoIfMissing(atleta.id);
+  // Se existir inscrição do atleta, alinhar a data-limite para 30/09
+  await bumpAtletaInscricaoToSep30(atleta.id);
 }

@@ -152,7 +152,7 @@ function isTipoSocio(tipo?: string | null) {
   return !!(tipo && !/não\s*pretendo/i.test(tipo));
 }
 
-/* --------- Helpers globais de pagamentos (fonte única) --------- */
+/* --------- Helpers globais (render) --------- */
 function isAnuidadeObrigatoria(escalao?: string | null | undefined) {
   const s = (escalao || "").toLowerCase();
   return (
@@ -174,6 +174,10 @@ function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
 function sep8OfCurrentYear(): string {
   const y = new Date().getFullYear();
   return `${y}-09-08`;
+}
+function sep30OfCurrentYear(): string {
+  const y = new Date().getFullYear();
+  return `${y}-09-30`;
 }
 
 /* -------------------- Persistência local -------------------- */
@@ -602,14 +606,14 @@ function DadosPessoaisSection({
             : "sem_lancamento";
           setSocioInscrResumo({
             status,
-            due: row?.devido_em ?? sep8OfCurrentYear(),
+            due: row?.devido_em ?? sep30OfCurrentYear(), // 30/09 por defeito nas inscrições
             valor: socioInscricaoAmount(state.perfil?.tipoSocio),
           });
         } catch (e) {
           console.error("[Resumo] inscrição sócio", e);
           setSocioInscrResumo({
             status: "sem_lancamento",
-            due: sep8OfCurrentYear(),
+            due: sep30OfCurrentYear(),
             valor: socioInscricaoAmount(state.perfil?.tipoSocio),
           });
         }
@@ -647,7 +651,7 @@ function DadosPessoaisSection({
             : "em_dia"
           : "sem_lancamento";
 
-        out[a.id] = { status, due: row?.devido_em ?? sep8OfCurrentYear(), valor: est.taxaInscricao };
+        out[a.id] = { status, due: row?.devido_em ?? sep30OfCurrentYear(), valor: est.taxaInscricao };
       }
       setAthInscr(out);
     }
@@ -757,7 +761,7 @@ function DadosPessoaisSection({
               <div className="font-semibold">{basePerfil.nomeCompleto}</div>
               <div className="text-xs text-gray-500">
                 {basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}
-				{isTipoSocio(basePerfil.tipoSocio) && <> · {basePerfil.tipoSocio}</>}
+                {isTipoSocio(basePerfil.tipoSocio) && <> · {basePerfil.tipoSocio}</>}
               </div>
             </div>
             <div className="text-right">
@@ -777,73 +781,73 @@ function DadosPessoaisSection({
           </div>
         </div>
 
-          {/* Resumo de Situação de Tesouraria */}
-          <div className="mt-4">
-            <div className="text-lg font-semibold mb-2">Resumo de Situação de Tesouraria</div>
+        {/* Resumo de Situação de Tesouraria */}
+        <div className="mt-4">
+          <div className="text-lg font-semibold mb-2">Resumo de Situação de Tesouraria</div>
 
-            {/* Sócio — Inscrição (2.ª linha com valor e limite) */}
-            {showSocioArea && (
-              <div className="flex items-center justify-between border rounded-xl px-3 py-2 mb-2">
-                <div className="text-sm">
-                  <div className="font-medium">Sócio — Inscrição</div>
-                  <div className="text-gray-700">
-                    {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
-                    {socioInscrResumo?.due && <span className="ml-2">· Limite: {socioInscrResumo.due}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
-                  <Button variant="outline" onClick={goTesouraria}>
-                    Ir para Situação de Tesouraria
-                  </Button>
+          {/* Sócio — Inscrição (2.ª linha com valor e limite) */}
+          {showSocioArea && (
+            <div className="flex items-center justify-between border rounded-xl px-3 py-2 mb-2">
+              <div className="text-sm">
+                <div className="font-medium">Sócio — Inscrição</div>
+                <div className="text-gray-700">
+                  {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
+                  {socioInscrResumo?.due && <span className="ml-2">· Limite: {socioInscrResumo.due}</span>}
                 </div>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+                <Button variant="outline" onClick={goTesouraria}>
+                  Ir para Situação de Tesouraria
+                </Button>
+              </div>
+            </div>
+          )}
 
-            {/* Atletas — duas linhas: Inscrição e Quotas */}
-            {state.atletas.length > 0 && (
-              <div className="space-y-2">
-                {state.atletas.map((a) => {
-                  const stIns = athInscr[a.id]?.status ?? "sem_lancamento";
-                  const dueIns = athInscr[a.id]?.due ?? sep8OfCurrentYear();
-                  const valIns = athInscr[a.id]?.valor;
+          {/* Atletas — duas linhas: Inscrição e Quotas */}
+          {state.atletas.length > 0 && (
+            <div className="space-y-2">
+              {state.atletas.map((a) => {
+                const stIns = athInscr[a.id]?.status ?? "sem_lancamento";
+                const dueIns = athInscr[a.id]?.due ?? sep30OfCurrentYear(); // 30/09 por defeito
+                const valIns = athInscr[a.id]?.valor;
 
-                  const stQ = athQuotaNext[a.id]?.status ?? "sem_lancamento";
-                  const dueQ = athQuotaNext[a.id]?.due;
-                  const valQ = athQuotaNext[a.id]?.valor;
+                const stQ = athQuotaNext[a.id]?.status ?? "sem_lancamento";
+                const dueQ = athQuotaNext[a.id]?.due;
+                const valQ = athQuotaNext[a.id]?.valor;
 
-                  return (
-                    <div key={a.id} className="border rounded-xl px-3 py-2 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium">Atleta — {a.nomeCompleto}</div>
-                        <Button variant="outline" onClick={goTesouraria}>
-                          Ir para Situação de Tesouraria
-                        </Button>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm">
-                          <span className="text-gray-700">Inscrição</span>
-                          {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
-                          {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
-                        </div>
-                        <StatusBadge s={stIns} />
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm">
-                          <span className="text-gray-700">Quotas</span>
-                          {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
-                          {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
-                        </div>
-                        <StatusBadge s={stQ} />
-                      </div>
+                return (
+                  <div key={a.id} className="border rounded-xl px-3 py-2 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">Atleta — {a.nomeCompleto}</div>
+                      <Button variant="outline" onClick={goTesouraria}>
+                        Ir para Situação de Tesouraria
+                      </Button>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm">
+                        <span className="text-gray-700">Inscrição</span>
+                        {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
+                        {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
+                      </div>
+                      <StatusBadge s={stIns} />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm">
+                        <span className="text-gray-700">Quotas</span>
+                        {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
+                        {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
+                      </div>
+                      <StatusBadge s={stQ} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         <Card>
           <CardHeader>
@@ -1014,14 +1018,13 @@ function PagamentosSection({ state }: { state: State }) {
         byDesc.set(r.descricao, arr);
       }
 
+      // Inscrição do atleta (qualquer descrição existente para tipo=inscricao)
+      const inscrArr = rowsWithUrl.filter(
+        (r) => (r as any).tipo === "inscricao" || (r.descricao || "").toLowerCase().includes("inscri")
+      );
+      inscrArr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
+      inscrNext[a.id] = inscrArr[0] || null;
 
-
-// Inscrição do atleta (Taxa de inscrição)
-const inscrArr = rowsWithUrl.filter(
-  (r) => (r as any).tipo === "inscricao" || (r.descricao || "").toLowerCase() === "taxa de inscrição"
-);
-inscrArr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-inscrNext[a.id] = inscrArr[0] || null;
       next[a.id] = labels.map((lab) => {
         const arr = byDesc.get(lab) || [];
         if (arr.length === 0) return null;
@@ -1051,7 +1054,7 @@ inscrNext[a.id] = inscrArr[0] || null;
 
   function isOverdue(row: PagamentoRowWithUrl | null): boolean {
     if (!row || row.validado) return false;
-    const due = row.devido_em || sep8OfCurrentYear();
+    const due = row.devido_em || sep8OfCurrentYear(); // fallback genérico só se não houver data
     const dt = new Date(due + "T23:59:59");
     return new Date().getTime() > dt.getTime();
   }
@@ -1070,27 +1073,20 @@ inscrNext[a.id] = inscrArr[0] || null;
     } finally { setBusy(false); }
   }
 
-
-async function handleUploadInscricao(athlete: Atleta, file: File) {
-  if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
-  setBusy(true);
-  try {
-    const currentDesc =
-      athleteInscricao[athlete.id]?.descricao || "Inscrição de Atleta"; // fallback seguro
-    await saveComprovativoPagamento({
-      userId,
-      atletaId: athlete.id,
-      descricao: currentDesc,
-      file,
-    });
-    await refreshPayments();
-  } catch (e: any) {
-    console.error("[Pagamentos] upload inscrição", e);
-    alert(e?.message || "Falha no upload");
-  } finally { setBusy(false); }
-}
-
-
+  // Inscrição do atleta — usar a descrição que já existe na BD (ou fallback seguro)
+  async function handleUploadInscricao(athlete: Atleta, file: File) {
+    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
+    setBusy(true);
+    try {
+      const currentDesc =
+        athleteInscricao[athlete.id]?.descricao || "Inscrição de Atleta";
+      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: currentDesc, file });
+      await refreshPayments();
+    } catch (e: any) {
+      console.error("[Pagamentos] upload inscrição", e);
+      alert(e?.message || "Falha no upload");
+    } finally { setBusy(false); }
+  }
 
   async function handleDelete(athlete: Atleta, idx: number) {
     const row = payments[athlete.id]?.[idx];
@@ -1147,7 +1143,7 @@ async function handleUploadInscricao(athlete: Atleta, file: File) {
               const row = socioRows[0] || null;
               const overdue = isOverdue(row);
               const val = socioInscricaoAmount(state.perfil?.tipoSocio);
-              const due = row?.devido_em || sep8OfCurrentYear();
+              const due = row?.devido_em || sep30OfCurrentYear(); // 30/09 def.
               return (
                 <div className="border rounded-lg p-3 flex items-center justify-between">
                   <div>
@@ -1214,40 +1210,39 @@ async function handleUploadInscricao(athlete: Atleta, file: File) {
                 </div>
               </div>
 
-              
-{/* Inscrição do atleta */}
-{(() => {
-  const row = athleteInscricao[a.id] || null;
-  const overdue = row?.devido_em ? (new Date() > new Date(row.devido_em + "T23:59:59")) : false;
-  return (
-    <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
-      <div>
-        <div className="font-medium">Taxa de inscrição</div>
-        <div className="text-xs text-gray-500">
-          {row?.comprovativo_url
-            ? (row.validado ? "Comprovativo validado" : (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente"))
-            : (overdue ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")}
-          {row?.devido_em && <span className="ml-2">· Limite: {row.devido_em}</span>}
-          {row?.signedUrl && (
-            <a className="underline inline-flex items-center gap-1 p-1 ml-2" href={row.signedUrl} target="_blank" rel="noreferrer">
-              <LinkIcon className="h-3 w-3" /> Abrir
-            </a>
-          )}
-        </div>
-      </div>
-      <FilePickerButton
-        variant={row?.comprovativo_url ? "secondary" : "outline"}
-        accept="image/*,application/pdf"
-        onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-      >
-        <Upload className="h-4 w-4 mr-1" />
-        {row?.comprovativo_url ? "Substituir" : "Carregar"}
-      </FilePickerButton>
-    </div>
-  );
-})()}
+              {/* Inscrição do atleta */}
+              {(() => {
+                const row = athleteInscricao[a.id] || null;
+                const overdue = row?.devido_em ? (new Date() > new Date(row.devido_em + "T23:59:59")) : false;
+                return (
+                  <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">Taxa de inscrição</div>
+                      <div className="text-xs text-gray-500">
+                        {row?.comprovativo_url
+                          ? (row.validado ? "Comprovativo validado" : (overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente"))
+                          : (overdue ? "Comprovativo em falta (em atraso)" : "Comprovativo em falta")}
+                        {row?.devido_em && <span className="ml-2">· Limite: {row.devido_em}</span>}
+                        {row?.signedUrl && (
+                          <a className="underline inline-flex items-center gap-1 p-1 ml-2" href={row.signedUrl} target="_blank" rel="noreferrer">
+                            <LinkIcon className="h-3 w-3" /> Abrir
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <FilePickerButton
+                      variant={row?.comprovativo_url ? "secondary" : "outline"}
+                      accept="image/*,application/pdf"
+                      onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {row?.comprovativo_url ? "Substituir" : "Carregar"}
+                    </FilePickerButton>
+                  </div>
+                );
+              })()}
 
-<div className="grid md:grid-cols-2 gap-3">
+              <div className="grid md:grid-cols-2 gap-3">
                 {Array.from({ length: slots }).map((_, i) => {
                   const meta = rows[i];
                   const label = getPagamentoLabel(planoEfetivo, i);
