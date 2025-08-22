@@ -306,23 +306,31 @@ export async function ensureScheduleForAtleta(
   // 0) Garante SEMPRE a linha de inscrição do atleta
   await ensureInscricaoAtletaIfMissing(atleta.id);
 
-  // 1) Se for rebuild, remove TODAS as quotas existentes (mantém inscrição)
-  if (opts?.forceRebuild) {
-    const { error: delErr } = await supabase
+  // 1) Se for Masters/Sub-23, apaga SEMPRE as quotas (independente de forceRebuild)
+  if (onlyInscricao) {
+    const { error: delQuotas } = await supabase
       .from("pagamentos")
       .delete()
       .eq("atleta_id", atleta.id)
       .eq("tipo", "quota");
-    if (delErr) throw delErr;
-  }
+    if (delQuotas) throw delQuotas;
 
-  // 2) Masters/Sub-23: não geram quotas; só alinhamos o prazo da inscrição
-  if (onlyInscricao) {
+    // Alinha data-limite da inscrição para 30/09 e termina
     await bumpAtletaInscricaoToSep30(atleta.id);
     return;
   }
 
-  // 3) Restantes: gera/atualiza as quotas do plano
+  // 2) Para os restantes escalões: se for rebuild, limpa quotas antigas
+  if (opts?.forceRebuild) {
+    const { error: delOld } = await supabase
+      .from("pagamentos")
+      .delete()
+      .eq("atleta_id", atleta.id)
+      .eq("tipo", "quota");
+    if (delOld) throw delOld;
+  }
+
+  // 3) Gera/atualiza quotas conforme o plano
   const planoEfetivo: PlanoPagamento = atleta.planoPagamento;
   const labels = Array.from({ length: getSlotsForPlano(planoEfetivo) }, (_, i) =>
     getPagamentoLabel(planoEfetivo, i)
@@ -345,7 +353,8 @@ export async function ensureScheduleForAtleta(
     .upsert(rows, { onConflict: "atleta_id,descricao" });
   if (error) throw error;
 
-  // 4) Alinhar a inscrição para 30/09 (seja nova ou pré-existente)
+  // 4) Alinhar a inscrição para 30/09
   await bumpAtletaInscricaoToSep30(atleta.id);
 }
+
 
