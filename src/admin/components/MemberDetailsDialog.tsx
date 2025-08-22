@@ -1,4 +1,3 @@
-// src/admin/components/MemberDetailsDialog.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
@@ -22,9 +21,8 @@ export type MemberRow = {
   nome_completo?: string | null;
   email?: string | null;
   telefone?: string | null;
-  codigo_postal?: string | null; // pode não vir preenchido aqui
+  codigo_postal?: string | null;
   tipo_socio?: string | null;
-  situacao_tesouraria?: string | null; // mantemos para compatibilidade
 };
 
 /* --------------------------------- Helpers -------------------------------- */
@@ -60,14 +58,11 @@ function fmtDate(d?: string | null) {
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("pt-PT");
 }
 
-/** devolve o primeiro valor não-vazio de um conjunto de chaves possíveis (snake/camel) */
-function pick<T = any>(obj: any, ...keys: string[]): T | string | null {
-  if (!obj) return null;
-  for (const k of keys) {
-    const v = obj[k];
-    if (v !== undefined && v !== null && `${v}`.trim() !== "") return v as T;
-  }
-  return null;
+function Label({ children }: { children: React.ReactNode }) {
+  return <div className="text-xs text-gray-500">{children}</div>;
+}
+function Value({ children }: { children: React.ReactNode }) {
+  return <div className="mb-4">{children}</div>;
 }
 
 /* -------------------------------- Componente ------------------------------- */
@@ -83,9 +78,13 @@ export default function MemberDetailsDialog({
 }) {
   const userId = member.user_id;
 
-  // Perfil completo (dados_pessoais) e inscrição de sócio
+  // Perfil completo (dados_pessoais)
   const [perfil, setPerfil] = useState<any | null>(null);
-  const isSocio = !!(member.tipo_socio || "").toLowerCase().includes("sócio") && !(member.tipo_socio || "").toLowerCase().includes("não pretendo");
+
+  // Inscrição de sócio
+  const isSocio =
+    !!(member.tipo_socio || "").toLowerCase().includes("sócio") &&
+    !(member.tipo_socio || "").toLowerCase().includes("não pretendo");
   const [inscStatus, setInscStatus] = useState<InscStatus | null>(null);
   const [inscDue, setInscDue] = useState<string | null>(null);
   const [inscComprov, setInscComprov] = useState<string | null>(null);
@@ -97,37 +96,33 @@ export default function MemberDetailsDialog({
   // Documentos do Sócio e por Atleta
   const [socioDocs, setSocioDocs] = useState<Map<string, DocumentoRow[]>>(new Map());
   const [loadingSocio, setLoadingSocio] = useState(false);
-
   const [athDocs, setAthDocs] = useState<Record<string, Map<string, DocumentoRow[]>>>({});
   const [loadingDocsByAth, setLoadingDocsByAth] = useState(false);
 
-  /* ------------------------------ Loads principais ------------------------------ */
+  /* ------------------------------ Loads ------------------------------ */
 
   async function fetchPerfil() {
-    // dados_pessoais → * para garantir todos os campos (snake_case)
     const { data, error } = await supabase
       .from("dados_pessoais")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
-
-    if (!error) setPerfil(data ?? null);
-    else {
+    if (error) {
       console.error("[MemberDetailsDialog] dados_pessoais:", error);
       setPerfil(null);
+    } else {
+      setPerfil(data ?? null);
     }
   }
 
   async function fetchAthletes() {
     setLoadingAth(true);
     try {
-      // atletas → * para cobrir todos os campos; ordenação estável
       const { data, error } = await supabase
         .from("atletas")
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: true });
-
       if (error) throw error;
       setAthletes(Array.isArray(data) ? data : []);
     } finally {
@@ -161,7 +156,6 @@ export default function MemberDetailsDialog({
     }
   }
 
-  // Sempre que abrir, carrega tudo
   useEffect(() => {
     if (!open) return;
     fetchPerfil().catch(console.error);
@@ -170,14 +164,12 @@ export default function MemberDetailsDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, userId]);
 
-  // Sempre que lista de atletas mude, atualiza docs por atleta
   useEffect(() => {
     if (!open) return;
     fetchDocsByAthlete(athletes).catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, athletes.map((a) => a.id).join(",")]);
 
-  // Inscrição de sócio
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -233,9 +225,8 @@ export default function MemberDetailsDialog({
           <DialogTitle>
             Detalhes do Titular
             <span className="block text-xs text-gray-500">
-              {member.nome_completo || pick(perfil, "nome_completo", "nomeCompleto") || "—"} ·{" "}
-              {member.email || pick(perfil, "email") || "—"} · Tipo de sócio:{" "}
-              {member.tipo_socio || pick(perfil, "tipo_socio", "tipoSocio") || "—"}
+              {(perfil?.nome_completo || member.nome_completo || "—")} · {(perfil?.email || member.email || "—")} · Tipo de sócio:{" "}
+              {(perfil?.tipo_socio || member.tipo_socio || "—")}
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -253,45 +244,90 @@ export default function MemberDetailsDialog({
               <CardHeader>
                 <CardTitle>Dados do titular</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm space-y-1">
-                <div><strong>Nome:</strong> {pick(perfil, "nome_completo", "nomeCompleto") || "—"}</div>
-                <div><strong>Email:</strong> {pick(perfil, "email") || "—"}</div>
-                <div><strong>Telefone:</strong> {pick(perfil, "telefone") || "—"}</div>
-                <div><strong>Data de nascimento:</strong> {pick(perfil, "data_nascimento", "dataNascimento") || "—"}</div>
-                <div><strong>Género:</strong> {pick(perfil, "genero") || "—"}</div>
-                <div><strong>NIF:</strong> {pick(perfil, "nif") || "—"}</div>
-                <div><strong>Profissão:</strong> {pick(perfil, "profissao") || "—"}</div>
-                <div><strong>Morada:</strong> {pick(perfil, "morada") || "—"}</div>
-                <div><strong>Código-postal:</strong> {pick(perfil, "codigo_postal", "codigoPostal") || "—"}</div>
-                <div><strong>Tipo de documento:</strong> {pick(perfil, "tipo_documento", "tipoDocumento") || "—"}</div>
-                <div><strong>N.º documento:</strong> {pick(perfil, "numero_documento", "numeroDocumento") || "—"}</div>
-                <div><strong>Validade do documento:</strong> {fmtDate(pick(perfil, "data_validade_documento", "dataValidadeDocumento") as string) || "—"}</div>
-                <div><strong>Tipo de sócio:</strong> {pick(perfil, "tipo_socio", "tipoSocio") || "—"}</div>
-
-                {/* Situação de tesouraria = estado da inscrição de sócio */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <strong>Situação de tesouraria:</strong>
-                  {isSocio && inscStatus ? (
-                    <>
-                      <InscricaoBadge status={inscStatus} />
-                      {inscDue && <span className="text-xs text-gray-500">Data limite: {fmtDate(inscDue)}</span>}
-                      {inscComprov && (
-                        <a
-                          href={inscComprov}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs underline inline-flex items-center gap-1"
-                        >
-                          <LinkIcon className="h-3 w-3" /> Ver comprovativo
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-gray-500">N/A</span>
-                  )}
+              <CardContent className="grid md:grid-cols-2 gap-6 text-sm">
+                <div>
+                  <Label>Nome</Label>
+                  <Value>{perfil?.nome_completo || "—"}</Value>
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <Value>{perfil?.email || "—"}</Value>
                 </div>
 
-                <div><strong>Criado em:</strong> {pick(perfil, "created_at") ? String(pick(perfil, "created_at")).slice(0, 19).replace("T", " ") : "—"}</div>
+                <div>
+                  <Label>Telefone</Label>
+                  <Value>{perfil?.telefone || "—"}</Value>
+                </div>
+                <div>
+                  <Label>Data de nascimento</Label>
+                  <Value>{perfil?.data_nascimento || "—"}</Value>
+                </div>
+
+                <div>
+                  <Label>NIF</Label>
+                  <Value>{perfil?.nif || "—"}</Value>
+                </div>
+                <div>
+                  <Label>Profissão</Label>
+                  <Value>{perfil?.profissao || "—"}</Value>
+                </div>
+
+                <div className="md:col-span-2">
+                  <Label>Morada</Label>
+                  <Value>{perfil?.morada || "—"}</Value>
+                </div>
+
+                <div>
+                  <Label>Código postal</Label>
+                  <Value>{perfil?.codigo_postal || "—"}</Value>
+                </div>
+                <div>
+                  <Label>Tipo de documento</Label>
+                  <Value>{perfil?.tipo_documento || "—"}</Value>
+                </div>
+
+                <div>
+                  <Label>N.º documento</Label>
+                  <Value>{perfil?.numero_documento || "—"}</Value>
+                </div>
+                <div>
+                  <Label>Validade do documento</Label>
+                  <Value>{fmtDate(perfil?.validade_documento)}</Value>
+                </div>
+
+                <div>
+                  <Label>Tipo de sócio</Label>
+                  <Value>{perfil?.tipo_socio || "—"}</Value>
+                </div>
+                <div>
+                  <Label>Notícias</Label>
+                  <Value>{perfil?.noticias || "—"}</Value>
+                </div>
+
+                {/* Situação de tesouraria = estado da inscrição de sócio */}
+                <div className="md:col-span-2">
+                  <Label>Inscrição de sócio</Label>
+                  <Value>
+                    {isSocio && inscStatus ? (
+                      <span className="inline-flex items-center gap-2 flex-wrap">
+                        <InscricaoBadge status={inscStatus} />
+                        {inscDue && <span className="text-xs text-gray-500">Data limite: {fmtDate(inscDue)}</span>}
+                        {inscComprov && (
+                          <a
+                            href={inscComprov}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs underline inline-flex items-center gap-1"
+                          >
+                            <LinkIcon className="h-3 w-3" /> Ver comprovativo
+                          </a>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">N/A</span>
+                    )}
+                  </Value>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -301,35 +337,134 @@ export default function MemberDetailsDialog({
             <Card>
               <CardHeader className="flex items-center justify-between">
                 <CardTitle>Atletas do titular</CardTitle>
-                <Button variant="outline" onClick={() => fetchAthletes().then(() => fetchDocsByAthlete(athletes))} disabled={loadingAth}>
+                <Button
+                  variant="outline"
+                  onClick={() => fetchAthletes().then(() => fetchDocsByAthlete(athletes))}
+                  disabled={loadingAth}
+                >
                   {loadingAth ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Atualizar"}
                 </Button>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-6">
                 {athletes.length === 0 ? (
                   <p className="text-sm text-gray-500">Sem atletas associados.</p>
                 ) : (
                   athletes.map((a) => (
-                    <div key={a.id} className="border rounded-lg p-3 text-sm space-y-1">
-                      <div className="font-medium">
-                        {pick(a, "nome", "nome_completo", "nomeCompleto") || "—"}
+                    <div key={a.id} className="border rounded-lg p-4">
+                      <div className="text-base font-semibold mb-4">
+                        {a.nome || "—"}
                       </div>
-                      <div className="text-gray-500">
-                        Género: {pick(a, "genero") || "—"} · Nasc.:{" "}
-                        {pick(a, "data_nascimento", "dataNascimento") || "—"} · Escalão: {pick(a, "escalao") || "—"}
+                      <div className="grid md:grid-cols-2 gap-6 text-sm">
+                        <div>
+                          <Label>Data de nascimento</Label>
+                          <Value>{a.data_nascimento || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Escalão</Label>
+                          <Value>{a.escalao || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Género</Label>
+                          <Value>{a.genero || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>NIF</Label>
+                          <Value>{a.nif || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Opção de pagamento</Label>
+                          <Value>{a.opcao_pagamento || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Tipo de documento</Label>
+                          <Value>{a.tipo_doc || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>N.º documento</Label>
+                          <Value>{a.num_doc || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Validade do documento</Label>
+                          <Value>{fmtDate(a.validade_doc)}</Value>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <Label>Alergias / saúde</Label>
+                          <Value>{a.alergias || "—"}</Value>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <Label>Morada</Label>
+                          <Value>{a.morada || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Código postal</Label>
+                          <Value>{a.codigo_postal || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Contactos de urgência</Label>
+                          <Value>{a.contactos_urgencia || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Email(s) preferencial(is)</Label>
+                          <Value>{a.emails_preferenciais || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Email opcional</Label>
+                          <Value>{a.email_opc || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Telefone opcional</Label>
+                          <Value>{a.telefone_opc || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Encarregado de educação</Label>
+                          <Value>{a.encarregado_educacao || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Nome do pai</Label>
+                          <Value>{a.nome_pai || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Nome da mãe</Label>
+                          <Value>{a.nome_mae || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Parentesco — outro</Label>
+                          <Value>{a.parentesco_outro || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Nacionalidade</Label>
+                          <Value>{a.nacionalidade || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Nacionalidade — outra</Label>
+                          <Value>{a.nacionalidade_outra || "—"}</Value>
+                        </div>
+                        <div>
+                          <Label>Escola</Label>
+                          <Value>{a.escola || "—"}</Value>
+                        </div>
+
+                        <div>
+                          <Label>Ano de escolaridade</Label>
+                          <Value>{a.ano_escolaridade || "—"}</Value>
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <Label>Observações</Label>
+                          <Value>{a.observacoes || "—"}</Value>
+                        </div>
                       </div>
-                      <div><strong>Plano (opção de pagamento):</strong> {pick(a, "plano_pagamento", "planoPagamento") || "—"}</div>
-                      <div><strong>Morada:</strong> {pick(a, "morada") || "—"}</div>
-                      <div><strong>Código-postal:</strong> {pick(a, "codigo_postal", "codigoPostal") || "—"}</div>
-                      {pick(a, "emails_preferenciais") && (
-                        <div><strong>Emails preferenciais:</strong> {String(pick(a, "emails_preferenciais"))}</div>
-                      )}
-                      {pick(a, "contactos_urgencia") && (
-                        <div><strong>Contactos de urgência:</strong> {String(pick(a, "contactos_urgencia"))}</div>
-                      )}
-                      {pick(a, "observacoes") && (
-                        <div><strong>Observações:</strong> {String(pick(a, "observacoes"))}</div>
-                      )}
                     </div>
                   ))
                 )}
@@ -406,7 +541,7 @@ export default function MemberDetailsDialog({
                       return (
                         <div key={a.id} className="border rounded-lg p-3">
                           <div className="font-medium mb-2">
-                            {pick(a, "nome", "nome_completo", "nomeCompleto") || "—"} — Escalão: {pick(a, "escalao") || "—"}
+                            {a.nome || "—"} — Escalão: {a.escalao || "—"}
                           </div>
                           {!hasDocs ? (
                             <p className="text-xs text-gray-500">Sem documentos deste atleta.</p>

@@ -1,4 +1,3 @@
-// src/admin/components/SociosTable.tsx
 import React, { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
 import { Button } from "../../components/ui/button";
@@ -10,19 +9,18 @@ import {
 import { supabase } from "../../supabaseClient";
 import MemberDetailsDialog from "./MemberDetailsDialog";
 
-/* ================= Tipos auxiliares ================= */
+/* ================= Tipos ================= */
 
 type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio";
 type OrderDir = "asc" | "desc";
 type Situacao = "Regularizado" | "Pendente" | "Parcial";
 
-type SocioInscricaoStatus = {
+type SocioInsc = {
   status: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
   due?: string | null;
-  valor?: number | null;
 } | null;
 
-/* ================= UI helpers ================= */
+/* ================ UI helpers ================ */
 
 function Container({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border bg-white">{children}</div>;
@@ -34,22 +32,8 @@ function TableWrap({ children }: { children: React.ReactNode }) {
   return <div className="overflow-x-auto">{children}</div>;
 }
 
-function TesourariaBadge({ status }: { status: "Regularizado" | "Pendente" | "Parcial" | string }) {
-  const map: Record<string, string> = {
-    Regularizado: "bg-green-100 text-green-800",
-    Pendente: "bg-red-100 text-red-800",
-    Parcial: "bg-amber-100 text-amber-800",
-  };
-  const cls = map[status] ?? "bg-gray-100 text-gray-800";
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {status}
-    </span>
-  );
-}
-
-/** Badge com o mesmo estilo da Tesouraria/Admin para inscrição de sócio */
-function StatusBadgeInscricao({
+/** Badge com o mesmo estilo usado na Tesouraria/Admin para inscrição */
+function InscBadge({
   status,
 }: {
   status: "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
@@ -67,7 +51,21 @@ function StatusBadgeInscricao({
   );
 }
 
-/* ================= Página principal ================= */
+function deriveInscStatus(row: { validado?: boolean; comprovativo_url?: string | null; devido_em?: string | null }) {
+  const validado = !!row.validado;
+  const comprovativo = !!(row.comprovativo_url && `${row.comprovativo_url}`.trim().length > 0);
+  const due = row.devido_em ?? null;
+
+  if (validado) return "Regularizado" as const;
+  if (comprovativo) return "Pendente de validação" as const;
+  if (due) {
+    const dt = new Date(due + "T23:59:59");
+    if (Date.now() > dt.getTime()) return "Em atraso" as const;
+  }
+  return "Por regularizar" as const;
+}
+
+/* ================ Página principal ================ */
 
 export default function SociosTable({
   search,
@@ -158,7 +156,7 @@ export default function SociosTable({
       </Header>
 
       <TableWrap>
-        <table className="min-w-[900px] w-full text-sm">
+        <table className="min-w-[980px] w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-gray-700">
               <th className="text-left px-3 py-2 font-medium">Nome</th>
@@ -166,6 +164,7 @@ export default function SociosTable({
               <th className="text-left px-3 py-2 font-medium">Telefone</th>
               <th className="text-left px-3 py-2 font-medium">Tipo de sócio</th>
               <th className="text-left px-3 py-2 font-medium">Situação</th>
+              <th className="text-left px-3 py-2 font-medium">Data limite</th>
               <th className="text-right px-3 py-2 font-medium">Ações</th>
             </tr>
           </thead>
@@ -180,26 +179,11 @@ export default function SociosTable({
   );
 }
 
-/* ================= Linha/Row ================= */
-
-function deriveInscricaoStatus(row: { validado?: boolean; comprovativo_url?: string | null; devido_em?: string | null }) {
-  const validado = !!row.validado;
-  const comprovativo = !!(row.comprovativo_url && `${row.comprovativo_url}`.trim().length > 0);
-  const due = row.devido_em ?? null;
-
-  if (validado) return "Regularizado" as const;
-  if (comprovativo) return "Pendente de validação" as const;
-
-  if (due) {
-    const dt = new Date(due + "T23:59:59");
-    if (Date.now() > dt.getTime()) return "Em atraso" as const;
-  }
-  return "Por regularizar" as const;
-}
+/* ================ Linha/Row ================ */
 
 function Row({ row }: { row: SocioRow }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [insc, setInsc] = useState<SocioInscricaoStatus>(null);
+  const [insc, setInsc] = useState<SocioInsc>(null);
 
   const isSocio = !!row.tipo_socio && !/não\s*pretendo/i.test(row.tipo_socio);
 
@@ -210,10 +194,10 @@ function Row({ row }: { row: SocioRow }) {
         setInsc(null);
         return;
       }
-      // último registo de inscrição do SÓCIO (atleta_id nulo, tipo = 'inscricao')
+      // último registo da INSCRIÇÃO DE SÓCIO (atleta_id nulo; tipo = 'inscricao')
       const { data, error } = await supabase
         .from("pagamentos")
-        .select("id, comprovativo_url, validado, devido_em, valor")
+        .select("id, comprovativo_url, validado, devido_em")
         .eq("user_id", row.user_id)
         .is("atleta_id", null)
         .eq("tipo", "inscricao")
@@ -228,19 +212,21 @@ function Row({ row }: { row: SocioRow }) {
       }
       const r = (data || [])[0];
       if (!r) {
-        setInsc({ status: "Por regularizar", due: null, valor: null });
+        setInsc({ status: "Por regularizar", due: null });
         return;
       }
       setInsc({
-        status: deriveInscricaoStatus(r),
+        status: deriveInscStatus(r),
         due: r.devido_em ?? null,
-        valor: (r as any).valor ?? null,
       });
     })();
     return () => {
       mounted = false;
     };
   }, [row.user_id, isSocio]);
+
+  const dueLabel =
+    insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
 
   return (
     <>
@@ -250,32 +236,17 @@ function Row({ row }: { row: SocioRow }) {
         <td className="px-3 py-2">{row.telefone || "—"}</td>
         <td className="px-3 py-2">{row.tipo_socio || "—"}</td>
 
-        {/* Situação: estado da inscrição de sócio (quando aplicável) */}
-<td className="px-3 py-2">
-  <div className="flex flex-col gap-1">
-    <div className="text-xs text-gray-700">
-      {isSocio ? (
-        insc ? (
-          <span className="inline-flex items-center gap-2">
-            <StatusBadgeInscricao status={insc.status} />
-            {insc.due && (
-              <span className="text-xs text-gray-500">
-                Data limite: {new Date(insc.due).toLocaleDateString("pt-PT")}
-              </span>
-            )}
-          </span>
-        ) : (
-          <span className="text-gray-500">—</span>
-        )
-      ) : (
-        <span className="text-gray-500">N/A</span>
-      )}
-    </div>
+        {/* Situação = estado da inscrição de sócio */}
+        <td className="px-3 py-2">
+          {isSocio ? (
+            insc ? <InscBadge status={insc.status} /> : <span className="text-gray-500">—</span>
+          ) : (
+            <span className="text-gray-500">N/A</span>
+          )}
+        </td>
 
-    {/* (Opcional) Se quiseres manter também a badge antiga da conta global, deixa esta linha; senão remove. */}
-    {/* <TesourariaBadge status={row.situacao_tesouraria || "Pendente"} /> */}
-  </div>
-</td>
+        {/* Data limite (inscrição de sócio) */}
+        <td className="px-3 py-2">{isSocio ? dueLabel : "N/A"}</td>
 
         <td className="px-3 py-2 text-right">
           <Button
