@@ -1,14 +1,4 @@
 // src/admin/components/MemberDetailsDialog.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../supabaseClient";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { Link as LinkIcon, RefreshCw } from "lucide-react";
-
-import {
-  listDocs,// src/admin/components/MemberDetailsDialog.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import {
@@ -21,7 +11,7 @@ import {
   type DocRow,
 } from "../services/adminSociosService";
 
-/* ================= Badges ================= */
+/* =============== Badges =============== */
 
 function TesourariaBadge({
   status,
@@ -112,7 +102,7 @@ export default function MemberDetailsDialog({
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [errDocs, setErrDocs] = useState<string | null>(null);
 
-  // Inscrição de sócio (estado + due + comprovativo)
+  // Inscrição de sócio (apenas para titulares que optaram por ser sócio)
   const isSocio = !!member.tipo_socio && !/não\s*pretendo/i.test(member.tipo_socio);
   const [inscStatus, setInscStatus] = useState<InscStatus | null>(null);
   const [inscDue, setInscDue] = useState<string | null>(null);
@@ -140,33 +130,14 @@ export default function MemberDetailsDialog({
   }, [userId]);
 
   useEffect(() => {
-    if (active === "atletas" && atletas === null) {
-      setLoadingAt(true);
-      setErrAt(null);
-      listAtletasByUser(userId)
-        .then((arr) => setAtletas(arr))
-        .catch((e: any) => setErrAt(e?.message || "Falha a carregar atletas."))
-        .finally(() => setLoadingAt(false));
+    if (!isSocio) {
+      setInscStatus(null);
+      setInscDue(null);
+      setInscComprov(null);
+      return;
     }
-    if (active === "docs" && docs === null) {
-      setLoadingDocs(true);
-      setErrDocs(null);
-      fetchSocioDocs(userId)
-        .then((arr) => setDocs(arr))
-        .catch((e: any) => setErrDocs(e?.message || "Falha a carregar documentos."))
-        .finally(() => setLoadingDocs(false));
-    }
-  }, [active, atletas, docs, userId]);
-
-  useEffect(() => {
     let mounted = true;
     (async () => {
-      if (!isSocio) {
-        setInscStatus(null);
-        setInscDue(null);
-        setInscComprov(null);
-        return;
-      }
       const { data, error } = await supabase
         .from("pagamentos")
         .select("id, validado, comprovativo_url, devido_em")
@@ -210,41 +181,8 @@ export default function MemberDetailsDialog({
           </button>
         </div>
 
-        {/* ====== Bloco compacto: estados ====== */}
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border p-3">
-            <div className="text-xs text-gray-500">Situação de tesouraria</div>
-            <div className="mt-1">
-              <TesourariaBadge status={member.situacao_tesouraria || "Pendente"} />
-            </div>
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="text-xs text-gray-500">Inscrição de sócio</div>
-            <div className="mt-1 flex items-center gap-2">
-              {isSocio && inscStatus ? (
-                <InscricaoBadge status={inscStatus} />
-              ) : (
-                <span className="text-xs text-gray-500">N/A</span>
-              )}
-              {isSocio && inscStatus && inscDue && (
-                <span className="text-xs text-gray-500">· Data limite: {fmtDate(inscDue)}</span>
-              )}
-              {isSocio && inscStatus && inscComprov && (
-                <a
-                  href={inscComprov}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs underline text-gray-700"
-                >
-                  Ver comprovativo
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* ====== Tabs ====== */}
-        <div className="mt-4">
+        <div className="mt-3">
           <div className="flex items-center gap-3 border-b pb-2 text-sm">
             <button
               className={`px-2 py-1 rounded ${active === "dados" ? "bg-black text-white" : "border"}`}
@@ -279,6 +217,32 @@ export default function MemberDetailsDialog({
                     <Field label="Tipo de sócio">{dados.tipo_socio || "—"}</Field>
                     <Field label="Criado em">
                       {dados.created_at?.slice(0, 19)?.replace("T", " ") || "—"}
+                    </Field>
+
+                    {/* ===== Novos campos integrados, discretos ===== */}
+                    <Field label="Situação de tesouraria">
+                      <TesourariaBadge status={member.situacao_tesouraria || "Pendente"} />
+                    </Field>
+
+                    <Field label="Inscrição de sócio">
+                      {isSocio && inscStatus ? (
+                        <span className="inline-flex items-center gap-2">
+                          <InscricaoBadge status={inscStatus} />
+                          {inscDue && <span className="text-xs text-gray-500">Data limite: {fmtDate(inscDue)}</span>}
+                          {inscComprov && (
+                            <a
+                              href={inscComprov}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs underline text-gray-700"
+                            >
+                              Ver comprovativo
+                            </a>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500 text-sm">N/A</span>
+                      )}
                     </Field>
                   </div>
                 )}
