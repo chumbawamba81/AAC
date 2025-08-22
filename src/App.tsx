@@ -21,6 +21,7 @@ import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
 import { ensureScheduleForAtleta } from "./services/pagamentosService";
 import { estimateCosts, eur, socioInscricaoAmount } from "./utils/pricing";
+import { saveComprovativoSocioInscricao } from "./services/pagamentosService";
 import {
   createInscricaoSocioIfMissing,
   listSocioInscricao,
@@ -1083,6 +1084,24 @@ function PagamentosSection({ state }: { state: State }) {
       alert(e?.message || "Falha no upload");
     } finally { setBusy(false); }
   }
+
+async function handleUploadSocio(file: File) {
+  if (!userId || !file) {
+    alert("Sessão ou ficheiro em falta");
+    return;
+  }
+  setBusy(true);
+  try {
+    await saveComprovativoSocioInscricao(userId, file);
+    await refreshPayments();
+  } catch (e: any) {
+    console.error("[Pagamentos] socio upload", e);
+    alert(e?.message || "Falha no upload");
+  } finally {
+    setBusy(false);
+  }
+}
+
 
   // NOVO: remover comprovativo (sem apagar a linha)
   async function clearComprovativo(row: PagamentoRowWithUrl) {
