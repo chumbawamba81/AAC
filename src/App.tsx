@@ -1261,6 +1261,7 @@ const rankMap = (function build() {
           </div>
           <div className="flex items-center gap-2">
             {/* 1) Comprovativo de inscrição de SÓCIO */}
+<div onClickCapture={(e)=>e.stopPropagation()} onTouchEndCapture={(e)=>e.stopPropagation()}>
 <FilePickerButton
   variant={row?.comprovativo_url ? "secondary" : "outline"}
   accept="image/*,application/pdf"
@@ -1271,7 +1272,7 @@ const rankMap = (function build() {
   <Upload className="h-4 w-4 mr-1" />
   {row?.comprovativo_url ? "Substituir" : "Carregar"}
 </FilePickerButton>
-
+</div>
 
             {row?.comprovativo_url && (
               <Button
@@ -1374,6 +1375,7 @@ const rankMap = (function build() {
       </div>
       <div className="flex items-center gap-2">
         {/* 2) Comprovativo de INSCRIÇÃO do ATLETA */}
+<div onClickCapture={(e)=>e.stopPropagation()} onTouchEndCapture={(e)=>e.stopPropagation()}>		
 <FilePickerButton
   variant={row?.comprovativo_url ? "secondary" : "outline"}
   accept="image/*,application/pdf"
@@ -1383,7 +1385,7 @@ const rankMap = (function build() {
   <Upload className="h-4 w-4 mr-1" />
   {row?.comprovativo_url ? "Substituir" : "Carregar"}
 </FilePickerButton>
-
+</div>
 
         {row?.comprovativo_url && (
           <Button
@@ -1444,6 +1446,7 @@ const rankMap = (function build() {
 
           <div className="flex items-center gap-2">
             {/* 3) Comprovativo das QUOTAS do ATLETA */}
+			<div onClickCapture={(e)=>e.stopPropagation()} onTouchEndCapture={(e)=>e.stopPropagation()}>
 <FilePickerButton
   variant={meta?.comprovativo_url ? "secondary" : "outline"}
   accept="image/*,application/pdf"
@@ -1453,7 +1456,7 @@ const rankMap = (function build() {
   <Upload className="h-4 w-4 mr-1" />
   {meta?.comprovativo_url ? "Substituir" : "Carregar"}
 </FilePickerButton>
-
+</div>
 
             {meta?.comprovativo_url && (
               <Button variant="destructive" onClick={() => handleDelete(a, i)}>
