@@ -293,7 +293,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
   para upload na secção <strong>Situação de Tesouraria</strong>.
   <br />
   <span className="text-gray-600">
-    Recomenda-se a utilização das aplicações de digitalização no smartphone, como a app Adobe Scan &nbsp;
+    Recomenda-se a utilização das aplicações de digitalização no smartphone, como a app Adobe Scan&nbsp;
     <a
       className="underline"
       href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
@@ -313,7 +313,7 @@ export default function UploadDocsSection({ state, setState }: Props) {
     >
       iOS)
     </a>
-    &nbsp;ou CamScanner &nbsp;
+    &nbsp;ou CamScanner&nbsp;
     <a
       className="underline"
       href="https://play.google.com/store/apps/details?id=com.zordo.pdftools"
