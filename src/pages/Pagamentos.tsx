@@ -1,13 +1,15 @@
 // src/pages/Pagamentos.tsx
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 
+// UI
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { RefreshCw, Upload, Trash2, Link as LinkIcon } from "lucide-react";
 import FilePickerButton from "../components/FilePickerButton";
 
-import type { Atleta } from "../types/Atleta";
+// Tipos/serviços
+import type { Atleta, PlanoPagamento } from "../types/Atleta";
 import { listAtletas } from "../services/atletasService";
 import {
   listByAtleta as listPagamentosByAtleta,
@@ -17,26 +19,35 @@ import {
   type PagamentoRowWithUrl,
 } from "../services/pagamentosService";
 
-import { eur, estimateCosts } from "../utils/pricing";
-
-// Helpers locais
-function isFutureDateStr(s?: string | null) {
-  if (!s) return false;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const d = new Date(s + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return d.getTime() > today.getTime();
+/* ---------------- Helpers de plano/labels ---------------- */
+function getSlotsForPlano(p: PlanoPagamento) {
+  if (p === "Mensal") return 10;
+  if (p === "Trimestral") return 3;
+  return 1; // "Anual"
 }
-const isOverdue = (row?: PagamentoRowWithUrl | null) =>
-  !!(row?.devido_em && !row.validado && !isFutureDateStr(row.devido_em));
+function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
+  if (plano === "Anual") return "Pagamento da anuidade";
+  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
+  return `Pagamento - ${idx + 1}º Mês`;
+}
+function isAnuidadeObrigatoria(escalao: string | undefined) {
+  if (!escalao) return false;
+  const s = escalao.toLowerCase();
+  return (
+    s.includes("masters") ||
+    s.includes("sub 23") ||
+    s.includes("sub-23") ||
+    s.includes("seniores sub 23") ||
+    s.includes("seniores sub-23")
+  );
+}
 
-export default function Pagamentos() {
+/* ---------------- Página pública ---------------- */
+export default function PagamentosPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [atletas, setAtletas] = useState<Atleta[]>([]);
-  const [rowsByAtleta, setRowsByAtleta] = useState<Record<string, PagamentoRowWithUrl[]>>({});
-  const [athleteInscricao, setAthleteInscricao] = useState<Record<string, PagamentoRowWithUrl | null>>({});
+  const [busy, setBusy] = useState(false);
+  const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
 
   // sessão
   useEffect(() => {
@@ -55,236 +66,204 @@ export default function Pagamentos() {
     };
   }, []);
 
+  // atletas do utilizador
   const refreshAtletas = useCallback(async () => {
-    const data = await listAtletas();
-    setAtletas(data);
+    try {
+      const rows = await listAtletas();
+      setAtletas(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      console.error("[PagamentosPage] listAtletas", e);
+    }
   }, []);
 
-  const refreshPagamentos = useCallback(async () => {
-    const map: Record<string, PagamentoRowWithUrl[]> = {};
-    const inscrMap: Record<string, PagamentoRowWithUrl | null> = {};
-
-    for (const a of atletas) {
-      const rows = await listPagamentosByAtleta(a.id);
-      const rowsWithUrl = await withSignedUrlsPagamentos(rows);
-      map[a.id] = rowsWithUrl;
-
-      // procurar inscrição
-      const inscrArr = rowsWithUrl.filter(
-        (r) =>
-          (r as any).tipo === "inscricao" ||
-          (r.descricao || "").toLowerCase() === "taxa de inscrição"
-      );
-      inscrArr.sort(
-        (x, y) =>
-          new Date(y.created_at || 0).getTime() -
-          new Date(x.created_at || 0).getTime()
-      );
-      inscrMap[a.id] = inscrArr[0] || null;
-    }
-    setRowsByAtleta(map);
-    setAthleteInscricao(inscrMap);
-  }, [atletas]);
-
   useEffect(() => {
-    refreshAtletas().catch(console.error);
+    if (!userId) return;
+    refreshAtletas();
   }, [userId, refreshAtletas]);
 
+  const refreshPayments = useCallback(async () => {
+    if (!userId) return;
+    const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
+    for (const a of atletas) {
+      const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
+      const slots = getSlotsForPlano(planoEfetivo);
+      const labels = Array.from({ length: slots }, (_, i) => getPagamentoLabel(planoEfetivo, i));
+
+      const rows = await listPagamentosByAtleta(a.id);
+      const rowsWithUrl = await withSignedUrlsPagamentos(rows);
+
+      const byDesc = new Map<string, PagamentoRowWithUrl[]>();
+      for (const r of rowsWithUrl) {
+        const arr = byDesc.get(r.descricao) || [];
+        arr.push(r);
+        byDesc.set(r.descricao, arr);
+      }
+
+      next[a.id] = labels.map((lab) => {
+        const arr = byDesc.get(lab) || [];
+        if (arr.length === 0) return null;
+        arr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
+        return arr[0];
+      });
+    }
+    setPayments(next);
+  }, [userId, atletas]);
+
   useEffect(() => {
-    if (atletas.length) refreshPagamentos().catch(console.error);
-  }, [atletas, refreshPagamentos]);
+    if (!userId) return;
+    refreshPayments();
+  }, [userId, atletas.map(a => a.id).join(","), refreshPayments]);
 
-  const handleUpload = useCallback(
-    async (a: Atleta, descricao: string, file: File) => {
-      if (!userId) return;
-      await saveComprovativoPagamento({
-        userId,
-        atletaId: a.id,
-        descricao,
-        file,
-      });
-      await refreshPagamentos();
-    },
-    [userId, refreshPagamentos]
+  // realtime: pagamentos
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel("rt-pagamentos-public")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pagamentos" },
+        () => refreshPayments()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, refreshPayments]);
+
+  // ações
+  async function handleUpload(athlete: Atleta, idx: number, file: File) {
+    if (!userId || !file) { alert("Sessão ou ficheiro em falta"); return; }
+    setBusy(true);
+    try {
+      const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
+      const label = getPagamentoLabel(planoEfetivo, idx);
+      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file });
+      await refreshPayments();
+    } catch (e: any) {
+      console.error("[PagamentosPage] upload", e);
+      alert(e?.message || "Falha no upload");
+    } finally { setBusy(false); }
+  }
+
+  async function handleDelete(athlete: Atleta, idx: number) {
+    const row = payments[athlete.id]?.[idx];
+    if (!row) return;
+    if (!confirm("Remover este comprovativo?")) return;
+    setBusy(true);
+    try {
+      await deletePagamento(row);
+      await refreshPayments();
+    } catch (e: any) {
+      console.error("[PagamentosPage] delete", e);
+      alert(e?.message || "Falha a remover");
+    } finally { setBusy(false); }
+  }
+
+  const hasSession = !!userId;
+  const totalSlots = useMemo(
+    () =>
+      atletas.reduce((acc, a) => {
+        const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
+        return acc + getSlotsForPlano(planoEfetivo);
+      }, 0),
+    [atletas]
   );
 
-  const handleUploadInscricao = useCallback(
-    async (a: Atleta, file: File) => {
-      if (!userId) return;
-      await saveComprovativoPagamento({
-        userId,
-        atletaId: a.id,
-        descricao: "Taxa de inscrição",
-        file,
-      });
-      await refreshPagamentos();
-    },
-    [userId, refreshPagamentos]
-  );
+  if (!hasSession) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Pagamentos</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-sm text-gray-600">Precisa de iniciar sessão para gerir os comprovativos de pagamento.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      await deletePagamento(id);
-      await refreshPagamentos();
-    },
-    [refreshPagamentos]
-  );
+  if (atletas.length === 0) {
+    return (
+      <Card>
+        <CardHeader><CardTitle>Pagamentos</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-sm text-gray-600">Crie primeiro um atleta para registar pagamentos.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle>Pagamentos</CardTitle>
-        <Button variant="outline" onClick={() => refreshPagamentos()}>
-          <RefreshCw className="h-4 w-4 mr-1" /> Atualizar
-        </Button>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Pagamentos {busy && <RefreshCw className="h-4 w-4 animate-spin" />}
+        </CardTitle>
       </CardHeader>
-      <CardContent>
-        {!atletas.length ? (
-          <div className="text-sm text-gray-600">Sem atletas registados.</div>
-        ) : (
-          <div className="space-y-4">
-            {atletas.map((a) => {
-              const rows = rowsByAtleta[a.id] || [];
-              const inscr = athleteInscricao[a.id] || null;
+      <CardContent className="space-y-6">
+        {atletas.map((a) => {
+          const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
+          const slots = getSlotsForPlano(planoEfetivo);
+          const rows = payments[a.id] || Array.from({ length: slots }, () => null);
+          return (
+            <div key={a.id} className="border rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-medium">{a.nomeCompleto}</div>
+                <div className="text-xs text-gray-500">
+                  Plano: {planoEfetivo}{isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""} · {slots} comprovativo(s)
+                </div>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                {Array.from({ length: slots }).map((_, i) => {
+                  const meta = rows[i];
+                  const label = getPagamentoLabel(planoEfetivo, i);
+                  return (
+                    <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{label}</div>
+                        <div className="text-xs text-gray-500">
+                          {meta ? (
+                            <span className="inline-flex items-center gap-2">
+                              Comprovativo carregado
+                              {meta.signedUrl && (
+                                <a
+                                  className="underline inline-flex items-center gap-1"
+                                  href={meta.signedUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <LinkIcon className="h-3 w-3" />
+                                  Abrir
+                                </a>
+                              )}
+                            </span>
+                          ) : (
+                            "Comprovativo em falta"
+                          )}
+                        </div>
+                      </div>
 
-              // custos segundo pricing.ts
-              const est = estimateCosts({ escalao: a.escalao || "" });
-              const temQuotas = !(est.onlyAnnual ?? false);
+                      <div className="flex items-center gap-2">
+                        <FilePickerButton
+                          variant={meta ? "secondary" : "outline"}
+                          accept="image/*,application/pdf"
+                          onFiles={(files) => handleUpload(a, i, files[0])}
+                        >
+                          <Upload className="h-4 w-4 mr-1" />
+                          {meta ? "Substituir" : "Carregar"}
+                        </FilePickerButton>
 
-              return (
-                <div key={a.id} className="border rounded-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">
-                      {a.nomeCompleto} — {a.escalao || "esc."}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {temQuotas
-                        ? "Comprovativos de quotas"
-                        : "Sem quotas (apenas taxa de inscrição)"}
-                    </div>
-                  </div>
-
-                  {/* NOVO bloco de INSCRIÇÃO */}
-                  <div className="border rounded-lg p-3 flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">Taxa de inscrição</div>
-                      <div className="text-xs text-gray-500">
-                        {inscr?.comprovativo_url
-                          ? inscr.validado
-                            ? "Comprovativo validado"
-                            : isOverdue(inscr)
-                            ? "Comprovativo pendente (em atraso)"
-                            : "Comprovativo pendente"
-                          : isOverdue(inscr)
-                          ? "Comprovativo em falta (em atraso)"
-                          : "Comprovativo em falta"}
-                        {inscr?.devido_em && (
-                          <span className="ml-2">· Limite: {inscr.devido_em}</span>
-                        )}
-                        {inscr?.signedUrl && (
-                          <a
-                            className="underline inline-flex items-center gap-1 p-1 ml-2"
-                            href={inscr.signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <LinkIcon className="h-3 w-3" /> Abrir
-                          </a>
+                        {meta && (
+                          <Button variant="destructive" onClick={() => handleDelete(a, i)}>
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remover
+                          </Button>
                         )}
                       </div>
                     </div>
-                    <FilePickerButton
-                      accept="image/*,application/pdf"
-                      onFiles={(fs) => fs?.[0] && handleUploadInscricao(a, fs[0])}
-                    >
-                      <Upload className="h-4 w-4 mr-1" />
-                      {inscr?.comprovativo_url ? "Substituir" : "Carregar"}
-                    </FilePickerButton>
-                  </div>
-
-                  {/* Grelha de QUOTAS (já existente e mantida) */}
-                  {temQuotas && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {["mensal10", "trimestre3", "anual1"].map((key, idx) => {
-                        const label =
-                          key === "mensal10"
-                            ? "Pagamento Mensal"
-                            : key === "trimestre3"
-                            ? "Pagamento Trimestral"
-                            : "Pagamento da anuidade";
-                        const row =
-                          rows.find(
-                            (r) =>
-                              (r.descricao || "").toLowerCase() ===
-                              label.toLowerCase()
-                          ) || null;
-                        const overdue = isOverdue(row);
-                        const valor = (est as any)[key];
-                        return (
-                          <div
-                            key={`${a.id}-${key}-${idx}`}
-                            className="border rounded-lg p-3 flex items-center justify-between"
-                          >
-                            <div>
-                              <div className="font-medium">
-                                {label} — {eur(valor)}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {row?.comprovativo_url
-                                  ? row.validado
-                                    ? "Comprovativo validado"
-                                    : overdue
-                                    ? "Comprovativo pendente (em atraso)"
-                                    : "Comprovativo pendente"
-                                  : overdue
-                                  ? "Comprovativo em falta (em atraso)"
-                                  : "Comprovativo em falta"}
-                                {row?.devido_em && (
-                                  <span className="ml-2">
-                                    · Limite: {row.devido_em}
-                                  </span>
-                                )}
-                                {row?.signedUrl && (
-                                  <a
-                                    className="underline inline-flex items-center gap-1 p-1 ml-2"
-                                    href={row.signedUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    <LinkIcon className="h-3 w-3" /> Abrir
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <FilePickerButton
-                                accept="image/*,application/pdf"
-                                onFiles={(fs) =>
-                                  fs?.[0] && handleUpload(a, label, fs[0])
-                                }
-                              >
-                                <Upload className="h-4 w-4 mr-1" /> Carregar
-                              </FilePickerButton>
-                              {row?.id && (
-                                <Button
-                                  variant="destructive"
-                                  onClick={() => handleDelete(row.id!)}
-                                  title="Remover registo"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        <div className="text-xs text-gray-500">Total de slots nesta conta: {totalSlots}</div>
       </CardContent>
     </Card>
   );
