@@ -191,6 +191,24 @@ export default function PagamentosPage() {
     return new Date().getTime() > dt.getTime();
   };
 
+  async function handleUploadQuota(athlete: Atleta, idx: number, file: File) {
+    if (!userId || !file) {
+      alert("Sessão ou ficheiro em falta");
+      return;
+    }
+    setBusy(true);
+    try {
+      const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
+      const label = getPagamentoLabel(planoEfetivo, idx);
+      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file });
+      await refreshPayments();
+    } catch (e: any) {
+      alert(e?.message || "Falha no upload");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleUploadInscricao(athlete: Atleta, file: File) {
     if (!userId || !file) {
       alert("Sessão ou ficheiro em falta");
@@ -233,28 +251,6 @@ export default function PagamentosPage() {
     setBusy(true);
     try {
       await saveComprovativoSocioInscricao(userId, file);
-      await refreshPayments();
-    } catch (e: any) {
-      alert(e?.message || "Falha no upload");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Handler único para quotas: usa a descrição (label) do slot
-  async function handleUploadQuota(a: Atleta, descricao: string, file: File) {
-    if (!userId || !file) {
-      alert("Sessão ou ficheiro em falta");
-      return;
-    }
-    setBusy(true);
-    try {
-      await saveComprovativoPagamento({
-        userId,
-        atletaId: a.id,
-        descricao,
-        file,
-      });
       await refreshPayments();
     } catch (e: any) {
       alert(e?.message || "Falha no upload");
@@ -369,9 +365,7 @@ export default function PagamentosPage() {
                       <FilePickerButton
                         variant={row?.comprovativo_url ? "secondary" : "outline"}
                         accept="image/*,application/pdf"
-                        onPick={async (file) => {
-                          await handleUploadSocio(file);
-                        }}
+                        onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
                       >
                         <Upload className="h-4 w-4 mr-1" />
                         {row?.comprovativo_url ? "Substituir" : "Carregar"}
@@ -445,9 +439,7 @@ export default function PagamentosPage() {
                       <FilePickerButton
                         variant={row?.comprovativo_url ? "secondary" : "outline"}
                         accept="image/*,application/pdf"
-                        onPick={async (file) => {
-                          await handleUploadInscricao(a, file);
-                        }}
+                        onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
                       >
                         <Upload className="h-4 w-4 mr-1" />
                         {row?.comprovativo_url ? "Substituir" : "Carregar"}
@@ -502,14 +494,12 @@ export default function PagamentosPage() {
                           <FilePickerButton
                             variant={meta?.comprovativo_url ? "secondary" : "outline"}
                             accept="image/*,application/pdf"
-                            onPick={async (file) => {
-                              // Usar sempre o label calculado, não meta?.descricao (pode ser null)
-                              await handleUploadQuota(a, label, file);
-                            }}
+                            onFiles={(files) => files?.[0] && handleUploadQuota(a, i, files[0])}
                           >
                             <Upload className="h-4 w-4 mr-1" />
                             {meta?.comprovativo_url ? "Substituir" : "Carregar"}
                           </FilePickerButton>
+
                           {meta?.comprovativo_url && (
                             <Button variant="destructive" onClick={() => handleDeleteQuota(a, i)}>
                               <Trash2 className="h-4 w-4 mr-1" />
