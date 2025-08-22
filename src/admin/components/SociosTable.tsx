@@ -169,6 +169,8 @@ type SocioInscricaoStatus = {
   valor?: number | null;
 } | null;
 
+type Situacao = "Regularizado" | "Pendente" | "Parcial";
+
 /** Deriva o estado do pagamento usando a mesma lógica da Tesouraria/Admin */
 function deriveStatusFromRow(row: { validado?: boolean; comprovativo_url?: string | null; devido_em?: string | null }) {
   const validado = !!row.validado;
@@ -187,7 +189,7 @@ function deriveStatusFromRow(row: { validado?: boolean; comprovativo_url?: strin
 }
 
 function Row({ row, onChanged }: { row: SocioRow; onChanged: () => void }) {
-  const [up, setUp] = useState<"Regularizado" | "Pendente" | "Parcial" | "">("");
+  const [up, setUp] = useState<Situacao | null>(null); // << corrigido
   const [modalOpen, setModalOpen] = useState(false);
 
   // NOVO: estado da inscrição de sócio (só quando aplicável)
@@ -234,10 +236,10 @@ function Row({ row, onChanged }: { row: SocioRow; onChanged: () => void }) {
   }, [row.user_id, isSocio]);
 
   async function saveStatus() {
-    if (!up) return;
+    if (!up) return; // garante tipagem
     await updateSituacaoTesouraria(row.user_id, up);
     await onChanged();
-    setUp("");
+    setUp(null);
   }
 
   return (
@@ -274,14 +276,17 @@ function Row({ row, onChanged }: { row: SocioRow; onChanged: () => void }) {
         <td className="px-3 py-2 text-right">
           <div className="inline-flex items-center gap-2">
             <select
-              value={up}
-              onChange={(e) => setUp(e.target.value as any)}
+              value={up ?? ""} // << corrigido
+              onChange={(e) => {
+                const v = e.target.value as "" | Situacao;
+                setUp(v === "" ? null : v);
+              }}
               className="rounded-lg border px-2 py-1 text-sm"
             >
               <option value="">Atualizar Situação…</option>
-              <option>Regularizado</option>
-              <option>Pendente</option>
-              <option>Parcial</option>
+              <option value="Regularizado">Regularizado</option>
+              <option value="Pendente">Pendente</option>
+              <option value="Parcial">Parcial</option>
             </select>
             <button
               onClick={saveStatus}
@@ -404,58 +409,17 @@ function MemberDetailsDialog({
           </div>
 
           <div className="mt-3">
-            {active === "dados" && (
-              <>
-                {loadingDados && <p className="text-sm text-gray-600">A carregar…</p>}
-                {errDados && <p className="text-sm text-red-600">{errDados}</p>}
-                {dados && (
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <Field label="Nome">{dados.nome_completo || "—"}</Field>
-                    <Field label="Email">{dados.email || "—"}</Field>
-                    <Field label="Telefone">{dados.telefone || "—"}</Field>
-                    <Field label="Tipo de sócio">{dados.tipo_socio || "—"}</Field>
-                    <Field label="Situação de tesouraria">{dados.situacao_tesouraria || "—"}</Field>
-                    <Field label="Criado em">{dados.created_at?.slice(0, 19)?.replace("T", " ") || "—"}</Field>
-                  </div>
-                )}
-              </>
-            )}
-
-            {active === "atletas" && (
-              <>
-                {loadingAt && <p className="text-sm text-gray-600">A carregar…</p>}
-                {errAt && <p className="text-sm text-red-600">{errAt}</p>}
-                {atletas && atletas.length === 0 && <p className="text-sm text-gray-500">Sem atletas.</p>}
-                {atletas && atletas.length > 0 && (
-                  <div className="space-y-3">
-                    {atletas.map((a) => (
-                      <div key={a.id} className="border rounded-xl p-3">
-                        <div className="font-medium">{a.nome}</div>
-                        <div className="text-xs text-gray-500">
-                          Escalão: {a.escalao || "—"} · Género: {a.genero || "—"} · Plano: {a.opcao_pagamento || "—"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {active === "docs" && (
-              <>
-                {loadingDocs && <p className="text-sm text-gray-600">A carregar…</p>}
-                {errDocs && <p className="text-sm text-red-600">{errDocs}</p>}
-                {docs && docs.length === 0 && <p className="text-sm text-gray-500">Sem documentos.</p>}
-                {docs && docs.length > 0 && (
-                  <ul className="list-disc pl-5 space-y-1">
-                    {docs.map((d, i) => (
-                      <li key={i} className="text-sm">
-                        {d.doc_tipo} — {d.file_path || "—"}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
+            {loadingDados && <p className="text-sm text-gray-600">A carregar…</p>}
+            {errDados && <p className="text-sm text-red-600">{errDados}</p>}
+            {dados && (
+              <div className="grid md:grid-cols-2 gap-3">
+                <Field label="Nome">{dados.nome_completo || "—"}</Field>
+                <Field label="Email">{dados.email || "—"}</Field>
+                <Field label="Telefone">{dados.telefone || "—"}</Field>
+                <Field label="Tipo de sócio">{dados.tipo_socio || "—"}</Field>
+                <Field label="Situação de tesouraria">{dados.situacao_tesouraria || "—"}</Field>
+                <Field label="Criado em">{dados.created_at?.slice(0, 19)?.replace("T", " ") || "—"}</Field>
+              </div>
             )}
           </div>
         </div>
