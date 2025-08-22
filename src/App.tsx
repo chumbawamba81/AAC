@@ -1344,7 +1344,7 @@ const rankMap = (function build() {
   return (
     <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
       <div>
-        <div className="font-medium">Inscrição de Atleta</div>
+        <div className="font-medium">Inscrição de Atleta — {eur(est.taxaInscricao)}</div>
         <div className="text-xs text-gray-500">
           {row?.comprovativo_url
             ? row.validado
