@@ -179,56 +179,71 @@ export default function SociosTable({
 
   // Exportação CSV local com BOM + sep=; + CRLF
   function exportCsv() {
-    const { include, onlyNA } = normalizeInscFilter(status);
+  // ——— helpers ———
+  const csvEscape = (v: any) => {
+    const s = (v ?? "").toString();
+    return /[;\n\r"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  // UTF-16LE encoder com BOM (FF FE)
+  const toUTF16LE = (str: string) => {
+    const buf = new ArrayBuffer(str.length * 2 + 2);
+    const view = new DataView(buf);
+    view.setUint8(0, 0xff);
+    view.setUint8(1, 0xfe);
+    for (let i = 0; i < str.length; i++) view.setUint16(2 + i * 2, str.charCodeAt(i), true);
+    return new Uint8Array(buf);
+  };
 
-    // aplicar o mesmo filtro da grelha
-    const effective = rows.filter((r) => {
-      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
-      const insc = inscMap[r.user_id];
-      if (!isSocio) return onlyNA; // só inclui N/A se pedido
-      if (!include) return true;
-      if (!insc) return true;
-      return include.includes(insc.status as InscStatus);
-    });
+  // aplicar o MESMO filtro da grelha
+  const { include, onlyNA } = normalizeInscFilter(status);
+  const effective = rows.filter((r) => {
+    const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+    const insc = inscMap[r.user_id];
+    if (!isSocio) return onlyNA; // só inclui N/A se pedido
+    if (!include) return true;
+    if (!insc) return true;
+    return include.includes(insc.status as InscStatus);
+  });
 
-    const header = ["Nome", "Email", "Telefone", "Tipo de sócio", "Situação", "Data limite"];
-    const lines: string[] = [];
+  const header = ["Nome", "Email", "Telefone", "Tipo de sócio", "Situação", "Data limite"];
+  const lines: string[] = [];
 
-    for (const r of effective) {
-      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
-      const insc = inscMap[r.user_id] ?? null;
-      const dueLabel =
-        isSocio && insc?.due
-          ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT")
-          : isSocio
-          ? "—"
-          : "N/A";
+  for (const r of effective) {
+    const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+    const insc = inscMap[r.user_id] ?? null;
+    const dueLabel =
+      isSocio && insc?.due
+        ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT")
+        : isSocio
+        ? "—"
+        : "N/A";
+    const situacao = isSocio ? (insc?.status || "—") : "N/A";
 
-      const situacao = isSocio ? (insc?.status || "—") : "N/A";
+    const row = [
+      r.nome_completo ?? "",
+      r.email ?? "",
+      r.telefone ?? "",
+      r.tipo_socio ?? "",
+      situacao,
+      dueLabel,
+    ].map(csvEscape);
 
-      const row = [
-        r.nome_completo ?? "",
-        r.email ?? "",
-        r.telefone ?? "",
-        r.tipo_socio ?? "",
-        situacao,
-        dueLabel,
-      ].map((v) => (v ?? "").toString().replace(/;/g, ",")); // evita partir colunas
-
-      lines.push(row.join(";"));
-    }
-
-    const BOM = "\uFEFF";
-    const csv = BOM + ["sep=;", header.join(";"), ...lines].join("\r\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "socios.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    lines.push(row.join(";"));
   }
+
+  // ⚙️ sep=; + CRLF + UTF-16LE BOM → Excel abre correto com acentos
+  const csvString = ["sep=;", header.join(";"), ...lines].join("\r\n");
+  const bytes = toUTF16LE(csvString);
+  const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "socios.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 
   // filtro efetivo (suporta novo e legado)
   const effectiveRows = useMemo(() => {

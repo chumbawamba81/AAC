@@ -208,36 +208,63 @@ export default function AthletesTable() {
   }, [rows, statusInsc, statusQuota]);
 
 function exportCSV() {
-  const cols = ["Nome","Escalão","OpçãoPagamento","TipoSócio","TesourariaTitular","DocsEmFalta"];
-  const lines = [cols.join(";")];
+  // Escape CSV: cita se tiver ;, quebra de linha ou aspas
+  const csvEscape = (v: any) => {
+    const s = (v ?? "").toString();
+    return /[;\r\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
 
+  // Converte string para UTF-16LE com BOM (0xFF 0xFE) → Excel abre com acentos
+  const toUTF16LE = (str: string) => {
+    const buf = new ArrayBuffer(str.length * 2 + 2);
+    const view = new DataView(buf);
+    view.setUint8(0, 0xff);
+    view.setUint8(1, 0xfe);
+    for (let i = 0; i < str.length; i++) {
+      view.setUint16(2 + i * 2, str.charCodeAt(i), true);
+    }
+    return new Uint8Array(buf);
+  };
+
+  const header = [
+    "Nome",
+    "Escalão",
+    "Opção de pagamento",
+    "Tipo de sócio",
+    "Situação tesouraria (titular)",
+    "Docs em falta",
+  ];
+
+  const lines: string[] = [];
   for (const r of rows) {
     const a = r.atleta;
     const t = r.titular as any;
-    const line = [
+
+    const row = [
       a.nome,
       a.escalao || "",
       a.opcao_pagamento || "",
       t?.tipo_socio || "",
       t?.situacao_tesouraria || "",
       (r.missing ?? "").toString(),
-    ].map(v => (v ?? "").toString().replace(/;/g, ","));
-    lines.push(line.join(";"));
+    ].map(csvEscape);
+
+    lines.push(row.join(";"));
   }
 
-  // 🔑 truques para Excel/Windows:
-  const BOM = "\uFEFF";                  // força UTF-8
-  const header = "sep=;";                // separador para Excel
-  const csv = BOM + [header, ...lines].join("\r\n");
+  // sep=; + CRLF + UTF-16LE BOM
+  const csvString = ["sep=;", header.join(";"), ...lines].join("\r\n");
+  const bytes = toUTF16LE(csvString);
+  const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
 
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "atletas.csv";            // ajusta o nome consoante a tabela
+  a.download = "atletas.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
+
 
 
   return (
