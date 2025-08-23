@@ -288,6 +288,17 @@ async function ensureInscricaoAtletaIfMissing(atletaId: string) {
   }
 }
 
+export async function deleteSocioInscricaoIfAny(userId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("pagamentos")
+    .delete()
+    .eq("user_id", userId)
+    .is("atleta_id", null)
+    .eq("tipo", "inscricao")
+    .select("id");
+  if (error) throw error;
+  return data?.length ?? 0;
+}
 
 /* ======================= Schedule do atleta (idempotente) ======================= */
 /** NOTA: aqui o ON CONFLICT usa (atleta_id, descricao),

@@ -1065,14 +1065,15 @@ function PagamentosSection({ state }: { state: State }) {
       setSocioRows(await withSignedUrlsPagamentos(socio));
     } else {
   setSocioRows([]);
-  // opcional: remover qualquer inscrição de sócio pendente do DB
-  await supabase
-    .from("pagamentos")
-    .delete()
-    .eq("user_id", userId)
-    .is("atleta_id", null)
-    .eq("tipo", "inscricao");
+  // limpeza defensiva (caso tenha ficado algo antigo)
+  try {
+    const n = await deleteSocioInscricaoIfAny(userId);
+    console.debug("[refreshPayments] limpeza socio inscrição:", n);
+  } catch (e) {
+    console.error("[refreshPayments] delete socio inscrição", e);
+  }
 }
+
 
     // Atletas
     const inscrNext: Record<string, PagamentoRowWithUrl | null> = {};
