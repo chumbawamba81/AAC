@@ -1,7 +1,8 @@
+// src/admin/components/SociosTable.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Eye } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { listSocios, type SocioRow, exportSociosAsCsv } from "../services/adminSociosService";
+import { listSocios, type SocioRow } from "../services/adminSociosService";
 import { supabase } from "../../supabaseClient";
 import MemberDetailsDialog from "./MemberDetailsDialog";
 
@@ -176,10 +177,57 @@ export default function SociosTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, status, tipoSocio, orderBy, orderDir, limit, page]);
 
+  // Exportação CSV local com BOM + sep=; + CRLF
   function exportCsv() {
-    exportSociosAsCsv({ search, status: undefined, tipoSocio, orderBy, orderDir }).catch((e: any) =>
-      alert(e?.message || "Falha ao exportar CSV")
-    );
+    const { include, onlyNA } = normalizeInscFilter(status);
+
+    // aplicar o mesmo filtro da grelha
+    const effective = rows.filter((r) => {
+      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+      const insc = inscMap[r.user_id];
+      if (!isSocio) return onlyNA; // só inclui N/A se pedido
+      if (!include) return true;
+      if (!insc) return true;
+      return include.includes(insc.status as InscStatus);
+    });
+
+    const header = ["Nome", "Email", "Telefone", "Tipo de sócio", "Situação", "Data limite"];
+    const lines: string[] = [];
+
+    for (const r of effective) {
+      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+      const insc = inscMap[r.user_id] ?? null;
+      const dueLabel =
+        isSocio && insc?.due
+          ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT")
+          : isSocio
+          ? "—"
+          : "N/A";
+
+      const situacao = isSocio ? (insc?.status || "—") : "N/A";
+
+      const row = [
+        r.nome_completo ?? "",
+        r.email ?? "",
+        r.telefone ?? "",
+        r.tipo_socio ?? "",
+        situacao,
+        dueLabel,
+      ].map((v) => (v ?? "").toString().replace(/;/g, ",")); // evita partir colunas
+
+      lines.push(row.join(";"));
+    }
+
+    const BOM = "\uFEFF";
+    const csv = BOM + ["sep=;", header.join(";"), ...lines].join("\r\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "socios.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // filtro efetivo (suporta novo e legado)

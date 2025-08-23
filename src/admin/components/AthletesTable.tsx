@@ -207,38 +207,38 @@ export default function AthletesTable() {
     });
   }, [rows, statusInsc, statusQuota]);
 
-  function exportCSV() {
-    const cols = [
-      "Nome",
-      "Escalão",
-      "OpçãoPagamento",
-      "Inscrição",
-      "Quotas",
-      "DocsEmFalta",
-    ];
-    const lines = [cols.join(";")];
-    for (const r of effectiveRows) {
-      const a = r.atleta;
-      const line = [
-        a.nome,
-        a.escalao || "",
-        a.opcao_pagamento || "",
-        r.insc?.status || "",
-        r.quota ? r.quota.status : "N/A",
-        (r.missing ?? "").toString(),
-      ]
-        .map((v) => (v ?? "").toString().replace(/;/g, ",")) // sanitiza ';'
-        .join(";");
-      lines.push(line);
-    }
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const aEl = document.createElement("a");
-    aEl.href = url;
-    aEl.download = "atletas.csv";
-    aEl.click();
-    URL.revokeObjectURL(url);
+function exportCSV() {
+  const cols = ["Nome","Escalão","OpçãoPagamento","TipoSócio","TesourariaTitular","DocsEmFalta"];
+  const lines = [cols.join(";")];
+
+  for (const r of rows) {
+    const a = r.atleta;
+    const t = r.titular as any;
+    const line = [
+      a.nome,
+      a.escalao || "",
+      a.opcao_pagamento || "",
+      t?.tipo_socio || "",
+      t?.situacao_tesouraria || "",
+      (r.missing ?? "").toString(),
+    ].map(v => (v ?? "").toString().replace(/;/g, ","));
+    lines.push(line.join(";"));
   }
+
+  // 🔑 truques para Excel/Windows:
+  const BOM = "\uFEFF";                  // força UTF-8
+  const header = "sep=;";                // separador para Excel
+  const csv = BOM + [header, ...lines].join("\r\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "atletas.csv";            // ajusta o nome consoante a tabela
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 
   return (
     <div className="space-y-3">
