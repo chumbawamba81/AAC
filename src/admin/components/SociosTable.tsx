@@ -10,7 +10,6 @@ type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" 
 type OrderDir = "asc" | "desc";
 
 type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
-
 type SocioInsc = { status: InscStatus; due?: string | null } | null;
 
 /* ================= UI helpers ================= */
@@ -50,7 +49,6 @@ function deriveInscStatus(row: { validado?: boolean; comprovativo_url?: string |
 }
 
 /* ================= Normalização do filtro ================= */
-// Aceita qualquer string vinda do seletor (novo ou legado) e devolve o conjunto a manter.
 function normalizeInscFilter(raw: string): { include: InscStatus[] | null; onlyNA: boolean } {
   const v = (raw || "").trim().toLowerCase();
 
@@ -62,27 +60,42 @@ function normalizeInscFilter(raw: string): { include: InscStatus[] | null; onlyN
   if (v.startsWith("pendente de")) return { include: ["Pendente de validação"], onlyNA: false };
   if (v.startsWith("por reg") || v.includes("regularizar")) return { include: ["Por regularizar"], onlyNA: false };
   if (v.includes("atras") || v.includes("atraso")) return { include: ["Em atraso"], onlyNA: false };
-
-  // legado: "Pendente" e "Parcial" = tudo o que não é Regularizado
   if (v.startsWith("pendente") || v.startsWith("parcial")) {
     return { include: ["Pendente de validação", "Por regularizar", "Em atraso"], onlyNA: false };
   }
-
-  // Valor desconhecido -> não filtra
   return { include: null, onlyNA: false };
+}
+
+/** Escolhe o pagamento relevante por devido_em (mais próximo ≥ hoje; senão último < hoje; senão por created_at). */
+function pickByDue<T extends { devido_em: string | null; created_at: string }>(list: T[] | undefined) {
+  if (!list || list.length === 0) return undefined;
+  const parse = (d: string | null) => (d ? new Date(d + "T00:00:00").getTime() : NaN);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tsToday = today.getTime();
+
+  const withDue = list.filter(x => !!x.devido_em);
+  if (withDue.length > 0) {
+    const future = withDue.filter(x => parse(x.devido_em!) >= tsToday)
+                          .sort((a,b) => parse(a.devido_em!) - parse(b.devido_em!));
+    if (future.length > 0) return future[0];
+    const past = withDue.filter(x => parse(x.devido_em!) < tsToday)
+                        .sort((a,b) => parse(b.devido_em!) - parse(a.devido_em!));
+    if (past.length > 0) return past[0];
+  }
+  return [...list].sort((a,b) => b.created_at.localeCompare(a.created_at))[0];
 }
 
 /* ================= Página ================= */
 export default function SociosTable({
   search,
-  status, // string do seletor vindo de cima (pode ser "Regularizado", "Pendente", "Parcial", "N/A", "Por regularizar", etc.)
+  status, // string (novo/legado)
   tipoSocio,
   orderBy,
   orderDir,
   limit = 20,
 }: {
   search: string;
-  status: string; // aceitar valores novos/antigos
+  status: string;
   tipoSocio:
     | ""
     | "Sócio Pro"
@@ -109,8 +122,7 @@ export default function SociosTable({
     try {
       const { data, count } = await listSocios({
         search,
-        // já não filtramos por situacao_tesouraria no servidor — é derivada da inscrição
-        status: undefined,
+        status: undefined, // derivamos no cliente
         tipoSocio,
         orderBy,
         orderDir,
@@ -120,7 +132,7 @@ export default function SociosTable({
       setRows(data);
       setTotal(count ?? 0);
 
-      // buscar INSCRIÇÃO DE SÓCIO em lote
+      // buscar INSCRIÇÃO DE SÓCIO em lote (user-level)
       const userIds = data.map((r) => r.user_id).filter(Boolean);
       if (userIds.length === 0) {
         setInscMap({});
@@ -141,15 +153,16 @@ export default function SociosTable({
           .order("created_at", { ascending: false });
         if (error) throw error;
 
-        const latest: Record<string, Pay> = {};
-        for (const p of (pays || []) as Pay[]) {
-          if (!latest[p.user_id]) latest[p.user_id] = p; // já vem ordenado desc
-        }
+        // agrupar por user_id
+        const buckets: Record<string, Pay[]> = {};
+        for (const p of (pays || []) as Pay[]) (buckets[p.user_id] ??= []).push(p);
+
         const next: Record<string, SocioInsc> = {};
         for (const id of userIds) {
-          const r = latest[id];
-          if (!r) next[id] = { status: "Por regularizar", due: null };
-          else next[id] = { status: deriveInscStatus(r), due: r.devido_em ?? null };
+          const chosen = pickByDue(buckets[id]);
+          next[id] = chosen
+            ? { status: deriveInscStatus(chosen), due: chosen.devido_em ?? null }
+            : { status: "Por regularizar", due: null };
         }
         setInscMap(next);
       }
@@ -175,10 +188,10 @@ export default function SociosTable({
     return rows.filter((r) => {
       const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
       const insc = inscMap[r.user_id];
-      if (!isSocio) return onlyNA; // só mostra N/A quando pedido
-      if (!include) return true;   // sem filtro específico → mostra tudo de sócios
-      if (!insc) return true;      // ainda a carregar estado → não filtra fora
-      return include.includes(insc.status);
+      if (!isSocio) return onlyNA; // mostra apenas quando pedes N/A
+      if (!include) return true;   // sem filtro específico
+      if (!insc) return true;      // ainda a carregar
+      return include.includes(insc.status as InscStatus);
     });
   }, [rows, inscMap, status]);
 
@@ -245,7 +258,7 @@ export default function SociosTable({
                   <td className="px-3 py-2">{r.tipo_socio || "—"}</td>
                   <td className="px-3 py-2">
                     {isSocio ? (
-                      insc ? <InscBadge status={insc.status} /> : <span className="text-gray-500">—</span>
+                      insc ? <InscBadge status={insc.status as InscStatus} /> : <span className="text-gray-500">—</span>
                     ) : (
                       <span className="text-gray-500">N/A</span>
                     )}

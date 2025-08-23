@@ -55,9 +55,6 @@ export default function SociosPage() {
             <option value="Por regularizar">Por regularizar</option>
             <option value="Em atraso">Em atraso</option>
             <option value="N/A">N/A</option>
-            {/* compat legada (opcional): continuam a funcionar via normalização no SociosTable */}
-            <option value="Pendente">Pendente (legado)</option>
-            <option value="Parcial">Parcial (legado)</option>
           </select>
         </div>
 

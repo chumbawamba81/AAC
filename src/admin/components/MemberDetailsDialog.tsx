@@ -66,6 +66,29 @@ function deriveInscStatus(row: {
   return "Por regularizar";
 }
 
+/** Escolhe o pagamento relevante por devido_em (mais próximo ≥ hoje; senão último < hoje; senão por created_at). */
+function pickByDue<T extends { devido_em: string | null; created_at: string }>(list: T[] | undefined) {
+  if (!list || list.length === 0) return undefined;
+  const parse = (d: string | null) => (d ? new Date(d + "T00:00:00").getTime() : NaN);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tsToday = today.getTime();
+
+  const withDue = list.filter((x) => !!x.devido_em);
+  if (withDue.length > 0) {
+    const future = withDue
+      .filter((x) => parse(x.devido_em!) >= tsToday)
+      .sort((a, b) => parse(a.devido_em!) - parse(b.devido_em!));
+    if (future.length > 0) return future[0];
+
+    const past = withDue
+      .filter((x) => parse(x.devido_em!) < tsToday)
+      .sort((a, b) => parse(b.devido_em!) - parse(a.devido_em!));
+    if (past.length > 0) return past[0];
+  }
+  return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+}
+
 const Label = ({ children }: { children: React.ReactNode }) => (
   <div className="text-left text-xs text-gray-500">{children}</div>
 );
@@ -108,10 +131,7 @@ export default function MemberDetailsDialog({
   // Perfil completo (dados_pessoais)
   const [perfil, setPerfil] = useState<any | null>(null);
 
-  // Inscrição de sócio
-  const isSocio =
-    !!(member.tipo_socio || "").toLowerCase().includes("sócio") &&
-    !(member.tipo_socio || "").toLowerCase().includes("não pretendo");
+  // Inscrição de sócio (user-level)
   const [inscStatus, setInscStatus] = useState<InscStatus | null>(null);
   const [inscDue, setInscDue] = useState<string | null>(null);
   const [inscComprov, setInscComprov] = useState<string | null>(null);
@@ -183,6 +203,7 @@ export default function MemberDetailsDialog({
     }
   }
 
+  // Abre: carrega perfil + atletas + docs
   useEffect(() => {
     if (!open) return;
     fetchPerfil().catch(console.error);
@@ -191,11 +212,18 @@ export default function MemberDetailsDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, userId]);
 
+  // Sempre que haja atletas, carrega docs por atleta
   useEffect(() => {
     if (!open) return;
     fetchDocsByAthlete(athletes).catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, athletes.map((a) => a.id).join(",")]);
+
+  // Inscrição de sócio (user-level) usando pickByDue
+  const isSocio = useMemo(() => {
+    const t = (perfil?.tipo_socio || member.tipo_socio || "").toLowerCase();
+    return t.includes("sócio") && !t.includes("não pretendo");
+  }, [perfil?.tipo_socio, member.tipo_socio]);
 
   useEffect(() => {
     let mounted = true;
@@ -206,14 +234,19 @@ export default function MemberDetailsDialog({
         setInscComprov(null);
         return;
       }
+      type Pay = {
+        validado: boolean | null;
+        comprovativo_url: string | null;
+        devido_em: string | null;
+        created_at: string;
+      };
       const { data, error } = await supabase
         .from("pagamentos")
-        .select("id, validado, comprovativo_url, devido_em")
+        .select("validado, comprovativo_url, devido_em, created_at")
         .eq("user_id", userId)
         .is("atleta_id", null)
         .eq("tipo", "inscricao")
-        .order("created_at", { ascending: false })
-        .limit(1);
+        .order("created_at", { ascending: false });
       if (!mounted) return;
       if (error) {
         console.error("[MemberDetailsDialog] inscrição sócio:", error);
@@ -222,16 +255,16 @@ export default function MemberDetailsDialog({
         setInscComprov(null);
         return;
       }
-      const r = (data || [])[0];
-      if (!r) {
+      const chosen = pickByDue((data || []) as Pay[]);
+      if (!chosen) {
         setInscStatus("Por regularizar");
         setInscDue(null);
         setInscComprov(null);
         return;
       }
-      setInscStatus(deriveInscStatus(r));
-      setInscDue(r.devido_em ?? null);
-      setInscComprov(r.comprovativo_url ?? null);
+      setInscStatus(deriveInscStatus(chosen));
+      setInscDue(chosen.devido_em ?? null);
+      setInscComprov(chosen.comprovativo_url ?? null);
     })();
     return () => {
       mounted = false;
