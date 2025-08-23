@@ -50,6 +50,7 @@ function FieldIf({
   );
 }
 
+/* --------------------- componente --------------------- */
 export default function AthleteDetailsDialog({ open, onClose, atleta, titular }: Props) {
   const [tab, setTab] = useState<Tab>("dados");
   const [docs, setDocs] = useState<DocumentoRow[]>([]);
@@ -93,11 +94,11 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-xl w-[95vw] max-w-4xl max-h-[90vh] overflow-hidden"
+        className="bg-white rounded-2xl shadow-xl w-[95vw] max-w-4xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b flex items-center justify-between">
+        <div className="px-4 py-3 border-b flex items-center justify-between flex-none">
           <div className="font-semibold">Atleta · {atleta.nome}</div>
           <button onClick={onClose} className="p-1 rounded hover:bg-gray-100" aria-label="Fechar">
             <X className="h-5 w-5" />
@@ -105,7 +106,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
         </div>
 
         {/* Tabs */}
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-3 flex-none">
           <div className="flex gap-2 text-sm mb-3">
             <button
               className={`px-3 py-1.5 rounded ${tab === "dados" ? "bg-black text-white" : "bg-gray-100"}`}
@@ -132,7 +133,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
         </div>
 
         {/* Content (scrollable) */}
-        <div className="px-4 pb-4 overflow-y-auto max-h-[75vh]">
+        <div className="px-4 pb-4 flex-1 overflow-y-auto min-h-0 overscroll-contain">
           {/* --- DADOS --- */}
           {tab === "dados" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -216,9 +217,9 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
                                     <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5 shrink-0">
                                       {(row.page ?? 0) > 0 ? `Ficheiro ${row.page}` : "Ficheiro"}
                                     </span>
-                                    {row.signedUrl ? (
+                                    {(row as any).signedUrl ? (
                                       <a
-                                        href={row.signedUrl}
+                                        href={(row as any).signedUrl}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="underline inline-flex items-center gap-1 truncate"
@@ -253,8 +254,9 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
               ) : (
                 <ul className="space-y-2">
                   {pags.map((p) => {
-                    // PagamentoRow pode não ter 'devido_em' tipado; usar cast seguro
+                    // PagamentoRow pode não ter 'devido_em' e 'signedUrl' tipados; usar cast seguro
                     const due = (p as any)?.devido_em as string | null | undefined;
+                    const signed = (p as any)?.signedUrl as string | null | undefined;
                     return (
                       <li key={p.id} className="border rounded-lg p-2 flex items-center justify-between">
                         <div className="text-sm">
@@ -264,13 +266,8 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
                             {fmtDate(p.created_at) ? `Registado: ${fmtDate(p.created_at)}` : ""}
                           </div>
                         </div>
-                        {(p as any)?.signedUrl ? (
-                          <a
-                            className="underline inline-flex items-center gap-1"
-                            href={(p as any).signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                        {signed ? (
+                          <a className="underline inline-flex items-center gap-1" href={signed} target="_blank" rel="noreferrer">
                             <LinkIcon className="h-4 w-4" />
                             Abrir
                           </a>
