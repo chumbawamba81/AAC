@@ -365,7 +365,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
           {!!diagMsg && <div className="text-xs text-gray-600 mt-2">{diagMsg}</div>}
         </div>
 */}
-        /* ---- SOCIO ---- */
+{ /* ---- SOCIO ---- */ }
 <section>
   <div className="mb-2">
     <div className="font-medium">
