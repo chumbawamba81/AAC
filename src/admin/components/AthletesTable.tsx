@@ -290,11 +290,17 @@ export default function AthletesTable() {
     });
   }, [rows, maps, filtroInsc, filtroQuotas]);
 
+  // contador (igual ao dos Sócios)
+  const filteredCount = effectiveRows.length;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Users className="h-5 w-5" /> Atletas
+          <span className="text-sm font-normal text-gray-600 ml-2">
+            {loading ? "A carregar…" : `${filteredCount} registo(s)`}
+          </span>
         </h2>
         <div className="flex items-center gap-2">
           <button
