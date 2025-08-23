@@ -181,7 +181,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
               {/* Titular */}
               {(titular?.nome_completo || titular?.tipo_socio || titular?.email || titular?.telefone) && (
                 <div className="md:col-span-2 border-t pt-3 mt-2">
-                  <div className="font-medium mb-2">Titular</div>
+                  <div className="font-medium mb-2">Titular/Encarregado de Educação</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <FieldIf label="Nome" value={titular?.nome_completo} />
                     <FieldIf label="Tipo de sócio" value={titular?.tipo_socio} />
