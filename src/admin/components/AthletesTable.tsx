@@ -294,190 +294,197 @@ export default function AthletesTable() {
   const filteredCount = effectiveRows.length;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <Users className="h-5 w-5" /> Atletas
-          <span className="text-sm font-normal text-gray-600 ml-2">
-            {loading ? "A carregar…" : `${filteredCount} registo(s)`}
-          </span>
-        </h2>
+    <div className="rounded-xl border bg-white">
+      {/* Linha de topo com contador e ações (igual ao Sócios) */}
+      <div className="p-3 border-b flex items-center justify-between">
+        <div className="text-sm text-gray-600">
+          {loading ? "A carregar…" : `${filteredCount} registo(s)`}
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={exportCSV}
-            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm inline-flex items-center gap-2"
+            className="px-3 py-2 rounded border hover:bg-gray-50 text-sm inline-flex items-center gap-2"
           >
             <Download className="h-4 w-4" /> Exportar CSV
           </button>
           <button
             onClick={reload}
-            className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-sm inline-flex items-center gap-2"
+            className="px-3 py-2 rounded border hover:bg-gray-50 text-sm inline-flex items-center gap-2"
           >
             <RefreshCw className="h-4 w-4" /> Atualizar
           </button>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-        <div className="col-span-2 flex items-center gap-2">
-          <Search className="h-4 w-4 text-gray-500" />
-          <input
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="Pesquisar por nome…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="p-3 space-y-3">
+        {/* Cabeçalho com título */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Users className="h-5 w-5" /> Atletas
+          </h2>
         </div>
 
-        <select
-          className="rounded-xl border px-3 py-2 text-sm"
-          value={escalao}
-          onChange={(e) => setEscalao(e.target.value)}
-        >
-          <option value="">Escalão — todos</option>
-          {escaloes.map((e) => (
-            <option key={e} value={e}>
-              {e}
-            </option>
-          ))}
-        </select>
+        {/* Filtros */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <div className="col-span-2 flex items-center gap-2">
+            <Search className="h-4 w-4 text-gray-500" />
+            <input
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Pesquisar por nome…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
 
-        <select
-          className="rounded-xl border px-3 py-2 text-sm"
-          value={filtroInsc}
-          onChange={(e) => setFiltroInsc(e.target.value as any)}
-        >
-          <option value="">Inscrição — todas</option>
-          <option value="Regularizado">Regularizado</option>
-          <option value="Pendente de validação">Pendente de validação</option>
-          <option value="Por regularizar">Por regularizar</option>
-          <option value="Em atraso">Em atraso</option>
-        </select>
+          <select
+            className="rounded-xl border px-3 py-2 text-sm"
+            value={escalao}
+            onChange={(e) => setEscalao(e.target.value)}
+          >
+            <option value="">Escalão — todos</option>
+            {escaloes.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
 
-        <select
-          className="rounded-xl border px-3 py-2 text-sm"
-          value={filtroQuotas}
-          onChange={(e) => setFiltroQuotas(e.target.value as any)}
-        >
-          <option value="">Quotas — todas</option>
-          <option value="Regularizado">Regularizado</option>
-          <option value="Pendente de validação">Pendente de validação</option>
-          <option value="Por regularizar">Por regularizar</option>
-          <option value="Em atraso">Em atraso</option>
-          <option value="N/A">N/A</option>
-        </select>
+          <select
+            className="rounded-xl border px-3 py-2 text-sm"
+            value={filtroInsc}
+            onChange={(e) => setFiltroInsc(e.target.value as any)}
+          >
+            <option value="">Inscrição — todas</option>
+            <option value="Regularizado">Regularizado</option>
+            <option value="Pendente de validação">Pendente de validação</option>
+            <option value="Por regularizar">Por regularizar</option>
+            <option value="Em atraso">Em atraso</option>
+          </select>
 
-        <select
-          className="rounded-xl border px-3 py-2 text-sm"
-          value={sort}
-          onChange={(e) => setSort(e.target.value as any)}
-        >
-          <option value="nome_asc">Ordenar: Nome ↑</option>
-          <option value="nome_desc">Ordenar: Nome ↓</option>
-          <option value="created_desc">Ordenar: Recentes</option>
-          <option value="created_asc">Ordenar: Antigos</option>
-        </select>
-      </div>
+          <select
+            className="rounded-xl border px-3 py-2 text-sm"
+            value={filtroQuotas}
+            onChange={(e) => setFiltroQuotas(e.target.value as any)}
+          >
+            <option value="">Quotas — todas</option>
+            <option value="Regularizado">Regularizado</option>
+            <option value="Pendente de validação">Pendente de validação</option>
+            <option value="Por regularizar">Por regularizar</option>
+            <option value="Em atraso">Em atraso</option>
+            <option value="N/A">N/A</option>
+          </select>
 
-      {/* Tabela */}
-      <div className="border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left">
-            <tr>
-              <Th>Nome</Th>
-              <Th>Escalão</Th>
-              <Th>Opção pagamento</Th>
-              <Th>Inscrição</Th>
-              <Th>Quotas</Th>
-              <Th>Docs em falta</Th>
-              <Th>Ações</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {effectiveRows.map((r) => {
-              const a = r.atleta;
-              const insc = maps.insc[a.id];
-              const quotas = maps.quotas[a.id];
+          <select
+            className="rounded-xl border px-3 py-2 text-sm"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as any)}
+          >
+            <option value="nome_asc">Ordenar: Nome ↑</option>
+            <option value="nome_desc">Ordenar: Nome ↓</option>
+            <option value="created_desc">Ordenar: Recentes</option>
+            <option value="created_asc">Ordenar: Antigos</option>
+          </select>
+        </div>
 
-              const inscDue =
-                insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
+        {/* Tabela */}
+        <div className="border rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left">
+              <tr>
+                <Th>Nome</Th>
+                <Th>Escalão</Th>
+                <Th>Opção pagamento</Th>
+                <Th>Inscrição</Th>
+                <Th>Quotas</Th>
+                <Th>Docs em falta</Th>
+                <Th>Ações</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {effectiveRows.map((r) => {
+                const a = r.atleta;
+                const insc = maps.insc[a.id];
+                const quotas = maps.quotas[a.id];
 
-              let quotasNode: React.ReactNode = <span className="text-gray-500">—</span>;
-              if (quotas === "N/A") {
-                quotasNode = <span className="text-gray-500">N/A</span>;
-              } else if (quotas) {
-                const qDue = quotas.due
-                  ? new Date(quotas.due + "T00:00:00").toLocaleDateString("pt-PT")
-                  : "—";
-                quotasNode = (
-                  <div>
-                    <StatusBadge status={quotas.status} />
-                    <div className="text-xs text-gray-500 mt-1">Data limite: {qDue}</div>
-                  </div>
+                const inscDue =
+                  insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
+
+                let quotasNode: React.ReactNode = <span className="text-gray-500">—</span>;
+                if (quotas === "N/A") {
+                  quotasNode = <span className="text-gray-500">N/A</span>;
+                } else if (quotas) {
+                  const qDue = quotas.due
+                    ? new Date(quotas.due + "T00:00:00").toLocaleDateString("pt-PT")
+                    : "—";
+                  quotasNode = (
+                    <div>
+                      <StatusBadge status={quotas.status} />
+                      <div className="text-xs text-gray-500 mt-1">Data limite: {qDue}</div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <tr key={a.id} className="border-t">
+                    <Td>{a.nome}</Td>
+                    <Td>{a.escalao || "—"}</Td>
+                    <Td>{a.opcao_pagamento || "—"}</Td>
+
+                    <Td>
+                      {insc ? (
+                        <div>
+                          <StatusBadge status={insc.status} />
+                          <div className="text-xs text-gray-500 mt-1">Data limite: {inscDue}</div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )}
+                    </Td>
+
+                    <Td>{quotasNode}</Td>
+
+                    <Td>{r.missing ?? "—"}</Td>
+                    <Td>
+                      <button
+                        className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
+                        onClick={() => {
+                          setFocus(r);
+                          setOpen(true);
+                        }}
+                      >
+                        <Eye className="h-4 w-4" /> Detalhes
+                      </button>
+                    </Td>
+                  </tr>
                 );
-              }
-
-              return (
-                <tr key={a.id} className="border-t">
-                  <Td>{a.nome}</Td>
-                  <Td>{a.escalao || "—"}</Td>
-                  <Td>{a.opcao_pagamento || "—"}</Td>
-
-                  <Td>
-                    {insc ? (
-                      <div>
-                        <StatusBadge status={insc.status} />
-                        <div className="text-xs text-gray-500 mt-1">Data limite: {inscDue}</div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-500">—</span>
-                    )}
-                  </Td>
-
-                  <Td>{quotasNode}</Td>
-
-                  <Td>{r.missing ?? "—"}</Td>
-                  <Td>
-                    <button
-                      className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
-                      onClick={() => {
-                        setFocus(r);
-                        setOpen(true);
-                      }}
-                    >
-                      <Eye className="h-4 w-4" /> Detalhes
-                    </button>
-                  </Td>
+              })}
+              {effectiveRows.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={7} className="text-center py-6 text-gray-500">
+                    Sem resultados.
+                  </td>
                 </tr>
-              );
-            })}
-            {effectiveRows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={7} className="text-center py-6 text-gray-500">
-                  Sem resultados.
-                </td>
-              </tr>
-            )}
-            {loading && (
-              <tr>
-                <td colSpan={7} className="text-center py-6 text-gray-500">
-                  A carregar…
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              )}
+              {loading && (
+                <tr>
+                  <td colSpan={7} className="text-center py-6 text-gray-500">
+                    A carregar…
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      {focus && (
-        <AthleteDetailsDialog
-          open={open}
-          onClose={() => setOpen(false)}
-          atleta={focus.atleta}
-          titular={focus.titular}
-        />
-      )}
+        {focus && (
+          <AthleteDetailsDialog
+            open={open}
+            onClose={() => setOpen(false)}
+            atleta={focus.atleta}
+            titular={focus.titular}
+          />
+        )}
+      </div>
     </div>
   );
 }
