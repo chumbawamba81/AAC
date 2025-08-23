@@ -245,18 +245,31 @@ export default function SociosTable({
 }
 
 
-  // filtro efetivo (suporta novo e legado)
-  const effectiveRows = useMemo(() => {
-    const { include, onlyNA } = normalizeInscFilter(status);
-    return rows.filter((r) => {
-      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
-      const insc = inscMap[r.user_id];
-      if (!isSocio) return onlyNA; // mostra apenas quando pedes N/A
-      if (!include) return true;   // sem filtro específico
-      if (!insc) return true;      // ainda a carregar
-      return include.includes(insc.status as InscStatus);
-    });
-  }, [rows, inscMap, status]);
+// filtro efetivo (suporta novo e legado)
+const effectiveRows = useMemo(() => {
+  const { include, onlyNA } = normalizeInscFilter(status);
+
+  return rows.filter((r) => {
+    const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+    const insc = inscMap[r.user_id];
+
+    // --- Não sócio (EE que optou por não se inscrever) ---
+    if (!isSocio) {
+      // sem filtro → inclui por omissão
+      if (!include && !onlyNA) return true;
+      // filtro N/A → mostra apenas N/A
+      if (onlyNA) return true;
+      // filtro de estados (Regularizado/Pendente/…) → não se aplica a N/A
+      return false;
+    }
+
+    // --- Sócio: aplica filtro normal de estados ---
+    if (!include) return true;      // sem filtro específico
+    if (!insc) return true;         // ainda a carregar
+    return include.includes(insc.status as InscStatus);
+  });
+}, [rows, inscMap, status]);
+
 
   const filteredCount = effectiveRows.length;
 
