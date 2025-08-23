@@ -367,26 +367,27 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
 */}
 { /* ---- SOCIO ---- */ }
 <section>
-  <div className="mb-2">
-    <div className="font-medium">
-      Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
-    </div>
-    <div className="text-xs text-gray-500">
-      {hideSocioDoc ? (
-        <span className="inline-flex items-center gap-1 text-green-700">
-          <CheckCircle2 className="h-3 w-3" /> Sem documentos de sócio em falta
-        </span>
-      ) : socioMissingCount > 0 ? (
-        <span className="text-red-600 inline-flex items-center gap-1">
-          <AlertCircle className="h-3 w-3" /> {socioMissingCount} documento(s) em falta
-        </span>
-      ) : (
-        <span className="inline-flex items-center gap-1">
-          <CheckCircle2 className="h-3 w-3" /> Completo
-        </span>
-      )}
-    </div>
+  <div className="mb-2 flex items-center justify-between">
+  <div className="font-medium">
+    Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
   </div>
+  <div className="text-xs">
+    {hideSocioDoc ? (
+      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
+        <CheckCircle2 className="h-3 w-3" /> Sem documentos
+      </span>
+    ) : socioMissingCount > 0 ? (
+      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
+        <AlertCircle className="h-3 w-3" /> {socioMissingCount} doc(s) em falta
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
+        <CheckCircle2 className="h-3 w-3" /> Completo
+      </span>
+    )}
+  </div>
+</div>
+
 
   {hideSocioDoc ? null : (
     <div className="grid md:grid-cols-2 gap-3">
