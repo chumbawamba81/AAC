@@ -371,22 +371,18 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
   <div className="font-medium">
     Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
   </div>
-  <div className="text-xs">
-    {hideSocioDoc ? (
-      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
-        <CheckCircle2 className="h-3 w-3" /> Sem documentos
-      </span>
-    ) : socioMissingCount > 0 ? (
-      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
-        <AlertCircle className="h-3 w-3" /> {socioMissingCount} doc(s) em falta
-      </span>
-    ) : (
-      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
-        <CheckCircle2 className="h-3 w-3" /> Completo
-      </span>
-    )}
-  </div>
+
+  {socioMissingCount > 0 ? (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700">
+      <AlertCircle className="h-3 w-3" /> {socioMissingCount} doc(s) em falta
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-700">
+      <CheckCircle2 className="h-3 w-3" /> Sem documentos
+    </span>
+  )}
 </div>
+
 
 
   {hideSocioDoc ? null : (

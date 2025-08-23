@@ -1790,14 +1790,6 @@ export default function App() {
               {hasPerfil && (
   <TabsContent value="docs">
     <TemplatesDownloadSection />
-
-    {/* Se NÃO for sócio, mostra um aviso explícito de que não há documentos de sócio a submeter */}
-    {!wantsSocio(state.perfil?.tipoSocio) && (
-      <div className="mt-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
-        Sem documentos de sócio em falta.
-      </div>
-    )}
-
     {/* Mantém a secção de documentos (atletas/declarações, etc.) como tens atualmente */}
     <UploadDocsSection
   state={state}
