@@ -45,13 +45,6 @@ function isInscricao(row: AdminPagamento): boolean {
   return (row.descricao ?? "").toLowerCase().includes("inscri");
 }
 
-/** Escalão+Género: "Sub-14 Masculino" */
-function fmtEscalaoGenero(escalao?: string | null, genero?: string | null) {
-  if (!escalao && !genero) return "—";
-  if (escalao && genero) return `${escalao} ${genero}`;
-  return (escalao ?? genero) || "—";
-}
-
 /** Plano inativo para sócio ou sénior sub-23 / masters */
 function isPlanoInativo(nivel: AdminPagamento["nivel"], escalao?: string | null) {
   if (nivel === "socio") return true;
@@ -99,7 +92,7 @@ function TableView({
             <th className="text-left px-3 py-2">Submissão</th>
             <th className="text-left px-3 py-2">Titular/EE</th>
             <th className="text-left px-3 py-2">Atleta</th>
-            <th className="text-left px-3 py-2">Escalão e Género</th>
+            <th className="text-left px-3 py-2">Escalão</th>{/* ← género removido */}
             <th className="text-left px-3 py-2">Plano de Pagamento</th>
             <th className="text-left px-3 py-2">Descrição</th>
             <th className="text-left px-3 py-2">Estado</th>
@@ -115,7 +108,7 @@ function TableView({
                 <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
                 <td className="px-3 py-2">{r.titularName || "—"}</td>
                 <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
-                <td className="px-3 py-2">{fmtEscalaoGenero(r.atletaEscalao, r.atletaGenero)}</td>
+                <td className="px-3 py-2">{r.atletaEscalao || "—"}</td>{/* ← só escalão */}
                 <td className={`px-3 py-2 ${planoInativo ? "text-gray-400 italic" : ""}`}>
                   {planoInativo ? "—" : planoLabel}
                 </td>
