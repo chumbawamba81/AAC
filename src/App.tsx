@@ -776,6 +776,20 @@ function buildProRankMap(atletas: Atleta[]) {
       const next: State = { ...state, perfil: normalizePessoaDados(savedPerfil, state.conta?.email) };
       setState(next);
       saveState(next);
+	  // --- se o titular passou para "Não pretendo ser sócio", apaga a inscrição de sócio no BD
+try {
+  if (!isTipoSocio(form.tipoSocio) && userId) {
+    await supabase
+      .from("pagamentos")
+      .delete()
+      .eq("user_id", userId)
+      .is("atleta_id", null)
+      .eq("tipo", "inscricao");
+  }
+} catch (e) {
+  console.error("[clean socio inscricao]", e);
+}
+
       setEditMode(false);
       onAfterSave();
     } catch (e: any) {
