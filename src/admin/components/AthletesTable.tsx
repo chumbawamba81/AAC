@@ -10,44 +10,81 @@ import {
 import AthleteDetailsDialog from "./AthleteDetailsDialog";
 import { supabase } from "../../supabaseClient";
 
+/* ======================= Tipos ======================= */
 type RowVM = {
   atleta: AtletaRow;
   titular?: TitularMinimal;
   missing?: number;
-  insc?: { status: InscStatus; due?: string | null } | null;
-  quota?: { status: InscStatus; due?: string | null } | null; // null => N/A (não aplicável)
 };
 
 type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
+type StatusInfo = { status: InscStatus; due?: string | null };
+type QuotasInfo = StatusInfo | "N/A";
 
-/* ===== utilitários ===== */
-function deriveStatus(row: {
-  validado?: boolean | null;
-  comprovativo_url?: string | null;
-  devido_em?: string | null;
-}): InscStatus {
-  const ok = !!row.validado;
-  const comp = !!(row.comprovativo_url && `${row.comprovativo_url}`.trim().length > 0);
-  const due = row.devido_em ?? null;
-  if (ok) return "Regularizado";
-  if (comp) return "Pendente de validação";
-  if (due) {
-    const dt = new Date(due + "T23:59:59");
+type StatusMaps = {
+  insc: Record<string, StatusInfo | undefined>;
+  quotas: Record<string, QuotasInfo | undefined>;
+};
+
+/* =================== Heurísticas comuns =================== */
+function isInscricaoLike(tipo?: string | null, desc?: string | null) {
+  const t = (tipo ?? "").toLowerCase();
+  const d = (desc ?? "").toLowerCase();
+  return t.includes("inscri") || d.includes("inscri");
+}
+
+/** Escolhe o pagamento relevante por devido_em: futuro mais próximo; senão passado mais recente; senão por created_at. */
+function pickByDue<T extends { devido_em: string | null; created_at: string }>(list: T[] | undefined) {
+  if (!list || list.length === 0) return undefined;
+  const parse = (d: string | null) => (d ? new Date(d + "T00:00:00").getTime() : NaN);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const tsToday = today.getTime();
+
+  const withDue = list.filter((x) => !!x.devido_em);
+  if (withDue.length > 0) {
+    const future = withDue.filter((x) => parse(x.devido_em!) >= tsToday)
+      .sort((a, b) => parse(a.devido_em!) - parse(b.devido_em!));
+    if (future.length > 0) return future[0];
+
+    const past = withDue.filter((x) => parse(x.devido_em!) < tsToday)
+      .sort((a, b) => parse(b.devido_em!) - parse(a.devido_em!));
+    if (past.length > 0) return past[0];
+  }
+
+  return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+}
+
+function deriveStatus(row?: { validado?: boolean | null; comprovativo_url?: string | null; devido_em?: string | null }): InscStatus {
+  if (!row) return "Por regularizar";
+  if (row.validado) return "Regularizado";
+  const temComp = !!(row.comprovativo_url && `${row.comprovativo_url}`.trim());
+  if (temComp) return "Pendente de validação";
+  if (row.devido_em) {
+    const dt = new Date(row.devido_em + "T23:59:59");
     if (Date.now() > dt.getTime()) return "Em atraso";
   }
   return "Por regularizar";
 }
 
-const fmtDate = (d?: string | null) =>
-  !d ? "" : new Date(d + "T00:00:00").toLocaleDateString("pt-PT");
+function quotasNaoAplicaveis(escalao?: string | null) {
+  const e = (escalao || "").toLowerCase();
+  return e.includes("master") || e.includes("sub 23") || e.includes("sub-23");
+}
 
+/* ======================= UI helpers ======================= */
+function Th({ children }: { children: React.ReactNode }) {
+  return <th className="px-3 py-2 font-medium">{children}</th>;
+}
+function Td({ children }: { children: React.ReactNode }) {
+  return <td className="px-3 py-2 align-top">{children}</td>;
+}
 function StatusBadge({ status }: { status: InscStatus }) {
-  const map = {
-    Regularizado: "bg-green-100 text-green-800",
+  const map: Record<InscStatus, string> = {
+    "Regularizado": "bg-green-100 text-green-800",
     "Pendente de validação": "bg-yellow-100 text-yellow-800",
     "Por regularizar": "bg-gray-100 text-gray-800",
     "Em atraso": "bg-red-100 text-red-800",
-  } as const;
+  };
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
       {status}
@@ -55,45 +92,7 @@ function StatusBadge({ status }: { status: InscStatus }) {
   );
 }
 
-/** Escolhe o pagamento relevante por devido_em (mais próximo ≥ hoje; senão último < hoje; senão por created_at). */
-function pickByDue<T extends { devido_em: string | null; created_at: string }>(list: T[] | undefined) {
-  if (!list || list.length === 0) return undefined;
-  const parse = (d: string | null) => (d ? new Date(d + "T00:00:00").getTime() : NaN);
-  const today = new Date(); today.setHours(0,0,0,0);
-  const tsToday = today.getTime();
-
-  const withDue = list.filter(x => !!x.devido_em);
-  if (withDue.length > 0) {
-    const future = withDue.filter(x => parse(x.devido_em!) >= tsToday)
-                          .sort((a,b) => parse(a.devido_em!) - parse(b.devido_em!));
-    if (future.length > 0) return future[0];
-    const past = withDue.filter(x => parse(x.devido_em!) < tsToday)
-                        .sort((a,b) => parse(b.devido_em!) - parse(a.devido_em!));
-    if (past.length > 0) return past[0];
-  }
-  return [...list].sort((a,b) => b.created_at.localeCompare(a.created_at))[0];
-}
-
-/** Quotas aplicam-se? false para Master/Sub 23 */
-function quotasAplicaveis(escalao?: string | null) {
-  const v = (escalao || "").toLowerCase().trim();
-  if (!v) return true;
-  if (/master/.test(v)) return false;
-  if (/sub\s*-?\s*23/.test(v)) return false; // "Sub 23", "Sub-23", "sub23"
-  return true;
-}
-
-/* ===== filtros ===== */
-function normalizeFilter(raw: string): InscStatus[] | null {
-  const v = (raw || "").trim().toLowerCase();
-  if (!v || v === "(todas)") return null;
-  if (v.startsWith("regular")) return ["Regularizado"];
-  if (v.startsWith("pendente de")) return ["Pendente de validação"];
-  if (v.startsWith("por reg") || v.includes("regularizar")) return ["Por regularizar"];
-  if (v.includes("atras")) return ["Em atraso"];
-  return null; // valor desconhecido => não filtra
-}
-
+/* ======================= Componente ======================= */
 export default function AthletesTable() {
   const [rows, setRows] = useState<RowVM[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,77 +100,76 @@ export default function AthletesTable() {
   const [search, setSearch] = useState("");
   const [escalao, setEscalao] = useState<string>("");
 
-  // novos filtros
-  const [statusInsc, setStatusInsc] = useState<string>("");
-  const [statusQuota, setStatusQuota] = useState<string>("");
+  // Filtros novos (substituem “tipo de sócio”)
+  const [filtroInsc, setFiltroInsc] = useState<"" | InscStatus>("");
+  const [filtroQuotas, setFiltroQuotas] = useState<"" | InscStatus | "N/A">("");
 
-  const [sort, setSort] = useState<"nome_asc" | "nome_desc" | "created_desc" | "created_asc">(
-    "nome_asc"
-  );
+  const [sort, setSort] = useState<"nome_asc" | "nome_desc" | "created_desc" | "created_asc">("nome_asc");
 
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState<RowVM | null>(null);
 
-  // carregar listagem
+  // Estados calculados em lote (inscrição e quotas)
+  const [maps, setMaps] = useState<StatusMaps>({ insc: {}, quotas: {} });
+
+  // carregar listagem + missing + pagamentos em lote
   async function reload() {
     setLoading(true);
     try {
-      // removemos filtro por tipo de sócio (não usado)
       const base = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort });
       const vm: RowVM[] = base.map((x) => ({ atleta: x.atleta, titular: x.titular }));
       setRows(vm);
 
-      // docs em falta, em lote
+      // missing em lote
       const ids = vm.map((r) => r.atleta.id);
       const miss = await getMissingCountsForAtletas(ids);
       setRows((prev) => prev.map((r) => ({ ...r, missing: miss[r.atleta.id] ?? 0 })));
 
-      // estados de pagamentos (INSCRIÇÃO & QUOTAS) em lote
-      if (ids.length > 0) {
-        type Pay = {
+      // pagamentos em lote → calcular estados
+      if (ids.length) {
+        type Pg = {
           atleta_id: string | null;
           tipo: string | null;
+          descricao: string | null;
           validado: boolean | null;
           comprovativo_url: string | null;
           devido_em: string | null;
           created_at: string;
         };
-        const { data: pays, error } = await supabase
+        const { data, error } = await supabase
           .from("pagamentos")
-          .select("atleta_id, tipo, validado, comprovativo_url, devido_em, created_at")
-          .in("atleta_id", ids)
-          .order("created_at", { ascending: false });
+          .select("atleta_id,tipo,descricao,validado,comprovativo_url,devido_em,created_at")
+          .in("atleta_id", ids);
         if (error) throw error;
+        const pg = (data || []) as Pg[];
 
-        // agrupar por atleta e por "tipo lógico"
-        const buckets: Record<string, { insc: Pay[]; quota: Pay[] }> = {};
-        for (const p of (pays || []) as Pay[]) {
-          if (!p.atleta_id) continue;
-          const t = (p.tipo || "").toLowerCase();
-          const kind: "insc" | "quota" = t.startsWith("inscri") ? "insc" : "quota";
-          (buckets[p.atleta_id] ??= { insc: [], quota: [] })[kind].push(p);
+        const byAth: Record<string, Pg[]> = {};
+        pg.forEach((p) => {
+          const k = p.atleta_id || "";
+          (byAth[k] ??= []).push(p);
+        });
+
+        const insc: StatusMaps["insc"] = {};
+        const quotas: StatusMaps["quotas"] = {};
+
+        for (const r of vm) {
+          const a = r.atleta;
+          const list = byAth[a.id] || [];
+
+          const relInsc = pickByDue(list.filter((p) => isInscricaoLike(p.tipo, p.descricao)));
+          insc[a.id] = { status: deriveStatus(relInsc), due: relInsc?.devido_em ?? null };
+
+          if (quotasNaoAplicaveis(a.escalao)) {
+            quotas[a.id] = "N/A";
+          } else {
+            const relQ = pickByDue(list.filter((p) => !isInscricaoLike(p.tipo, p.descricao)));
+            quotas[a.id] = { status: deriveStatus(relQ), due: relQ?.devido_em ?? null };
+          }
         }
 
-        setRows((prev) =>
-          prev.map((r) => {
-            const b = buckets[r.atleta.id] || { insc: [], quota: [] };
-            const inscPay = pickByDue(b.insc);
-            const quotaPay = quotasAplicaveis(r.atleta.escalao) ? pickByDue(b.quota) : undefined;
-
-            return {
-              ...r,
-              insc: inscPay
-                ? { status: deriveStatus(inscPay), due: inscPay.devido_em ?? null }
-                : { status: "Por regularizar", due: null },
-              // se não aplicável → null (N/A)
-              quota: quotasAplicaveis(r.atleta.escalao)
-                ? (quotaPay
-                    ? { status: deriveStatus(quotaPay), due: quotaPay.devido_em ?? null }
-                    : { status: "Por regularizar", due: null })
-                : null,
-            };
-          })
-        );
+        setMaps({ insc, quotas });
+      } else {
+        setMaps({ insc: {}, quotas: {} });
       }
     } finally {
       setLoading(false);
@@ -189,83 +187,108 @@ export default function AthletesTable() {
     return Array.from(s).sort();
   }, [rows]);
 
-  // aplicar filtros locais de estado (inscrição / quotas)
-  const effectiveRows = useMemo(() => {
-    const incInsc = normalizeFilter(statusInsc);
-    const incQuota = normalizeFilter(statusQuota);
-    return rows.filter((r) => {
-      if (incInsc) {
-        if (!r.insc) return false;
-        if (!incInsc.includes(r.insc.status)) return false;
-      }
-      if (incQuota) {
-        // quotas N/A não passam num filtro específico
-        if (!r.quota) return false;
-        if (!incQuota.includes(r.quota.status)) return false;
-      }
-      return true;
-    });
-  }, [rows, statusInsc, statusQuota]);
-
-function exportCSV() {
-  // Escape CSV: cita se tiver ;, quebra de linha ou aspas
+  /* ======================= Export CSV ======================= */
   const csvEscape = (v: any) => {
     const s = (v ?? "").toString();
     return /[;\r\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-
-  // Converte string para UTF-16LE com BOM (0xFF 0xFE) → Excel abre com acentos
   const toUTF16LE = (str: string) => {
     const buf = new ArrayBuffer(str.length * 2 + 2);
     const view = new DataView(buf);
     view.setUint8(0, 0xff);
     view.setUint8(1, 0xfe);
-    for (let i = 0; i < str.length; i++) {
-      view.setUint16(2 + i * 2, str.charCodeAt(i), true);
-    }
+    for (let i = 0; i < str.length; i++) view.setUint16(2 + i * 2, str.charCodeAt(i), true);
     return new Uint8Array(buf);
   };
 
-  const header = [
-    "Nome",
-    "Escalão",
-    "Opção de pagamento",
-    "Tipo de sócio",
-    "Situação tesouraria (titular)",
-    "Docs em falta",
-  ];
+  async function exportCSV() {
+    // reflecte os mesmos filtros da grelha
+    const filtered = effectiveRows;
 
-  const lines: string[] = [];
-  for (const r of rows) {
-    const a = r.atleta;
-    const t = r.titular as any;
+    const header = [
+      "Nome",
+      "Escalão",
+      "Opção de pagamento",
+      "Inscrição",
+      "Data limite (inscrição)",
+      "Quotas",
+      "Data limite (quotas)",
+      "Docs em falta",
+    ];
 
-    const row = [
-      a.nome,
-      a.escalao || "",
-      a.opcao_pagamento || "",
-      t?.tipo_socio || "",
-      t?.situacao_tesouraria || "",
-      (r.missing ?? "").toString(),
-    ].map(csvEscape);
+    const lines: string[] = [];
+    for (const r of filtered) {
+      const a = r.atleta;
 
-    lines.push(row.join(";"));
+      const sInsc = maps.insc[a.id];
+      const sQuo = maps.quotas[a.id];
+
+      const inscStatus = sInsc ? sInsc.status : "Por regularizar";
+      const inscDue =
+        sInsc && sInsc.due
+          ? new Date(sInsc.due + "T00:00:00").toLocaleDateString("pt-PT")
+          : "—";
+
+      let quotasText = "N/A";
+      let quotasDue = "N/A";
+      if (sQuo && sQuo !== "N/A") {
+        quotasText = sQuo.status;
+        quotasDue =
+          sQuo.due ? new Date(sQuo.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
+      }
+
+      const row = [
+        a.nome,
+        a.escalao || "",
+        a.opcao_pagamento || "",
+        inscStatus,
+        inscDue,
+        quotasText,
+        quotasDue,
+        (r.missing ?? "").toString(),
+      ].map(csvEscape);
+
+      lines.push(row.join(";"));
+    }
+
+    const csvString = ["sep=;", header.join(";"), ...lines].join("\r\n");
+    const bytes = toUTF16LE(csvString);
+    const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "atletas.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
-  // sep=; + CRLF + UTF-16LE BOM
-  const csvString = ["sep=;", header.join(";"), ...lines].join("\r\n");
-  const bytes = toUTF16LE(csvString);
-  const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
+  /* ======================= Filtros & tabela ======================= */
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "atletas.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
+  // aplica filtros de inscrição/quotas à lista
+  const effectiveRows = useMemo(() => {
+    return rows.filter((r) => {
+      const a = r.atleta;
+      const sInsc = maps.insc[a.id];
+      const sQuo = maps.quotas[a.id];
 
+      // filtro inscrição
+      if (filtroInsc) {
+        if (!sInsc || sInsc.status !== filtroInsc) return false;
+      }
 
+      // filtro quotas
+      if (filtroQuotas) {
+        if (filtroQuotas === "N/A") {
+          if (sQuo !== "N/A") return false;
+        } else {
+          if (!sQuo || sQuo === "N/A" || sQuo.status !== filtroQuotas) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [rows, maps, filtroInsc, filtroQuotas]);
 
   return (
     <div className="space-y-3">
@@ -291,7 +314,7 @@ function exportCSV() {
 
       {/* Filtros */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-        <div className="md:col-span-2 flex items-center gap-2">
+        <div className="col-span-2 flex items-center gap-2">
           <Search className="h-4 w-4 text-gray-500" />
           <input
             className="w-full rounded-xl border px-3 py-2 text-sm"
@@ -316,10 +339,10 @@ function exportCSV() {
 
         <select
           className="rounded-xl border px-3 py-2 text-sm"
-          value={statusInsc}
-          onChange={(e) => setStatusInsc(e.target.value)}
+          value={filtroInsc}
+          onChange={(e) => setFiltroInsc(e.target.value as any)}
         >
-          <option value="">Inscrição — (todas)</option>
+          <option value="">Inscrição — todas</option>
           <option value="Regularizado">Regularizado</option>
           <option value="Pendente de validação">Pendente de validação</option>
           <option value="Por regularizar">Por regularizar</option>
@@ -328,14 +351,15 @@ function exportCSV() {
 
         <select
           className="rounded-xl border px-3 py-2 text-sm"
-          value={statusQuota}
-          onChange={(e) => setStatusQuota(e.target.value)}
+          value={filtroQuotas}
+          onChange={(e) => setFiltroQuotas(e.target.value as any)}
         >
-          <option value="">Quotas — (todas)</option>
+          <option value="">Quotas — todas</option>
           <option value="Regularizado">Regularizado</option>
           <option value="Pendente de validação">Pendente de validação</option>
           <option value="Por regularizar">Por regularizar</option>
           <option value="Em atraso">Em atraso</option>
+          <option value="N/A">N/A</option>
         </select>
 
         <select
@@ -365,58 +389,63 @@ function exportCSV() {
             </tr>
           </thead>
           <tbody>
-            {effectiveRows.map((r) => (
-              <tr key={r.atleta.id} className="border-t">
-                <Td>{r.atleta.nome}</Td>
-                <Td>{r.atleta.escalao || "—"}</Td>
-                <Td>{r.atleta.opcao_pagamento || "—"}</Td>
+            {effectiveRows.map((r) => {
+              const a = r.atleta;
+              const insc = maps.insc[a.id];
+              const quotas = maps.quotas[a.id];
 
-                <Td>
-                  {r.insc ? (
-                    <div className="flex flex-col">
-                      <StatusBadge status={r.insc.status} />
-                      {r.insc.due && (
-                        <span className="mt-1 text-[11px] leading-none text-gray-500">
-                          Data limite: {fmtDate(r.insc.due)}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-gray-500">—</span>
-                  )}
-                </Td>
+              const inscDue =
+                insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
 
-                <Td>
-                  {r.quota === null ? (
-                    <span className="text-gray-500">N/A</span>
-                  ) : r.quota ? (
-                    <div className="flex flex-col">
-                      <StatusBadge status={r.quota.status} />
-                      {r.quota.due && (
-                        <span className="mt-1 text-[11px] leading-none text-gray-500">
-                          Data limite: {fmtDate(r.quota.due)}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-gray-500">—</span>
-                  )}
-                </Td>
+              let quotasNode: React.ReactNode = <span className="text-gray-500">—</span>;
+              if (quotas === "N/A") {
+                quotasNode = <span className="text-gray-500">N/A</span>;
+              } else if (quotas) {
+                const qDue = quotas.due
+                  ? new Date(quotas.due + "T00:00:00").toLocaleDateString("pt-PT")
+                  : "—";
+                quotasNode = (
+                  <div>
+                    <StatusBadge status={quotas.status} />
+                    <div className="text-xs text-gray-500 mt-1">Data limite: {qDue}</div>
+                  </div>
+                );
+              }
 
-                <Td>{r.missing ?? "—"}</Td>
-                <Td>
-                  <button
-                    className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
-                    onClick={() => {
-                      setFocus(r);
-                      setOpen(true);
-                    }}
-                  >
-                    <Eye className="h-4 w-4" /> Detalhes
-                  </button>
-                </Td>
-              </tr>
-            ))}
+              return (
+                <tr key={a.id} className="border-t">
+                  <Td>{a.nome}</Td>
+                  <Td>{a.escalao || "—"}</Td>
+                  <Td>{a.opcao_pagamento || "—"}</Td>
+
+                  <Td>
+                    {insc ? (
+                      <div>
+                        <StatusBadge status={insc.status} />
+                        <div className="text-xs text-gray-500 mt-1">Data limite: {inscDue}</div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-500">—</span>
+                    )}
+                  </Td>
+
+                  <Td>{quotasNode}</Td>
+
+                  <Td>{r.missing ?? "—"}</Td>
+                  <Td>
+                    <button
+                      className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
+                      onClick={() => {
+                        setFocus(r);
+                        setOpen(true);
+                      }}
+                    >
+                      <Eye className="h-4 w-4" /> Detalhes
+                    </button>
+                  </Td>
+                </tr>
+              );
+            })}
             {effectiveRows.length === 0 && !loading && (
               <tr>
                 <td colSpan={7} className="text-center py-6 text-gray-500">
@@ -445,11 +474,4 @@ function exportCSV() {
       )}
     </div>
   );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-3 py-2 font-medium">{children}</th>;
-}
-function Td({ children }: { children: React.ReactNode }) {
-  return <td className="px-3 py-2 align-top">{children}</td>;
 }
