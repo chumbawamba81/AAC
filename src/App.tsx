@@ -117,6 +117,11 @@ function isPasswordStrong(p: string) {
   };
 }
 
+// Considera "não pretendo ser sócio" como NÃO-sócio
+function wantsSocio(tipo?: string | null) {
+  return !!tipo && !/não\s*pretendo\s*ser\s*sócio/i.test(tipo);
+}
+
 function isPessoaDados(x: any): x is PessoaDados {
   return (
     x &&
@@ -781,7 +786,7 @@ function buildProRankMap(atletas: Atleta[]) {
   if (!editMode && basePerfil) {
     const socioMissing = socioMissingCount;
     const missingAthDocs = athMissingCount;
-    const showSocioArea = isTipoSocio(basePerfil.tipoSocio);
+    const showSocioArea = wantsSocio(basePerfil.tipoSocio);
 
     return (
       <div className="space-y-4">
@@ -801,14 +806,27 @@ function buildProRankMap(atletas: Atleta[]) {
             </div>
           </div>
 
-          <div className="mt-3 flex gap-3 text-sm">
-            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3" /> Sócio (docs): {socioMissing} documento(s) em falta
-            </div>
-            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3" /> Atletas (docs): {missingAthDocs} documento(s) em falta
-            </div>
-          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+  {/* Só mostra o chip de sócio se realmente for sócio */}
+  {showSocioArea && (
+    <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
+      <FileUp className="h-3 w-3" /> Sócio (docs): {socioMissing} documento(s) em falta
+    </div>
+  )}
+
+  {/* Chip dos atletas mantém-se como estava */}
+  <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
+    <FileUp className="h-3 w-3" /> Atletas (docs): {missingAthDocs} documento(s) em falta
+  </div>
+
+  {/* Se NÃO for sócio e não houver docs de atletas em falta → mostrar “Sem documentos em falta.” */}
+  {!showSocioArea && missingAthDocs === 0 && (
+    <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-50 text-green-700">
+      <CheckCircle2 className="h-3 w-3" /> Sem documentos em falta
+    </div>
+  )}
+</div>
+
         </div>
 
         {/* Resumo de Situação de Tesouraria */}
@@ -1021,7 +1039,7 @@ function PagamentosSection({ state }: { state: State }) {
     };
   }, []);
 
-  const isSocio = (t?: string | null) => !!t && !/não\s*pretendo/i.test(t);
+  const isSocio = (t?: string | null) => wantsSocio(t);
 
   const refreshPayments = useCallback(async () => {
     if (!userId) return;
@@ -1747,11 +1765,21 @@ export default function App() {
               )}
 
               {hasPerfil && (
-                <TabsContent value="docs">
-                  <TemplatesDownloadSection />
-                  <UploadDocsSection state={state} setState={(s: State) => setState(s)} />
-                </TabsContent>
-              )}
+  <TabsContent value="docs">
+    <TemplatesDownloadSection />
+
+    {/* Se NÃO for sócio, mostra um aviso explícito de que não há documentos de sócio a submeter */}
+    {!wantsSocio(state.perfil?.tipoSocio) && (
+      <div className="mt-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">
+        Sem documentos de sócio em falta.
+      </div>
+    )}
+
+    {/* Mantém a secção de documentos (atletas/declarações, etc.) como tens atualmente */}
+    <UploadDocsSection state={state} setState={(s: State) => setState(s)} />
+  </TabsContent>
+)}
+
 
               {hasPerfil && hasAtletas && (
                 <TabsContent value="tes">
