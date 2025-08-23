@@ -1,4 +1,3 @@
-// src/admin/PaymentsTable.tsx
 import React, { useMemo, useState } from "react";
 import type { AdminPagamento } from "./services/adminPagamentosService";
 import { marcarPagamentoValidado } from "./services/adminPagamentosService";
@@ -7,10 +6,13 @@ type Tab = "inscricao" | "mensalidades";
 
 type Props = {
   rows: AdminPagamento[];
-  tab: Tab;                      // controlada pelo parent
-  onTabChange: (t: Tab) => void; // setter vindo do parent
-  onOpen: (row: AdminPagamento) => void; // (já não usado, mas mantido para compat)
+  tab: Tab;
+  onTabChange: (t: Tab) => void;
+  onOpen: (row: AdminPagamento) => void; // compat
   onChanged?: () => void;
+  // NOVO: contagens para mostrar nas tabs (aplicam pesquisa + filtro de estado)
+  inscricoesCount?: number;
+  mensalidadesCount?: number;
 };
 
 function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
@@ -37,7 +39,7 @@ function fmtDate(d: string | null | undefined, withTime = true) {
   }
 }
 
-/** Heurística local para separar inscrição vs mensalidades */
+/** Heurística local para separar inscrição vs mensalidades (para fallback de contagens, se necessário) */
 function isInscricao(row: AdminPagamento): boolean {
   if (row.nivel === "socio") return true;
   const t = (row.tipo ?? "").toLowerCase();
@@ -92,7 +94,7 @@ function TableView({
             <th className="text-left px-3 py-2">Submissão</th>
             <th className="text-left px-3 py-2">Titular/EE</th>
             <th className="text-left px-3 py-2">Atleta</th>
-            <th className="text-left px-3 py-2">Escalão</th>{/* ← género removido */}
+            <th className="text-left px-3 py-2">Escalão</th>
             <th className="text-left px-3 py-2">Plano de Pagamento</th>
             <th className="text-left px-3 py-2">Descrição</th>
             <th className="text-left px-3 py-2">Estado</th>
@@ -108,7 +110,7 @@ function TableView({
                 <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
                 <td className="px-3 py-2">{r.titularName || "—"}</td>
                 <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
-                <td className="px-3 py-2">{r.atletaEscalao || "—"}</td>{/* ← só escalão */}
+                <td className="px-3 py-2">{r.atletaEscalao || "—"}</td>
                 <td className={`px-3 py-2 ${planoInativo ? "text-gray-400 italic" : ""}`}>
                   {planoInativo ? "—" : planoLabel}
                 </td>
@@ -151,7 +153,16 @@ function TableView({
   );
 }
 
-export default function PaymentsTable({ rows, tab, onTabChange, onOpen: _onOpen, onChanged }: Props) {
+export default function PaymentsTable({
+  rows,
+  tab,
+  onTabChange,
+  onOpen: _onOpen,
+  onChanged,
+  inscricoesCount,
+  mensalidadesCount,
+}: Props) {
+  // fallback para contagens se não vierem do parent (divide localmente o subset)
   const { inscricoes, mensalidades } = useMemo(() => {
     const insc: AdminPagamento[] = [];
     const mens: AdminPagamento[] = [];
@@ -161,27 +172,28 @@ export default function PaymentsTable({ rows, tab, onTabChange, onOpen: _onOpen,
     return { inscricoes: insc, mensalidades: mens };
   }, [rows]);
 
-  const current = tab === "inscricao" ? inscricoes : mensalidades;
+  const countInsc = typeof inscricoesCount === "number" ? inscricoesCount : inscricoes.length;
+  const countMens = typeof mensalidadesCount === "number" ? mensalidadesCount : mensalidades.length;
 
   return (
     <div className="space-y-3">
-      {/* Separador (tabs controladas pelo parent) */}
+      {/* Tabs controladas pelo parent com contagens globais (pós-filtro/pesquisa) */}
       <div className="inline-flex rounded-xl border overflow-hidden">
         <button
           onClick={() => onTabChange("inscricao")}
           className={`px-4 py-2 text-sm ${tab === "inscricao" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
         >
-          Inscrições ({inscricoes.length})
+          Inscrições ({countInsc})
         </button>
         <button
           onClick={() => onTabChange("mensalidades")}
           className={`px-4 py-2 text-sm ${tab === "mensalidades" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
         >
-          Mensalidades ({mensalidades.length})
+          Mensalidades ({countMens})
         </button>
       </div>
 
-      <TableView rows={current} onChanged={onChanged} />
+      <TableView rows={rows} onChanged={onChanged} />
     </div>
   );
 }

@@ -1,4 +1,3 @@
-// src/admin/pages/Pagamentos.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import PaymentsTable from "../PaymentsTable";
 import {
@@ -12,17 +11,31 @@ type Tab = "inscricao" | "mensalidades";
 type Estado = "" | "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
 type OrderDir = "asc" | "desc";
 
+const norm = (s?: string | null) => (s || "").toString().trim().toLowerCase();
+
 // ranking do estado: 1) Pendente de validação 2) Em atraso 3) Por regularizar 4) Regularizado
-const estadoRank = (s?: string | null) => {
-  const v = (s || "").toLowerCase();
+function estadoRank(s?: string | null) {
+  const v = norm(s);
   if (v.startsWith("pendente de")) return 0;
   if (v.includes("atras")) return 1;
-  if (v.includes("regularizar")) return 2; // "Por regularizar"
+  if (v.includes("regularizar")) return 2;
   if (v.startsWith("regular")) return 3;
   return 99;
-};
+}
 
-const norm = (s?: string | null) => (s || "").toString().trim().toLowerCase();
+// extrai “Sub 14”, “Sub-23”, etc.; “Master” vai para o fim
+function escalaoKey(raw?: string | null) {
+  const v = norm(raw);
+  if (!v) return { kind: 2, sub: 999, raw: "" }; // desconhecido ao fim
+  const mSub = v.match(/sub\s*-?\s*(\d{1,2})/i);
+  if (mSub) return { kind: 0, sub: parseInt(mSub[1], 10), raw: v };
+  if (v.includes("master")) return { kind: 2, sub: 999, raw: v };
+  return { kind: 1, sub: 500, raw: v }; // outros escalões “médios”
+}
+
+function cmpStr(a: string, b: string) {
+  return a.localeCompare(b, "pt", { sensitivity: "base", numeric: true });
+}
 
 export default function PagamentosPage() {
   const [rows, setRows] = useState<AdminPagamento[]>([]);
@@ -34,13 +47,13 @@ export default function PagamentosPage() {
   // filtro por estado (aplica-se ao separador ativo)
   const [estado, setEstado] = useState<Estado>("");
 
-  // direção de ordenação (para o bloco inteiro); por omissão DESC em campos textuais fica sem efeito
+  // direção global da ordenação
   const [orderDir, setOrderDir] = useState<OrderDir>("asc");
 
   async function refresh() {
     setLoading(true);
     try {
-      // vai sempre buscar todos; filtro/ordenação é no cliente para respeitar o separador ativo
+      // obtemos sempre todos; aplicamos pesquisa/filtros/ordenação no cliente
       const data = await listPagamentosAdmin("todos" as any);
       setRows(data);
     } catch (e: any) {
@@ -54,70 +67,75 @@ export default function PagamentosPage() {
     refresh();
   }, []);
 
-  const inActiveTab = (r: AdminPagamento) => {
+  // heurística para separador
+  const isInscricao = (r: AdminPagamento) => {
+    if (r.nivel === "socio") return true;
     const tipo = norm((r as any).tipo) || norm(r.descricao);
-    if (tab === "inscricao") return tipo.includes("inscri");
-    // mensalidades / quotas
-    return tipo.includes("mensal") || tipo.includes("quota") || tipo.includes("quotas");
+    return tipo.includes("inscri");
   };
 
   const q = norm(search);
 
-  // 1) filtrar por separador + pesquisa + estado
-  const filtered = useMemo(() => {
+  // 1) aplica pesquisa e filtro de estado (sem dividir por separador ainda)
+  const baseFiltered = useMemo(() => {
     return rows.filter((r) => {
-      if (!inActiveTab(r)) return false;
       if (estado && (r.status || "") !== estado) return false;
       if (!q) return true;
-      const hay =
-        norm(r.titularName) + " " + norm(r.atletaNome) + " " + norm(r.descricao);
+      const hay = [r.titularName, r.atletaNome, r.descricao].map(norm).join(" ");
       return hay.includes(q);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, tab, estado, q]);
+  }, [rows, estado, q]);
 
-  // 2) ordenar por: Estado → Escalão → (Atleta no separador mensalidades) OU (Titular, depois Atleta no separador inscrições)
+  // 2) divide por separador para contagens corretas nas tabs
+  const inscricoes = useMemo(
+    () => baseFiltered.filter((r) => isInscricao(r)),
+    [baseFiltered]
+  );
+  const mensalidades = useMemo(
+    () => baseFiltered.filter((r) => !isInscricao(r)),
+    [baseFiltered]
+  );
+
+  // 3) escolhe o conjunto visível
+  const current = tab === "inscricao" ? inscricoes : mensalidades;
+
+  // 4) ordenação prioritária: Estado → Escalão → (Atleta|Titular) → (fallback)
   const sorted = useMemo(() => {
     const dir = orderDir === "asc" ? 1 : -1;
-
-    const getEscalao = (r: AdminPagamento) =>
+    const getEsc = (r: AdminPagamento) =>
       ((r as any).escalao ??
         (r as any).atletaEscalao ??
         (r as any).escalao_atleta ??
         "") as string;
 
-    // para ter ordenação consistente, usamos localeCompare insensitive
-    function cmpStr(a: string, b: string) {
-      return a.localeCompare(b, "pt", { sensitivity: "base" });
-    }
-
-    const arr = [...filtered];
+    const arr = [...current];
     arr.sort((a, b) => {
       // 1) Estado
-      const er = estadoRank(a.status) - estadoRank(b.status);
-      if (er !== 0) return er * dir;
+      const e = (estadoRank(a.status) - estadoRank(b.status)) * dir;
+      if (e !== 0) return e;
 
       // 2) Escalão
-      const esc = cmpStr(getEscalao(a), getEscalao(b));
-      if (esc !== 0) return esc * dir;
+      const ka = escalaoKey(getEsc(a));
+      const kb = escalaoKey(getEsc(b));
+      if (ka.kind !== kb.kind) return (ka.kind - kb.kind) * dir;
+      if (ka.sub !== kb.sub) return (ka.sub - kb.sub) * dir;
+      const eraw = cmpStr(ka.raw, kb.raw) * dir;
+      if (eraw !== 0) return eraw;
 
-      // 3) terciário depende do separador
+      // 3) terciário: depende do separador
       if (tab === "mensalidades") {
-        const at = cmpStr(a.atletaNome || "", b.atletaNome || "");
-        if (at !== 0) return at * dir;
-        // 4) fallback: titular
-        const tt = cmpStr(a.titularName || "", b.titularName || "");
-        if (tt !== 0) return tt * dir;
+        const at = cmpStr((a.atletaNome || "").toLowerCase(), (b.atletaNome || "").toLowerCase()) * dir;
+        if (at !== 0) return at;
+        const tt = cmpStr((a.titularName || "").toLowerCase(), (b.titularName || "").toLowerCase()) * dir;
+        if (tt !== 0) return tt;
       } else {
-        // inscrições
-        const tt = cmpStr(a.titularName || "", b.titularName || "");
-        if (tt !== 0) return tt * dir;
-        // 4) fallback: atleta
-        const at = cmpStr(a.atletaNome || "", b.atletaNome || "");
-        if (at !== 0) return at * dir;
+        const tt = cmpStr((a.titularName || "").toLowerCase(), (b.titularName || "").toLowerCase()) * dir;
+        if (tt !== 0) return tt;
+        const at = cmpStr((a.atletaNome || "").toLowerCase(), (b.atletaNome || "").toLowerCase()) * dir;
+        if (at !== 0) return at;
       }
 
-      // fallback final: data limite (se existir) e criado
+      // 4) fallback: data limite e criado
       const da = (a as any).devidoEm ? new Date((a as any).devidoEm).getTime() : 0;
       const db = (b as any).devidoEm ? new Date((b as any).devidoEm).getTime() : 0;
       if (da !== db) return (da - db) * dir;
@@ -127,19 +145,19 @@ export default function PagamentosPage() {
       return (ca - cb) * dir;
     });
     return arr;
-  }, [filtered, orderDir, tab]);
+  }, [current, orderDir, tab]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Pagamentos</h1>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Filtro por estado (aplica-se ao separador ativo) */}
+          {/* Estado (aplica-se ao separador ativo na listagem; contagens já respeitam também) */}
           <select
             className="rounded-lg border px-2 py-1 text-sm"
             value={estado}
             onChange={(e) => setEstado(e.target.value as Estado)}
-            title="Estado (aplica-se ao separador ativo)"
+            title="Estado"
           >
             <option value="">Estado — (todos)</option>
             <option value="Pendente de validação">Pendente de validação</option>
@@ -156,12 +174,12 @@ export default function PagamentosPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
 
-          {/* Direção (aplica-se ao conjunto dos critérios) */}
+          {/* Direção */}
           <select
             className="rounded-lg border px-2 py-1 text-sm"
             value={orderDir}
             onChange={(e) => setOrderDir(e.target.value as OrderDir)}
-            title="Direção da ordenação"
+            title="Direção"
           >
             <option value="asc">Asc</option>
             <option value="desc">Desc</option>
@@ -184,20 +202,11 @@ export default function PagamentosPage() {
           rows={sorted}
           tab={tab}
           onTabChange={setTab}
-          onOpen={(row) => {
-            alert(
-              [
-                `Titular/EE: ${row.titularName}`,
-                row.atletaNome ? `Atleta: ${row.atletaNome}` : "",
-                `Descrição: ${row.descricao}`,
-                `Estado: ${row.status}`,
-                row.createdAt ? `Submetido em: ${new Date(row.createdAt).toLocaleString()}` : "",
-              ]
-                .filter(Boolean)
-                .join("\n")
-            );
-          }}
+          onOpen={() => {}}
           onChanged={refresh}
+          // novas contagens: pós-pesquisa & filtro de estado
+          inscricoesCount={inscricoes.length}
+          mensalidadesCount={mensalidades.length}
         />
       )}
     </div>
