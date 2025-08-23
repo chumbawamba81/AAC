@@ -1,3 +1,4 @@
+// src/admin/components/AthletesTable.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Download, RefreshCw, Search, Users, Eye } from "lucide-react";
 import {
@@ -13,13 +14,13 @@ type RowVM = {
   atleta: AtletaRow;
   titular?: TitularMinimal;
   missing?: number;
-  insc?: { status: InscStatus; due?: string | null };
-  quota?: { status: InscStatus; due?: string | null };
+  insc?: { status: InscStatus; due?: string | null } | null;
+  quota?: { status: InscStatus; due?: string | null } | null; // null => N/A (não aplicável)
 };
 
 type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
 
-/* ---------- utilitários comuns ---------- */
+/* ===== utilitários ===== */
 function deriveStatus(row: {
   validado?: boolean | null;
   comprovativo_url?: string | null;
@@ -36,6 +37,7 @@ function deriveStatus(row: {
   }
   return "Por regularizar";
 }
+
 const fmtDate = (d?: string | null) =>
   !d ? "" : new Date(d + "T00:00:00").toLocaleDateString("pt-PT");
 
@@ -72,13 +74,37 @@ function pickByDue<T extends { devido_em: string | null; created_at: string }>(l
   return [...list].sort((a,b) => b.created_at.localeCompare(a.created_at))[0];
 }
 
+/** Quotas aplicam-se? false para Master/Sub 23 */
+function quotasAplicaveis(escalao?: string | null) {
+  const v = (escalao || "").toLowerCase().trim();
+  if (!v) return true;
+  if (/master/.test(v)) return false;
+  if (/sub\s*-?\s*23/.test(v)) return false; // "Sub 23", "Sub-23", "sub23"
+  return true;
+}
+
+/* ===== filtros ===== */
+function normalizeFilter(raw: string): InscStatus[] | null {
+  const v = (raw || "").trim().toLowerCase();
+  if (!v || v === "(todas)") return null;
+  if (v.startsWith("regular")) return ["Regularizado"];
+  if (v.startsWith("pendente de")) return ["Pendente de validação"];
+  if (v.startsWith("por reg") || v.includes("regularizar")) return ["Por regularizar"];
+  if (v.includes("atras")) return ["Em atraso"];
+  return null; // valor desconhecido => não filtra
+}
+
 export default function AthletesTable() {
   const [rows, setRows] = useState<RowVM[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [escalao, setEscalao] = useState<string>("");
-  const [tipoSocio, setTipoSocio] = useState<string>("");
+
+  // novos filtros
+  const [statusInsc, setStatusInsc] = useState<string>("");
+  const [statusQuota, setStatusQuota] = useState<string>("");
+
   const [sort, setSort] = useState<"nome_asc" | "nome_desc" | "created_desc" | "created_asc">(
     "nome_asc"
   );
@@ -90,7 +116,8 @@ export default function AthletesTable() {
   async function reload() {
     setLoading(true);
     try {
-      const base = await listAtletasAdmin({ search, escalao, tipoSocio, sort });
+      // removemos filtro por tipo de sócio (não usado)
+      const base = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort });
       const vm: RowVM[] = base.map((x) => ({ atleta: x.atleta, titular: x.titular }));
       setRows(vm);
 
@@ -129,15 +156,19 @@ export default function AthletesTable() {
           prev.map((r) => {
             const b = buckets[r.atleta.id] || { insc: [], quota: [] };
             const inscPay = pickByDue(b.insc);
-            const quotaPay = pickByDue(b.quota);
+            const quotaPay = quotasAplicaveis(r.atleta.escalao) ? pickByDue(b.quota) : undefined;
+
             return {
               ...r,
               insc: inscPay
                 ? { status: deriveStatus(inscPay), due: inscPay.devido_em ?? null }
                 : { status: "Por regularizar", due: null },
-              quota: quotaPay
-                ? { status: deriveStatus(quotaPay), due: quotaPay.devido_em ?? null }
-                : { status: "Por regularizar", due: null },
+              // se não aplicável → null (N/A)
+              quota: quotasAplicaveis(r.atleta.escalao)
+                ? (quotaPay
+                    ? { status: deriveStatus(quotaPay), due: quotaPay.devido_em ?? null }
+                    : { status: "Por regularizar", due: null })
+                : null,
             };
           })
         );
@@ -150,13 +181,31 @@ export default function AthletesTable() {
   useEffect(() => {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, escalao, tipoSocio, sort]);
+  }, [search, escalao, sort]);
 
   const escaloes = useMemo(() => {
     const s = new Set<string>();
     rows.forEach((r) => r.atleta.escalao && s.add(r.atleta.escalao));
     return Array.from(s).sort();
   }, [rows]);
+
+  // aplicar filtros locais de estado (inscrição / quotas)
+  const effectiveRows = useMemo(() => {
+    const incInsc = normalizeFilter(statusInsc);
+    const incQuota = normalizeFilter(statusQuota);
+    return rows.filter((r) => {
+      if (incInsc) {
+        if (!r.insc) return false;
+        if (!incInsc.includes(r.insc.status)) return false;
+      }
+      if (incQuota) {
+        // quotas N/A não passam num filtro específico
+        if (!r.quota) return false;
+        if (!incQuota.includes(r.quota.status)) return false;
+      }
+      return true;
+    });
+  }, [rows, statusInsc, statusQuota]);
 
   function exportCSV() {
     const cols = [
@@ -168,17 +217,17 @@ export default function AthletesTable() {
       "DocsEmFalta",
     ];
     const lines = [cols.join(";")];
-    for (const r of rows) {
+    for (const r of effectiveRows) {
       const a = r.atleta;
       const line = [
         a.nome,
         a.escalao || "",
         a.opcao_pagamento || "",
         r.insc?.status || "",
-        r.quota?.status || "",
+        r.quota ? r.quota.status : "N/A",
         (r.missing ?? "").toString(),
       ]
-        .map((v) => (v ?? "").toString().replace(/;/g, ","))
+        .map((v) => (v ?? "").toString().replace(/;/g, ",")) // sanitiza ';'
         .join(";");
       lines.push(line);
     }
@@ -214,8 +263,8 @@ export default function AthletesTable() {
       </div>
 
       {/* Filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-        <div className="col-span-2 flex items-center gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+        <div className="md:col-span-2 flex items-center gap-2">
           <Search className="h-4 w-4 text-gray-500" />
           <input
             className="w-full rounded-xl border px-3 py-2 text-sm"
@@ -240,15 +289,26 @@ export default function AthletesTable() {
 
         <select
           className="rounded-xl border px-3 py-2 text-sm"
-          value={tipoSocio}
-          onChange={(e) => setTipoSocio(e.target.value)}
+          value={statusInsc}
+          onChange={(e) => setStatusInsc(e.target.value)}
         >
-          <option value="">Tipo de sócio — todos</option>
-          <option value="Sócio Pro">Sócio Pro</option>
-          <option value="Sócio Família">Sócio Família</option>
-          <option value="Sócio Geral Renovação">Sócio Geral Renovação</option>
-          <option value="Sócio Geral Novo">Sócio Geral Novo</option>
-          <option value="Não pretendo ser sócio">Não pretendo ser sócio</option>
+          <option value="">Inscrição — (todas)</option>
+          <option value="Regularizado">Regularizado</option>
+          <option value="Pendente de validação">Pendente de validação</option>
+          <option value="Por regularizar">Por regularizar</option>
+          <option value="Em atraso">Em atraso</option>
+        </select>
+
+        <select
+          className="rounded-xl border px-3 py-2 text-sm"
+          value={statusQuota}
+          onChange={(e) => setStatusQuota(e.target.value)}
+        >
+          <option value="">Quotas — (todas)</option>
+          <option value="Regularizado">Regularizado</option>
+          <option value="Pendente de validação">Pendente de validação</option>
+          <option value="Por regularizar">Por regularizar</option>
+          <option value="Em atraso">Em atraso</option>
         </select>
 
         <select
@@ -277,72 +337,74 @@ export default function AthletesTable() {
               <Th>Ações</Th>
             </tr>
           </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.atleta.id} className="border-t">
-              <Td>{r.atleta.nome}</Td>
-              <Td>{r.atleta.escalao || "—"}</Td>
-              <Td>{r.atleta.opcao_pagamento || "—"}</Td>
+          <tbody>
+            {effectiveRows.map((r) => (
+              <tr key={r.atleta.id} className="border-t">
+                <Td>{r.atleta.nome}</Td>
+                <Td>{r.atleta.escalao || "—"}</Td>
+                <Td>{r.atleta.opcao_pagamento || "—"}</Td>
 
-              <Td>
-                {r.insc ? (
-                  <div className="flex flex-col">
-                    <StatusBadge status={r.insc.status} />
-                    {r.insc.due && (
-                      <span className="mt-1 text-[11px] leading-none text-gray-500">
-                        Data limite: {fmtDate(r.insc.due)}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-gray-500">—</span>
-                )}
-              </Td>
+                <Td>
+                  {r.insc ? (
+                    <div className="flex flex-col">
+                      <StatusBadge status={r.insc.status} />
+                      {r.insc.due && (
+                        <span className="mt-1 text-[11px] leading-none text-gray-500">
+                          Data limite: {fmtDate(r.insc.due)}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">—</span>
+                  )}
+                </Td>
 
-              <Td>
-                {r.quota ? (
-                  <div className="flex flex-col">
-                    <StatusBadge status={r.quota.status} />
-                    {r.quota.due && (
-                      <span className="mt-1 text-[11px] leading-none text-gray-500">
-                        Data limite: {fmtDate(r.quota.due)}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-gray-500">—</span>
-                )}
-              </Td>
+                <Td>
+                  {r.quota === null ? (
+                    <span className="text-gray-500">N/A</span>
+                  ) : r.quota ? (
+                    <div className="flex flex-col">
+                      <StatusBadge status={r.quota.status} />
+                      {r.quota.due && (
+                        <span className="mt-1 text-[11px] leading-none text-gray-500">
+                          Data limite: {fmtDate(r.quota.due)}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">—</span>
+                  )}
+                </Td>
 
-              <Td>{r.missing ?? "—"}</Td>
-              <Td>
-                <button
-                  className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
-                  onClick={() => {
-                    setFocus(r);
-                    setOpen(true);
-                  }}
-                >
-                  <Eye className="h-4 w-4" /> Detalhes
-                </button>
-              </Td>
-            </tr>
-          ))}
-          {rows.length === 0 && !loading && (
-            <tr>
-              <td colSpan={7} className="text-center py-6 text-gray-500">
-                Sem resultados.
-              </td>
-            </tr>
-          )}
-          {loading && (
-            <tr>
-              <td colSpan={7} className="text-center py-6 text-gray-500">
-                A carregar…
-              </td>
-            </tr>
-          )}
-        </tbody>
+                <Td>{r.missing ?? "—"}</Td>
+                <Td>
+                  <button
+                    className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
+                    onClick={() => {
+                      setFocus(r);
+                      setOpen(true);
+                    }}
+                  >
+                    <Eye className="h-4 w-4" /> Detalhes
+                  </button>
+                </Td>
+              </tr>
+            ))}
+            {effectiveRows.length === 0 && !loading && (
+              <tr>
+                <td colSpan={7} className="text-center py-6 text-gray-500">
+                  Sem resultados.
+                </td>
+              </tr>
+            )}
+            {loading && (
+              <tr>
+                <td colSpan={7} className="text-center py-6 text-gray-500">
+                  A carregar…
+                </td>
+              </tr>
+            )}
+          </tbody>
         </table>
       </div>
 
