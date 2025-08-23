@@ -25,9 +25,7 @@ const DOC_TIPO_INSCRICAO_ATLETA = "Comprovativo de pagamento de inscrição";
 
 /* --------------------- helpers --------------------- */
 const isBlank = (v: any) =>
-  v === null ||
-  v === undefined ||
-  (typeof v === "string" && v.trim() === "");
+  v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 
 const fmtDate = (d?: string | null) =>
   isBlank(d) ? "" : new Date(String(d)).toLocaleDateString("pt-PT");
@@ -245,7 +243,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
             </div>
           )}
 
-          {/* --- PAGAMENTOS (inclui comprovativos de inscrição do atleta) --- */}
+          {/* --- PAGAMENTOS (inclui comprovativos) --- */}
           {tab === "pag" && (
             <div className="space-y-3">
               {loadingPags ? (
@@ -254,30 +252,34 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
                 <p className="text-sm text-gray-500">Sem pagamentos registados.</p>
               ) : (
                 <ul className="space-y-2">
-                  {pags.map((p) => (
-                    <li key={p.id} className="border rounded-lg p-2 flex items-center justify-between">
-                      <div className="text-sm">
-                        <div className="font-medium">{p.descricao}</div>
-                        <div className="text-xs text-gray-500">
-                          {fmtDate(p.devido_em) ? `Devido em: ${fmtDate(p.devido_em)} · ` : ""}
-                          {fmtDate(p.created_at) ? `Registado: ${fmtDate(p.created_at)}` : ""}
+                  {pags.map((p) => {
+                    // PagamentoRow pode não ter 'devido_em' tipado; usar cast seguro
+                    const due = (p as any)?.devido_em as string | null | undefined;
+                    return (
+                      <li key={p.id} className="border rounded-lg p-2 flex items-center justify-between">
+                        <div className="text-sm">
+                          <div className="font-medium">{p.descricao}</div>
+                          <div className="text-xs text-gray-500">
+                            {fmtDate(due) ? `Devido em: ${fmtDate(due)} · ` : ""}
+                            {fmtDate(p.created_at) ? `Registado: ${fmtDate(p.created_at)}` : ""}
+                          </div>
                         </div>
-                      </div>
-                      {p.signedUrl ? (
-                        <a
-                          className="underline inline-flex items-center gap-1"
-                          href={p.signedUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <LinkIcon className="h-4 w-4" />
-                          Abrir
-                        </a>
-                      ) : (
-                        <span className="text-xs text-gray-500">Sem ficheiro</span>
-                      )}
-                    </li>
-                  ))}
+                        {(p as any)?.signedUrl ? (
+                          <a
+                            className="underline inline-flex items-center gap-1"
+                            href={(p as any).signedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <LinkIcon className="h-4 w-4" />
+                            Abrir
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-500">Sem ficheiro</span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
