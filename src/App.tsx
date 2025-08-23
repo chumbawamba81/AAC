@@ -1776,7 +1776,12 @@ export default function App() {
     )}
 
     {/* Mantém a secção de documentos (atletas/declarações, etc.) como tens atualmente */}
-    <UploadDocsSection state={state} setState={(s: State) => setState(s)} />
+    <UploadDocsSection
+  state={state}
+  setState={(s: State) => setState(s)}
+  hideSocioDoc={!wantsSocio(state.perfil?.tipoSocio)}
+/>
+
   </TabsContent>
 )}
 

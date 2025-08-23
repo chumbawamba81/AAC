@@ -44,6 +44,8 @@ type DocAtletaUI = (typeof DOCS_ATLETA_UI)[number];
 type Props = {
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
+  /** Quando true, não mostra a Ficha de Sócio e apresenta a mensagem de “Sem documentos…” */
+  hideSocioDoc?: boolean;
 };
 
 function groupByTipo(rows: DocumentoRow[]) {
@@ -60,7 +62,7 @@ function groupByTipo(rows: DocumentoRow[]) {
   return map;
 }
 
-export default function UploadDocsSection({ state, setState }: Props) {
+export default function UploadDocsSection({ state, setState, hideSocioDoc }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [diagMsg, setDiagMsg] = useState<string>("");
@@ -119,12 +121,14 @@ export default function UploadDocsSection({ state, setState }: Props) {
   }, [userId, state.atletas.map((a) => a.id).join(",")]);
 
   const socioMissingCount = useMemo(() => {
-    let miss = 0;
-    for (const t of DOCS_SOCIO_UI) {
-      if (!socioDocs.get(t)?.length) miss++;
-    }
-    return miss;
-  }, [socioDocs]);
+  if (hideSocioDoc) return 0; // sem documentos de sócio quando “Não pretendo ser sócio”
+  let miss = 0;
+  for (const t of DOCS_SOCIO_UI) {
+    if (!socioDocs.get(t)?.length) miss++;
+  }
+  return miss;
+}, [socioDocs, hideSocioDoc]);
+
 
   /* ======================= Upload Many ======================= */
 
@@ -361,95 +365,109 @@ export default function UploadDocsSection({ state, setState }: Props) {
           {!!diagMsg && <div className="text-xs text-gray-600 mt-2">{diagMsg}</div>}
         </div>
 */}
-        {/* ---- SOCIO ---- */}
-        <section>
-          <div className="mb-2">
-            <div className="font-medium">
-              Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
-            </div>
-            <div className="text-xs text-gray-500">
-              {socioMissingCount > 0 ? (
-                <span className="text-red-600 inline-flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> {socioMissingCount} documento(s) em falta
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3" /> Completo
-                </span>
-              )}
-            </div>
-          </div>
+        /* ---- SOCIO ---- */
+<section>
+  <div className="mb-2">
+    <div className="font-medium">
+      Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
+    </div>
+    <div className="text-xs text-gray-500">
+      {hideSocioDoc ? (
+        <span className="inline-flex items-center gap-1 text-green-700">
+          <CheckCircle2 className="h-3 w-3" /> Sem documentos de sócio em falta
+        </span>
+      ) : socioMissingCount > 0 ? (
+        <span className="text-red-600 inline-flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" /> {socioMissingCount} documento(s) em falta
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1">
+          <CheckCircle2 className="h-3 w-3" /> Completo
+        </span>
+      )}
+    </div>
+  </div>
 
-          <div className="grid md:grid-cols-2 gap-3">
-            {DOCS_SOCIO_UI.map((tipo) => {
-              const files = socioDocs.get(tipo) || [];
-              return (
-                <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">
-                      {tipo}
-                      {state.perfil?.tipoSocio && tipo === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
+  {hideSocioDoc ? null : (
+    <div className="grid md:grid-cols-2 gap-3">
+      {DOCS_SOCIO_UI.map((tipo) => {
+        const files = socioDocs.get(tipo) || [];
+        return (
+          <div key={tipo} className="border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="font-medium">
+                {tipo}
+                {state.perfil?.tipoSocio && tipo === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  ref={(el) => (socioPickersRef.current[tipo] = el)}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    const fs = e.target.files;
+                    await handleUploadSocioMany(tipo, fs);
+                    e.currentTarget.value = "";
+                  }}
+                />
+                <Button variant="outline" onClick={() => socioPickersRef.current[tipo]?.click()}>
+                  <Plus className="h-4 w-4 mr-1" /> Adicionar
+                </Button>
+              </div>
+            </div>
+
+            {files.length === 0 ? (
+              <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
+            ) : (
+              <ul className="space-y-2">
+                {files.map((row, idx) => (
+                  <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
+                    <div className="text-sm flex items-center gap-2">
+                      <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
+                        Ficheiro {idx + 1}
+                      </span>
+                      <a
+                        href={row.signedUrl || undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline inline-flex items-center gap-1"
+                      >
+                        <LinkIcon className="h-4 w-4" />
+                        {row.nome || "ficheiro"}
+                      </a>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
                       <input
-                        ref={(el) => (socioPickersRef.current[tipo] = el)}
+                        ref={(el) => (replacePickersRef.current[row.id] = el)}
                         type="file"
                         accept="image/*,application/pdf"
-                        multiple
                         className="hidden"
                         onChange={async (e) => {
-                          const fs = e.target.files;
-                          await handleUploadSocioMany(tipo, fs);
+                          const f = e.target.files?.[0];
+                          if (f) await handleReplace(row, f);
                           e.currentTarget.value = "";
                         }}
                       />
-                      <Button variant="outline" onClick={() => socioPickersRef.current[tipo]?.click()}>
-                        <Plus className="h-4 w-4 mr-1" /> Adicionar
+                      <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                        <RefreshCw className="h-4 w-4 mr-1" /> Substituir
+                      </Button>
+                      <Button variant="destructive" onClick={() => handleDelete(row)}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Apagar
                       </Button>
                     </div>
-                  </div>
-
-                  {files.length === 0 ? (
-                    <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
-                  ) : (
-                    <ul className="space-y-2">
-                      {files.map((row, idx) => (
-                        <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
-                          <div className="text-sm flex items-center gap-2">
-                            <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">Ficheiro {idx + 1}</span>
-                            <a href={row.signedUrl || undefined} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
-                              <LinkIcon className="h-4 w-4" />
-                              {row.nome || "ficheiro"}
-                            </a>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              ref={(el) => (replacePickersRef.current[row.id] = el)}
-                              type="file"
-                              accept="image/*,application/pdf"
-                              className="hidden"
-                              onChange={async (e) => {
-                                const f = e.target.files?.[0];
-                                if (f) await handleReplace(row, f);
-                                e.currentTarget.value = "";
-                              }}
-                            />
-                            <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
-                              <RefreshCw className="h-4 w-4 mr-1" /> Substituir
-                            </Button>
-                            <Button variant="destructive" onClick={() => handleDelete(row)}>
-                              <Trash2 className="h-4 w-4 mr-1" /> Apagar
-                            </Button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        </section>
+        );
+      })}
+    </div>
+  )}
+</section>
+
 
         {/* ---- ATLETAS ---- */}
         <section className="space-y-3">
