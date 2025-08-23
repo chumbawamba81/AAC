@@ -32,6 +32,7 @@ import {
   deletePagamento,
   withSignedUrls as withSignedUrlsPagamentos,
   type PagamentoRowWithUrl,
+  deleteSocioInscricaoIfAny,
 } from "./services/pagamentosService";
 
 
