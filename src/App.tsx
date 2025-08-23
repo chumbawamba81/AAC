@@ -1050,8 +1050,15 @@ function PagamentosSection({ state }: { state: State }) {
       const socio = await listSocioInscricao(userId);
       setSocioRows(await withSignedUrlsPagamentos(socio));
     } else {
-      setSocioRows([]);
-    }
+  setSocioRows([]);
+  // opcional: remover qualquer inscrição de sócio pendente do DB
+  await supabase
+    .from("pagamentos")
+    .delete()
+    .eq("user_id", userId)
+    .is("atleta_id", null)
+    .eq("tipo", "inscricao");
+}
 
     // Atletas
     const inscrNext: Record<string, PagamentoRowWithUrl | null> = {};
