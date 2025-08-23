@@ -23,6 +23,35 @@ type Tab = "dados" | "docs" | "pag";
 
 const DOC_TIPO_INSCRICAO_ATLETA = "Comprovativo de pagamento de inscrição";
 
+/* --------------------- helpers --------------------- */
+const isBlank = (v: any) =>
+  v === null ||
+  v === undefined ||
+  (typeof v === "string" && v.trim() === "");
+
+const fmtDate = (d?: string | null) =>
+  isBlank(d) ? "" : new Date(String(d)).toLocaleDateString("pt-PT");
+
+function FieldIf({
+  label,
+  value,
+  className = "",
+  fmt,
+}: {
+  label: string;
+  value: any;
+  className?: string;
+  fmt?: (v: any) => React.ReactNode;
+}) {
+  if (isBlank(value)) return null;
+  return (
+    <div className={["space-y-1", className].join(" ")}>
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-sm">{fmt ? fmt(value) : value}</div>
+    </div>
+  );
+}
+
 export default function AthleteDetailsDialog({ open, onClose, atleta, titular }: Props) {
   const [tab, setTab] = useState<Tab>("dados");
   const [docs, setDocs] = useState<DocumentoRow[]>([]);
@@ -109,32 +138,63 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
           {/* --- DADOS --- */}
           {tab === "dados" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Nome">{atleta.nome}</Field>
-              <Field label="Género">{atleta.genero || "—"}</Field>
-              <Field label="Data de nascimento">{atleta.data_nascimento}</Field>
-              <Field label="Escalão">{atleta.escalao || "—"}</Field>
-              <Field label="Opção de pagamento">{atleta.opcao_pagamento || "—"}</Field>
-              <Field label="NIF">{atleta.nif || "—"}</Field>
+              {/* Identificação e dados base */}
+              <FieldIf label="Nome" value={atleta.nome} />
+              {/* Género removido para consistência com MemberDetailsDialog */}
+              <FieldIf label="Data de nascimento" value={atleta.data_nascimento} fmt={fmtDate} />
+              <FieldIf label="Escalão" value={atleta.escalao} />
+              <FieldIf label="Opção de pagamento" value={atleta.opcao_pagamento} />
+              <FieldIf label="NIF" value={atleta.nif} />
 
-              <Field className="md:col-span-2" label="Alergias / saúde">{atleta.alergias || "—"}</Field>
-              <Field className="md:col-span-2" label="Morada">{atleta.morada || "—"}</Field>
-              <Field label="Código postal">{atleta.codigo_postal || "—"}</Field>
-              <Field label="Contactos urgência">{atleta.contactos_urgencia || "—"}</Field>
-              <Field className="md:col-span-2" label="Emails preferenciais">{atleta.emails_preferenciais || "—"}</Field>
+              {/* Saúde e contactos */}
+              <FieldIf className="md:col-span-2" label="Alergias / saúde" value={atleta.alergias} />
+              <FieldIf className="md:col-span-2" label="Morada" value={atleta.morada} />
+              <FieldIf label="Código postal" value={atleta.codigo_postal} />
+              <FieldIf label="Contactos de urgência" value={atleta.contactos_urgencia} />
 
-              <div className="md:col-span-2 border-t pt-3 mt-2">
-                <div className="font-medium mb-2">Titular</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Field label="Nome">{titular?.nome_completo || "—"}</Field>
-                  <Field label="Tipo de sócio">{titular?.tipo_socio || "—"}</Field>
-                  <Field label="Email">{titular?.email || "—"}</Field>
-                  <Field label="Telefone">{titular?.telefone || "—"}</Field>
+              {/* Emails/telefone */}
+              <FieldIf className="md:col-span-2" label="Emails preferenciais" value={atleta.emails_preferenciais} />
+              <FieldIf label="Email opcional" value={atleta.email_opc} />
+              <FieldIf label="Telefone opcional" value={atleta.telefone_opc} />
+
+              {/* Encarregados e família */}
+              <FieldIf label="Encarregado de educação" value={atleta.encarregado_educacao} />
+              <FieldIf label="Nome do pai" value={atleta.nome_pai} />
+              <FieldIf label="Nome da mãe" value={atleta.nome_mae} />
+              <FieldIf label="Parentesco — outro" value={atleta.parentesco_outro} />
+
+              {/* Escola */}
+              <FieldIf label="Escola" value={atleta.escola} />
+              <FieldIf label="Ano de escolaridade" value={atleta.ano_escolaridade} />
+
+              {/* Nacionalidade */}
+              <FieldIf label="Nacionalidade" value={atleta.nacionalidade} />
+              <FieldIf label="Nacionalidade — outra" value={atleta.nacionalidade_outra} />
+
+              {/* Documento de identificação */}
+              <FieldIf label="Tipo de documento" value={atleta.tipo_doc} />
+              <FieldIf label="N.º documento" value={atleta.num_doc} />
+              <FieldIf label="Validade do documento" value={atleta.validade_doc} fmt={fmtDate} />
+
+              {/* Observações */}
+              <FieldIf className="md:col-span-2" label="Observações" value={atleta.observacoes} />
+
+              {/* Titular */}
+              {(titular?.nome_completo || titular?.tipo_socio || titular?.email || titular?.telefone) && (
+                <div className="md:col-span-2 border-t pt-3 mt-2">
+                  <div className="font-medium mb-2">Titular</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <FieldIf label="Nome" value={titular?.nome_completo} />
+                    <FieldIf label="Tipo de sócio" value={titular?.tipo_socio} />
+                    <FieldIf label="Email" value={titular?.email} />
+                    <FieldIf label="Telefone" value={titular?.telefone} />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
-          {/* --- DOCUMENTOS (sem o comprovativo de inscrição) --- */}
+          {/* --- DOCUMENTOS (exclui comprovativo de inscrição) --- */}
           {tab === "docs" && (
             <div className="space-y-3">
               {loadingDocs ? (
@@ -185,7 +245,7 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
             </div>
           )}
 
-          {/* --- PAGAMENTOS (inclui o comprovativo de inscrição do atleta) --- */}
+          {/* --- PAGAMENTOS (inclui comprovativos de inscrição do atleta) --- */}
           {tab === "pag" && (
             <div className="space-y-3">
               {loadingPags ? (
@@ -198,10 +258,18 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
                     <li key={p.id} className="border rounded-lg p-2 flex items-center justify-between">
                       <div className="text-sm">
                         <div className="font-medium">{p.descricao}</div>
-                        <div className="text-xs text-gray-500">{p.created_at || "—"}</div>
+                        <div className="text-xs text-gray-500">
+                          {fmtDate(p.devido_em) ? `Devido em: ${fmtDate(p.devido_em)} · ` : ""}
+                          {fmtDate(p.created_at) ? `Registado: ${fmtDate(p.created_at)}` : ""}
+                        </div>
                       </div>
                       {p.signedUrl ? (
-                        <a className="underline inline-flex items-center gap-1" href={p.signedUrl} target="_blank" rel="noreferrer">
+                        <a
+                          className="underline inline-flex items-center gap-1"
+                          href={p.signedUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
                           <LinkIcon className="h-4 w-4" />
                           Abrir
                         </a>
@@ -216,23 +284,6 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-  className = "",
-}: {
-  label: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={["space-y-1", className].join(" ")}>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-sm">{children}</div>
     </div>
   );
 }
