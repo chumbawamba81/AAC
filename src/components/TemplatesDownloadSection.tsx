@@ -71,7 +71,7 @@ export default function TemplatesDownloadSection() {
         </div>
 
         <div className="text-xs text-gray-500 mt-3">
-          Dica: quando possível, preenche digitalmente para garantir legibilidade.
+          Dica: quando possível, preencha digitalmente para garantir legibilidade.
         </div>
       </CardContent>
     </Card>
