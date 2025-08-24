@@ -76,9 +76,11 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
 
   const isMinor = useMemo(()=> a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false, [a.dataNascimento]);
   // Masters ou Sub-23 (apenas estes dois é que forçam a anuidade na UI)
-  const isMastersOrSub23 = useMemo(()=>{
-  const s = (a.escalao || '').toLowerCase();
-  return s.includes('masters') || s.includes('sub23') || s.includes('sub 23') || s.includes('sub-23');
+  const isMastersOrSub23 = useMemo(() => {
+  const s = (a.escalao || "").toLowerCase();
+  const isSub23 = s.includes("sub23") || s.includes("sub 23") || s.includes("sub-23");
+  const isMasters = s.includes("masters");
+  return isSub23 || isMasters;
 }, [a.escalao]);
 
 // Mensagem de bloqueio por regras de elegibilidade (ano civil + exceções)
@@ -210,24 +212,19 @@ useEffect(() => {
 </Field>
 
       {/* Plano (continua visível, mas SENIORS/Sub23/Masters forçam Anual no backend) */}
-      {!isMastersOrSub23 ? (
-  <Field label="Opção de Pagamentos *">
-    <select
-      className="input"
-      value={a.planoPagamento}
-      onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}
-    >
-      <option>Mensal</option>
-      <option>Trimestral</option>
-      <option>Anual</option>
-    </select>
-  </Field>
-) : (
-  <Field label="Opção de Pagamentos">
-    <input className="input bg-gray-100" value="Sem quotas (apenas Taxa de inscrição)" readOnly />
-  </Field>
-)}
-
+      <Field label="Opção de Pagamentos *">
+        <select
+          className="input"
+          value={a.planoPagamento}
+          onChange={e=>setA({...a, planoPagamento: e.target.value as PlanoPagamento})}
+          disabled={isMastersOrSub23}  // bloqueia para seniores/masters
+          title={isMastersOrSub23 ? 'Para Sub-23/Masters aplica-se apenas a anuidade' : undefined}
+        >
+          <option>Mensal</option>
+          <option>Trimestral</option>
+          <option>Anual</option>
+        </select>
+      </Field>
 
       {/* --- Estimativa + botões para ver as tabelas --- */}
       <div className="md:col-span-2 rounded-xl border p-3 bg-gray-50">

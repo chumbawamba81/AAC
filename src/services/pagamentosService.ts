@@ -256,39 +256,6 @@ async function bumpAtletaInscricaoToSep30(atletaId: string) {
   if (error) throw error;
 }
 
-// Garante APENAS a linha de inscrição do atleta (nunca cria quotas)
-export async function ensureInscricaoOnlyForAtleta(atletaId: string) {
-  // cria se faltar
-  const { data: row, error: selErr } = await supabase
-    .from("pagamentos")
-    .select("id,devido_em")
-    .eq("atleta_id", atletaId)
-    .eq("tipo", "inscricao")
-    .limit(1)
-    .maybeSingle();
-  if (selErr) throw selErr;
-
-  if (!row) {
-    const { error: insErr } = await supabase.from("pagamentos").insert({
-      user_id: null,
-      atleta_id: atletaId,
-      tipo: "inscricao",
-      descricao: "Taxa de inscrição",
-      comprovativo_url: null,
-      validado: false,
-      devido_em: sep30OfCurrentYear(),
-    });
-    if (insErr) throw insErr;
-  } else if (!row.devido_em) {
-    const { error: updErr } = await supabase
-      .from("pagamentos")
-      .update({ devido_em: sep30OfCurrentYear() })
-      .eq("id", row.id);
-    if (updErr) throw updErr;
-  }
-}
-
-
 // Garante que existe uma linha de INSCRIÇÃO para o atleta (tipo='inscricao').
 // Se não existir, cria com descrição "Taxa de inscrição" e prazo 30/09.
 async function ensureInscricaoAtletaIfMissing(atletaId: string) {
