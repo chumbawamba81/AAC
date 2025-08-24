@@ -34,7 +34,7 @@ const DOCS_SOCIO_UI = ["Ficha de Sócio"] as const;
 const DOCS_ATLETA_UI = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
-  "Ficha inscrição AAC",
+  "Termo de responsabilidade",
   "Exame médico",
 ] as const;
 

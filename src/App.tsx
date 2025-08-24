@@ -77,7 +77,7 @@ import { supabase } from "./supabaseClient";
 const DOCS_ATLETA = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
-  "Ficha inscrição AAC",
+  "Termo de responsabilidade",
   "Exame médico",
 ] as const;
 // Nota: os comprovativos de inscrição (sócio/atleta) foram migrados para a Tesouraria.
