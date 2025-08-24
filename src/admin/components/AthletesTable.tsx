@@ -1,4 +1,3 @@
-// src/admin/components/AthletesTable.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Download, RefreshCw, Search, Users, Eye } from "lucide-react";
 import {
@@ -6,52 +5,36 @@ import {
   getMissingCountsForAtletas,
   AtletaRow,
   TitularMinimal,
+  DOCS_ATLETA,              // ← total de docs esperados
 } from "../services/adminAtletasService";
 import AthleteDetailsDialog from "./AthleteDetailsDialog";
 import { supabase } from "../../supabaseClient";
 
-/* ======================= Tipos ======================= */
-type RowVM = {
-  atleta: AtletaRow;
-  titular?: TitularMinimal;
-  missing?: number;
-};
+type RowVM = { atleta: AtletaRow; titular?: TitularMinimal; missing?: number; };
 
 type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
 type StatusInfo = { status: InscStatus; due?: string | null };
 type QuotasInfo = StatusInfo | "N/A";
+type StatusMaps = { insc: Record<string, StatusInfo | undefined>; quotas: Record<string, QuotasInfo | undefined>; };
 
-type StatusMaps = {
-  insc: Record<string, StatusInfo | undefined>;
-  quotas: Record<string, QuotasInfo | undefined>;
-};
-
-/* =================== Heurísticas comuns =================== */
 function isInscricaoLike(tipo?: string | null, desc?: string | null) {
-  const t = (tipo ?? "").toLowerCase();
-  const d = (desc ?? "").toLowerCase();
+  const t = (tipo ?? "").toLowerCase(); const d = (desc ?? "").toLowerCase();
   return t.includes("inscri") || d.includes("inscri");
 }
-
 function pickByDue<T extends { devido_em: string | null; created_at: string }>(list: T[] | undefined) {
   if (!list || list.length === 0) return undefined;
   const parse = (d: string | null) => (d ? new Date(d + "T00:00:00").getTime() : NaN);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const tsToday = today.getTime();
-
   const withDue = list.filter((x) => !!x.devido_em);
   if (withDue.length > 0) {
-    const future = withDue.filter((x) => parse(x.devido_em!) >= tsToday)
-      .sort((a, b) => parse(a.devido_em!) - parse(b.devido_em!));
+    const future = withDue.filter((x) => parse(x.devido_em!) >= tsToday).sort((a,b)=>parse(a.devido_em!)-parse(b.devido_em!));
     if (future.length > 0) return future[0];
-
-    const past = withDue.filter((x) => parse(x.devido_em!) < tsToday)
-      .sort((a, b) => parse(b.devido_em!) - parse(a.devido_em!));
+    const past = withDue.filter((x)=>parse(x.devido_em!)<tsToday).sort((a,b)=>parse(b.devido_em!)-parse(a.devido_em!));
     if (past.length > 0) return past[0];
   }
-  return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return [...list].sort((a,b)=>b.created_at.localeCompare(a.created_at))[0];
 }
-
 function deriveStatus(row?: { validado?: boolean | null; comprovativo_url?: string | null; devido_em?: string | null }): InscStatus {
   if (!row) return "Por regularizar";
   if (row.validado) return "Regularizado";
@@ -63,44 +46,28 @@ function deriveStatus(row?: { validado?: boolean | null; comprovativo_url?: stri
   }
   return "Por regularizar";
 }
-
 function quotasNaoAplicaveis(escalao?: string | null) {
   const e = (escalao || "").toLowerCase();
   return e.includes("master") || e.includes("sub 23") || e.includes("sub-23");
 }
-
-/* ======================= UI helpers ======================= */
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-3 py-2 font-medium">{children}</th>;
-}
-function Td({ children }: { children: React.ReactNode }) {
-  return <td className="px-3 py-2 align-top">{children}</td>;
-}
+function Th({ children }: { children: React.ReactNode }) { return <th className="px-3 py-2 font-medium">{children}</th>; }
+function Td({ children }: { children: React.ReactNode }) { return <td className="px-3 py-2 align-top">{children}</td>; }
 function StatusBadge({ status }: { status: InscStatus }) {
   const map: Record<InscStatus, string> = {
-    "Regularizado": "bg-green-100 text-green-800",
-    "Pendente de validação": "bg-yellow-100 text-yellow-800",
-    "Por regularizar": "bg-gray-100 text-gray-800",
-    "Em atraso": "bg-red-100 text-red-800",
+    "Regularizado":"bg-green-100 text-green-800","Pendente de validação":"bg-yellow-100 text-yellow-800",
+    "Por regularizar":"bg-gray-100 text-gray-800","Em atraso":"bg-red-100 text-red-800",
   };
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
-      {status}
-    </span>
-  );
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>{status}</span>;
 }
 
-/* ======================= Componente ======================= */
 export default function AthletesTable() {
   const [rows, setRows] = useState<RowVM[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [escalao, setEscalao] = useState<string>("");
-
   const [filtroInsc, setFiltroInsc] = useState<"" | InscStatus>("");
   const [filtroQuotas, setFiltroQuotas] = useState<"" | InscStatus | "N/A">("");
-
   const [sort, setSort] = useState<"nome_asc" | "nome_desc" | "created_desc" | "created_asc">("nome_asc");
 
   const [open, setOpen] = useState(false);
@@ -120,27 +87,13 @@ export default function AthletesTable() {
       setRows((prev) => prev.map((r) => ({ ...r, missing: miss[r.atleta.id] ?? 0 })));
 
       if (ids.length) {
-        type Pg = {
-          atleta_id: string | null;
-          tipo: string | null;
-          descricao: string | null;
-          validado: boolean | null;
-          comprovativo_url: string | null;
-          devido_em: string | null;
-          created_at: string;
-        };
-        const { data, error } = await supabase
-          .from("pagamentos")
-          .select("atleta_id,tipo,descricao,validado,comprovativo_url,devido_em,created_at")
-          .in("atleta_id", ids);
+        type Pg = { atleta_id: string | null; tipo: string | null; descricao: string | null; validado: boolean | null; comprovativo_url: string | null; devido_em: string | null; created_at: string; };
+        const { data, error } = await supabase.from("pagamentos").select("atleta_id,tipo,descricao,validado,comprovativo_url,devido_em,created_at").in("atleta_id", ids);
         if (error) throw error;
         const pg = (data || []) as Pg[];
 
         const byAth: Record<string, Pg[]> = {};
-        pg.forEach((p) => {
-          const k = p.atleta_id || "";
-          (byAth[k] ??= []).push(p);
-        });
+        pg.forEach((p) => { const k = p.atleta_id || ""; (byAth[k] ??= []).push(p); });
 
         const insc: StatusMaps["insc"] = {};
         const quotas: StatusMaps["quotas"] = {};
@@ -148,7 +101,6 @@ export default function AthletesTable() {
         for (const r of vm) {
           const a = r.atleta;
           const list = byAth[a.id] || [];
-
           const relInsc = pickByDue(list.filter((p) => isInscricaoLike(p.tipo, p.descricao)));
           insc[a.id] = { status: deriveStatus(relInsc), due: relInsc?.devido_em ?? null };
 
@@ -159,7 +111,6 @@ export default function AthletesTable() {
             quotas[a.id] = { status: deriveStatus(relQ), due: relQ?.devido_em ?? null };
           }
         }
-
         setMaps({ insc, quotas });
       } else {
         setMaps({ insc: {}, quotas: {} });
@@ -169,44 +120,19 @@ export default function AthletesTable() {
     }
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, escalao, sort]);
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort]);
 
   const escaloes = useMemo(() => {
-    const s = new Set<string>();
-    rows.forEach((r) => r.atleta.escalao && s.add(r.atleta.escalao));
+    const s = new Set<string>(); rows.forEach((r) => r.atleta.escalao && s.add(r.atleta.escalao));
     return Array.from(s).sort();
   }, [rows]);
 
-  const csvEscape = (v: any) => {
-    const s = (v ?? "").toString();
-    return /[;\r\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const toUTF16LE = (str: string) => {
-    const buf = new ArrayBuffer(str.length * 2 + 2);
-    const view = new DataView(buf);
-    view.setUint8(0, 0xff);
-    view.setUint8(1, 0xfe);
-    for (let i = 0; i < str.length; i++) view.setUint16(2 + i * 2, str.charCodeAt(i), true);
-    return new Uint8Array(buf);
-  };
-
+  // CSV (UTF-16LE para acentos ok)
+  const csvEscape = (v: any) => { const s = (v ?? "").toString(); return /[;\r\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const toUTF16LE = (str: string) => { const buf = new ArrayBuffer(str.length * 2 + 2); const view = new DataView(buf); view.setUint8(0, 0xff); view.setUint8(1, 0xfe); for (let i=0;i<str.length;i++) view.setUint16(2+i*2, str.charCodeAt(i), true); return new Uint8Array(buf); };
   async function exportCSV() {
     const filtered = effectiveRows;
-
-    const header = [
-      "Nome",
-      "Escalão",
-      "Opção de pagamento",
-      "Inscrição",
-      "Data limite (inscrição)",
-      "Quotas",
-      "Data limite (quotas)",
-      "Docs em falta",
-    ];
-
+    const header = ["Nome","Escalão","Opção de pagamento","Inscrição","Data limite (inscrição)","Quotas","Data limite (quotas)","Docs (falta/total)"];
     const lines: string[] = [];
     for (const r of filtered) {
       const a = r.atleta;
@@ -216,37 +142,21 @@ export default function AthletesTable() {
       const inscStatus = sInsc ? sInsc.status : "Por regularizar";
       const inscDue = sInsc?.due ? new Date(sInsc.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
 
-      let quotasText = "N/A";
-      let quotasDue = "N/A";
-      if (sQuo && sQuo !== "N/A") {
-        quotasText = sQuo.status;
-        quotasDue = sQuo.due ? new Date(sQuo.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
-      }
+      let quotasText = "N/A"; let quotasDue = "N/A";
+      if (sQuo && sQuo !== "N/A") { quotasText = sQuo.status; quotasDue = sQuo.due ? new Date(sQuo.due + "T00:00:00").toLocaleDateString("pt-PT") : "—"; }
 
       const row = [
-        a.nome,
-        a.escalao || "",
-        a.opcao_pagamento || "",
-        inscStatus,
-        inscDue,
-        quotasText,
-        quotasDue,
-        (r.missing ?? "").toString(),
+        a.nome, a.escalao || "", a.opcao_pagamento || "",
+        inscStatus, inscDue, quotasText, quotasDue,
+        `${r.missing ?? 0}/${DOCS_ATLETA.length}`,
       ].map(csvEscape);
-
       lines.push(row.join(";"));
     }
-
     const csvString = ["sep=;", header.join(";"), ...lines].join("\r\n");
     const bytes = toUTF16LE(csvString);
     const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "atletas.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); const a = document.createElement("a");
+    a.href = url; a.download = "atletas.csv"; a.click(); URL.revokeObjectURL(url);
   }
 
   const effectiveRows = useMemo(() => {
@@ -255,15 +165,10 @@ export default function AthletesTable() {
       const sInsc = maps.insc[a.id];
       const sQuo = maps.quotas[a.id];
 
-      if (filtroInsc) {
-        if (!sInsc || sInsc.status !== filtroInsc) return false;
-      }
+      if (filtroInsc && (!sInsc || sInsc.status !== filtroInsc)) return false;
       if (filtroQuotas) {
-        if (filtroQuotas === "N/A") {
-          if (sQuo !== "N/A") return false;
-        } else {
-          if (!sQuo || sQuo === "N/A" || sQuo.status !== filtroQuotas) return false;
-        }
+        if (filtroQuotas === "N/A") { if (sQuo !== "N/A") return false; }
+        else { if (!sQuo || sQuo === "N/A" || sQuo.status !== filtroQuotas) return false; }
       }
       return true;
     });
@@ -273,32 +178,25 @@ export default function AthletesTable() {
 
   return (
     <div className="space-y-3">
-      {/* Título + filtros */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Users className="h-5 w-5" /> Atletas
         </h2>
       </div>
 
+      {/* filtros */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
         <div className="col-span-2 flex items-center gap-2">
           <Search className="h-4 w-4 text-gray-500" />
-          <input
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="Pesquisar por nome…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <input className="w-full rounded-xl border px-3 py-2 text-sm" placeholder="Pesquisar por nome…" value={search} onChange={(e)=>setSearch(e.target.value)} />
         </div>
 
-        <select className="rounded-xl border px-3 py-2 text-sm" value={escalao} onChange={(e) => setEscalao(e.target.value)}>
+        <select className="rounded-xl border px-3 py-2 text-sm" value={escalao} onChange={(e)=>setEscalao(e.target.value)}>
           <option value="">Escalão — todos</option>
-          {escaloes.map((e) => (
-            <option key={e} value={e}>{e}</option>
-          ))}
+          {escaloes.map((e)=><option key={e} value={e}>{e}</option>)}
         </select>
 
-        <select className="rounded-xl border px-3 py-2 text-sm" value={filtroInsc} onChange={(e) => setFiltroInsc(e.target.value as any)}>
+        <select className="rounded-xl border px-3 py-2 text-sm" value={filtroInsc} onChange={(e)=>setFiltroInsc(e.target.value as any)}>
           <option value="">Inscrição — todas</option>
           <option value="Regularizado">Regularizado</option>
           <option value="Pendente de validação">Pendente de validação</option>
@@ -306,7 +204,7 @@ export default function AthletesTable() {
           <option value="Em atraso">Em atraso</option>
         </select>
 
-        <select className="rounded-xl border px-3 py-2 text-sm" value={filtroQuotas} onChange={(e) => setFiltroQuotas(e.target.value as any)}>
+        <select className="rounded-xl border px-3 py-2 text-sm" value={filtroQuotas} onChange={(e)=>setFiltroQuotas(e.target.value as any)}>
           <option value="">Quotas — todas</option>
           <option value="Regularizado">Regularizado</option>
           <option value="Pendente de validação">Pendente de validação</option>
@@ -315,7 +213,7 @@ export default function AthletesTable() {
           <option value="N/A">N/A</option>
         </select>
 
-        <select className="rounded-xl border px-3 py-2 text-sm" value={sort} onChange={(e) => setSort(e.target.value as any)}>
+        <select className="rounded-xl border px-3 py-2 text-sm" value={sort} onChange={(e)=>setSort(e.target.value as any)}>
           <option value="nome_asc">Ordenar: Nome ↑</option>
           <option value="nome_desc">Ordenar: Nome ↓</option>
           <option value="created_desc">Ordenar: Recentes</option>
@@ -323,12 +221,10 @@ export default function AthletesTable() {
         </select>
       </div>
 
-      {/* === Contador + ações ACIMA do cabeçalho da tabela === */}
+      {/* barra topo da tabela */}
       <div className="rounded-xl border bg-white">
         <div className="p-3 border-b flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            {loading ? "A carregar…" : `${filteredCount} registo(s)`}
-          </div>
+          <div className="text-sm text-gray-600">{loading ? "A carregar…" : `${filteredCount} registo(s)`}</div>
           <div className="flex items-center gap-2">
             <button onClick={exportCSV} className="px-3 py-2 rounded border hover:bg-gray-50 text-sm inline-flex items-center gap-2">
               <Download className="h-4 w-4" /> Exportar CSV
@@ -339,7 +235,7 @@ export default function AthletesTable() {
           </div>
         </div>
 
-        {/* Tabela */}
+        {/* tabela */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[980px]">
             <thead className="bg-gray-50 text-left">
@@ -349,7 +245,7 @@ export default function AthletesTable() {
                 <Th>Opção pagamento</Th>
                 <Th>Inscrição</Th>
                 <Th>Quotas</Th>
-                <Th>Docs em falta</Th>
+                <Th>Docs (falta/total)</Th>
                 <Th>Ações</Th>
               </tr>
             </thead>
@@ -362,9 +258,8 @@ export default function AthletesTable() {
                 const inscDue = insc?.due ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
 
                 let quotasNode: React.ReactNode = <span className="text-gray-500">—</span>;
-                if (quotas === "N/A") {
-                  quotasNode = <span className="text-gray-500">N/A</span>;
-                } else if (quotas) {
+                if (quotas === "N/A") quotasNode = <span className="text-gray-500">N/A</span>;
+                else if (quotas) {
                   const qDue = quotas.due ? new Date(quotas.due + "T00:00:00").toLocaleDateString("pt-PT") : "—";
                   quotasNode = (
                     <div>
@@ -390,12 +285,10 @@ export default function AthletesTable() {
                       )}
                     </Td>
                     <Td>{quotasNode}</Td>
-                    <Td>{r.missing ?? "—"}</Td>
+                    <Td>{`${r.missing ?? 0}/${DOCS_ATLETA.length}`}</Td>
                     <Td>
-                      <button
-                        className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
-                        onClick={() => { setFocus(r); setOpen(true); }}
-                      >
+                      <button className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
+                              onClick={() => { setFocus(r); setOpen(true); }}>
                         <Eye className="h-4 w-4" /> Detalhes
                       </button>
                     </Td>
@@ -403,14 +296,10 @@ export default function AthletesTable() {
                 );
               })}
               {effectiveRows.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={7} className="text-center py-6 text-gray-500">Sem resultados.</td>
-                </tr>
+                <tr><td colSpan={7} className="text-center py-6 text-gray-500">Sem resultados.</td></tr>
               )}
               {loading && (
-                <tr>
-                  <td colSpan={7} className="text-center py-6 text-gray-500">A carregar…</td>
-                </tr>
+                <tr><td colSpan={7} className="text-center py-6 text-gray-500">A carregar…</td></tr>
               )}
             </tbody>
           </table>
@@ -418,12 +307,7 @@ export default function AthletesTable() {
       </div>
 
       {focus && (
-        <AthleteDetailsDialog
-          open={open}
-          onClose={() => setOpen(false)}
-          atleta={focus.atleta}
-          titular={focus.titular}
-        />
+        <AthleteDetailsDialog open={open} onClose={() => setOpen(false)} atleta={focus.atleta} titular={focus.titular} />
       )}
     </div>
   );

@@ -13,6 +13,9 @@ type OrderDir = "asc" | "desc";
 type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
 type SocioInsc = { status: InscStatus; due?: string | null } | null;
 
+/* ==== Documentos obrigatórios do Sócio/EE (ajusta se precisares) ==== */
+const SOCIO_REQUIRED_TYPES: string[] = ["Ficha de Sócio"];
+
 /* ================= UI helpers ================= */
 function Container({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border bg-white">{children}</div>;
@@ -67,7 +70,7 @@ function normalizeInscFilter(raw: string): { include: InscStatus[] | null; onlyN
   return { include: null, onlyNA: false };
 }
 
-/** Escolhe o pagamento relevante por devido_em (mais próximo ≥ hoje; senão último < hoje; senão por created_at). */
+/** Escolhe o pagamento relevante por devido_em (futuro mais próximo; senão passado mais recente; senão por created_at). */
 function pickByDue<T extends { devido_em: string | null; created_at: string }>(list: T[] | undefined) {
   if (!list || list.length === 0) return undefined;
   const parse = (d: string | null) => (d ? new Date(d + "T00:00:00").getTime() : NaN);
@@ -113,11 +116,12 @@ export default function SociosTable({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [inscMap, setInscMap] = useState<Record<string, SocioInsc>>({});
+  const [docsMap, setDocsMap] = useState<Record<string, { missing: number; total: number } | "N/A">>({});
   const [openId, setOpenId] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  // carregar linhas + inscrições em lote
+  // carregar linhas + inscrições + docs (todos em lote)
   async function load() {
     setLoading(true);
     try {
@@ -133,40 +137,70 @@ export default function SociosTable({
       setRows(data);
       setTotal(count ?? 0);
 
-      // buscar INSCRIÇÃO DE SÓCIO em lote (user-level)
       const userIds = data.map((r) => r.user_id).filter(Boolean);
       if (userIds.length === 0) {
         setInscMap({});
-      } else {
-        type Pay = {
-          user_id: string;
-          validado: boolean | null;
-          comprovativo_url: string | null;
-          devido_em: string | null;
-          created_at: string;
-        };
-        const { data: pays, error } = await supabase
-          .from("pagamentos")
-          .select("user_id, validado, comprovativo_url, devido_em, created_at")
-          .in("user_id", userIds)
-          .is("atleta_id", null)
-          .eq("tipo", "inscricao")
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-
-        // agrupar por user_id
-        const buckets: Record<string, Pay[]> = {};
-        for (const p of (pays || []) as Pay[]) (buckets[p.user_id] ??= []).push(p);
-
-        const next: Record<string, SocioInsc> = {};
-        for (const id of userIds) {
-          const chosen = pickByDue(buckets[id]);
-          next[id] = chosen
-            ? { status: deriveInscStatus(chosen), due: chosen.devido_em ?? null }
-            : { status: "Por regularizar", due: null };
-        }
-        setInscMap(next);
+        setDocsMap({});
+        return;
       }
+
+      // Pagamentos (inscrição de sócio — nível user, tipo=inscricao, atleta_id null)
+      type Pay = {
+        user_id: string;
+        validado: boolean | null;
+        comprovativo_url: string | null;
+        devido_em: string | null;
+        created_at: string;
+      };
+      const { data: pays, error } = await supabase
+        .from("pagamentos")
+        .select("user_id, validado, comprovativo_url, devido_em, created_at")
+        .in("user_id", userIds)
+        .is("atleta_id", null)
+        .eq("tipo", "inscricao")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+
+      const buckets: Record<string, Pay[]> = {};
+      for (const p of (pays || []) as Pay[]) (buckets[p.user_id] ??= []).push(p);
+
+      const nextInsc: Record<string, SocioInsc> = {};
+      for (const id of userIds) {
+        const chosen = pickByDue(buckets[id]);
+        nextInsc[id] = chosen
+          ? { status: deriveInscStatus(chosen), due: chosen.devido_em ?? null }
+          : { status: "Por regularizar", due: null };
+      }
+      setInscMap(nextInsc);
+
+      // Documentos obrigatórios (nível "socio")
+      const { data: docs, error: errDocs } = await supabase
+        .from("documentos")
+        .select("user_id, doc_tipo")
+        .in("user_id", userIds)
+        .eq("doc_nivel", "socio")
+        .in("doc_tipo", SOCIO_REQUIRED_TYPES);
+      if (errDocs) throw errDocs;
+
+      const byUser: Record<string, Set<string>> = {};
+      (docs || []).forEach((d: any) => {
+        const k = d.user_id as string;
+        (byUser[k] ??= new Set()).add(d.doc_tipo as string);
+      });
+
+      const nextDocs: Record<string, { missing: number; total: number } | "N/A"> = {};
+      for (const r of data) {
+        const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+        if (!isSocio) {
+          nextDocs[r.user_id] = "N/A";
+          continue;
+        }
+        const totalReq = SOCIO_REQUIRED_TYPES.length;
+        const have = byUser[r.user_id]?.size ?? 0;
+        const missing = Math.max(0, totalReq - have);
+        nextDocs[r.user_id] = { missing, total: totalReq };
+      }
+      setDocsMap(nextDocs);
     } finally {
       setLoading(false);
     }
@@ -177,99 +211,95 @@ export default function SociosTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, status, tipoSocio, orderBy, orderDir, limit, page]);
 
-  // Exportação CSV local com BOM + sep=; + CRLF
+  // === Export CSV a partir da grelha ===
   function exportCsv() {
-  // ——— helpers ———
-  const csvEscape = (v: any) => {
-    const s = (v ?? "").toString();
-    return /[;\n\r"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  // UTF-16LE encoder com BOM (FF FE)
-  const toUTF16LE = (str: string) => {
-    const buf = new ArrayBuffer(str.length * 2 + 2);
-    const view = new DataView(buf);
-    view.setUint8(0, 0xff);
-    view.setUint8(1, 0xfe);
-    for (let i = 0; i < str.length; i++) view.setUint16(2 + i * 2, str.charCodeAt(i), true);
-    return new Uint8Array(buf);
-  };
+    // helpers para CSV com acentos correctos
+    const csvEscape = (v: any) => {
+      const s = (v ?? "").toString();
+      return /[;\r\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const toUTF16LE = (str: string) => {
+      const buf = new ArrayBuffer(str.length * 2 + 2);
+      const view = new DataView(buf);
+      view.setUint8(0, 0xff); // BOM
+      view.setUint8(1, 0xfe);
+      for (let i = 0; i < str.length; i++) view.setUint16(2 + i * 2, str.charCodeAt(i), true);
+      return new Uint8Array(buf);
+    };
 
-  // aplicar o MESMO filtro da grelha
-  const { include, onlyNA } = normalizeInscFilter(status);
-  const effective = rows.filter((r) => {
-    const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
-    const insc = inscMap[r.user_id];
-    if (!isSocio) return onlyNA; // só inclui N/A se pedido
-    if (!include) return true;
-    if (!insc) return true;
-    return include.includes(insc.status as InscStatus);
-  });
+    const header = [
+      "Nome",
+      "Email",
+      "Telefone",
+      "Tipo de sócio",
+      "Situação",
+      "Data limite",
+      "Docs (falta/total)",
+    ];
 
-  const header = ["Nome", "Email", "Telefone", "Tipo de sócio", "Situação", "Data limite"];
-  const lines: string[] = [];
+    const lines: string[] = [];
 
-  for (const r of effective) {
-    const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
-    const insc = inscMap[r.user_id] ?? null;
-    const dueLabel =
-      isSocio && insc?.due
-        ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT")
-        : isSocio
-        ? "—"
-        : "N/A";
-    const situacao = isSocio ? (insc?.status || "—") : "N/A";
+    for (const r of effectiveRows) {
+      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+      const insc = inscMap[r.user_id] ?? null;
 
-    const row = [
-      r.nome_completo ?? "",
-      r.email ?? "",
-      r.telefone ?? "",
-      r.tipo_socio ?? "",
-      situacao,
-      dueLabel,
-    ].map(csvEscape);
+      const situacao = isSocio ? (insc ? insc.status : "—") : "N/A";
+      const dueLabel =
+        isSocio && insc?.due
+          ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT")
+          : isSocio
+          ? "—"
+          : "N/A";
 
-    lines.push(row.join(";"));
-  }
+      const dInfo = docsMap[r.user_id];
+      let docsStr = "—";
+      if (!isSocio) docsStr = "N/A";
+      else if (dInfo && dInfo !== "N/A") docsStr = `${dInfo.missing}/${dInfo.total}`;
 
-  // ⚙️ sep=; + CRLF + UTF-16LE BOM → Excel abre correto com acentos
-  const csvString = ["sep=;", header.join(";"), ...lines].join("\r\n");
-  const bytes = toUTF16LE(csvString);
-  const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
+      const row = [
+        r.nome_completo,
+        r.email,
+        r.telefone || "",
+        r.tipo_socio || "",
+        situacao,
+        dueLabel,
+        docsStr,
+      ].map(csvEscape);
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "socios.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-
-// filtro efetivo (suporta novo e legado)
-const effectiveRows = useMemo(() => {
-  const { include, onlyNA } = normalizeInscFilter(status);
-
-  return rows.filter((r) => {
-    const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
-    const insc = inscMap[r.user_id];
-
-    // --- Não sócio (EE que optou por não se inscrever) ---
-    if (!isSocio) {
-      // sem filtro → inclui por omissão
-      if (!include && !onlyNA) return true;
-      // filtro N/A → mostra apenas N/A
-      if (onlyNA) return true;
-      // filtro de estados (Regularizado/Pendente/…) → não se aplica a N/A
-      return false;
+      lines.push(row.join(";"));
     }
 
-    // --- Sócio: aplica filtro normal de estados ---
-    if (!include) return true;      // sem filtro específico
-    if (!insc) return true;         // ainda a carregar
-    return include.includes(insc.status as InscStatus);
-  });
-}, [rows, inscMap, status]);
+    const csvString = ["sep=;", header.join(";"), ...lines].join("\r\n");
+    const bytes = toUTF16LE(csvString);
+    const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
 
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "socios.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // filtro efetivo (inclui N/A quando não há filtro por estado)
+  const effectiveRows = useMemo(() => {
+    const { include, onlyNA } = normalizeInscFilter(status);
+
+    return rows.filter((r) => {
+      const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
+      const insc = inscMap[r.user_id];
+
+      if (!isSocio) {
+        if (!include && !onlyNA) return true; // inclui por omissão
+        if (onlyNA) return true;              // filtro "N/A"
+        return false;                         // filtro por estados
+      }
+
+      if (!include) return true;
+      if (!insc) return true;
+      return include.includes(insc.status as InscStatus);
+    });
+  }, [rows, inscMap, status]);
 
   const filteredCount = effectiveRows.length;
 
@@ -304,7 +334,7 @@ const effectiveRows = useMemo(() => {
       </Header>
 
       <TableWrap>
-        <table className="min-w-[980px] w-full text-sm">
+        <table className="min-w-[1120px] w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-gray-700">
               <th className="text-left px-3 py-2 font-medium">Nome</th>
@@ -313,6 +343,7 @@ const effectiveRows = useMemo(() => {
               <th className="text-left px-3 py-2 font-medium">Tipo de sócio</th>
               <th className="text-left px-3 py-2 font-medium">Situação</th>
               <th className="text-left px-3 py-2 font-medium">Data limite</th>
+              <th className="text-left px-3 py-2 font-medium">Docs (falta/total)</th>
               <th className="text-right px-3 py-2 font-medium">Ações</th>
             </tr>
           </thead>
@@ -320,12 +351,22 @@ const effectiveRows = useMemo(() => {
             {effectiveRows.map((r) => {
               const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
               const insc = inscMap[r.user_id] ?? null;
+
               const dueLabel =
                 isSocio && insc?.due
                   ? new Date(insc.due + "T00:00:00").toLocaleDateString("pt-PT")
                   : isSocio
                   ? "—"
                   : "N/A";
+
+              const dInfo = docsMap[r.user_id];
+              let docsLabel: React.ReactNode = <span className="text-gray-500">—</span>;
+              if (!isSocio) {
+                docsLabel = <span className="text-gray-500">N/A</span>;
+              } else if (dInfo && dInfo !== "N/A") {
+                docsLabel = <span>{dInfo.missing}/{dInfo.total}</span>;
+              }
+
               return (
                 <tr key={r.id} className="border-t">
                   <td className="px-3 py-2">{r.nome_completo}</td>
@@ -340,6 +381,7 @@ const effectiveRows = useMemo(() => {
                     )}
                   </td>
                   <td className="px-3 py-2">{dueLabel}</td>
+                  <td className="px-3 py-2">{docsLabel}</td>
                   <td className="px-3 py-2 text-right">
                     <Button
                       variant="outline"
