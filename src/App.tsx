@@ -1729,12 +1729,24 @@ export default function App() {
       setState((prev) => ({ ...prev, atletas: nextAtletas }));
       saveState({ ...state, atletas: nextAtletas });
 
-      const force = !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
+      // Depois de guardar o atleta no Supabase…
+const force = !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
-      await ensureScheduleForAtleta(
-        { id: saved.id, escalao: saved.escalao, planoPagamento: saved.planoPagamento },
-        { forceRebuild: force }
-      );
+// Se for Sub-23 / Masters → NUNCA quotas: só inscrição
+if (isAnuidadeObrigatoria(saved.escalao)) {
+  try {
+    await ensureInscricaoOnlyForAtleta(saved.id);
+  } catch (e:any) {
+    console.error("[ensureInscricaoOnlyForAtleta]", e);
+    // (backend já bloqueia quotas; aqui nunca as pedimos)
+  }
+} else {
+  // Restantes escalões → gera/atualiza quotas normalmente
+  await ensureScheduleForAtleta(
+    { id: saved.id, escalao: saved.escalao, planoPagamento: saved.planoPagamento },
+    { forceRebuild: force }
+  );
+}
 
       setAthModalOpen(false);
       setAthEditing(undefined);
