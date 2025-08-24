@@ -163,16 +163,16 @@ function isTipoSocio(tipo?: string | null) {
 }
 
 /* --------- Helpers globais (render) --------- */
-function isAnuidadeObrigatoria(escalao?: string | null | undefined) {
-  const s = (escalao || "").toLowerCase();
-  return (
-    s.includes("masters") ||
-    s.includes("sub 23") ||
-    s.includes("sub-23") ||
-    s.includes("seniores sub 23") ||
-    s.includes("seniores sub-23")
-  );
+export function isAnuidadeObrigatoria(escalao?: string | null) {
+  const s = (escalao || "")
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .toLowerCase();
+  const isMasters = s.includes("masters");
+  // apanha "sub23", "sub-23", "sub 23", "seniores sub23", etc.
+  const isSub23  = /(sub|seniores)[^\d]*23/.test(s) || /sub[-\s]?23/.test(s);
+  return isMasters || isSub23;
 }
+
 function getSlotsForPlano(p: PlanoPagamento) {
   return p === "Mensal" ? 10 : p === "Trimestral" ? 3 : 1;
 }
