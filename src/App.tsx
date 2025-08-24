@@ -30,6 +30,7 @@ import {
   listByAtleta as listPagamentosByAtleta,
   saveComprovativo as saveComprovativoPagamento,
   deletePagamento,
+  ensureInscricaoOnlyForAtleta,
   withSignedUrls as withSignedUrlsPagamentos,
   type PagamentoRowWithUrl,
   deleteSocioInscricaoIfAny,
