@@ -37,14 +37,11 @@ function fmt(d: Date) {
 
 export function isAnuidadeObrigatoria(escalao?: string | null) {
   const s = (escalao || "").toLowerCase();
-  return (
-    s.includes("masters") ||
-    s.includes("sub-23") ||
-    s.includes("sub 23") ||
-    s.includes("seniores sub 23") ||
-    s.includes("seniores sub-23")
-  );
+  const isMasters = s.includes("masters");
+  const isSub23  = /sub[-\s]?23/.test(s); // "sub23" | "sub-23" | "sub 23"
+  return isMasters || isSub23;
 }
+
 
 /* ======================= Rótulos / slots / prazos ======================= */
 

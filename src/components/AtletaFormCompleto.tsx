@@ -115,14 +115,13 @@ const eligibilityError = useMemo(() => {
   // -------- Estimativa (recalcula quando muda escalão / data / tipo de sócio / agregado) --------
 const [est, setEst] = useState<EstimateResult | null>(null);
 useEffect(() => {
-  function isAnuidadeObrigatoria(esc?: string | null) {
-    const s = (esc || '').toLowerCase();
-    return (
-      s.includes('masters') ||
-      s.includes('sub 23') || s.includes('sub-23') || s.includes('sub23') ||
-      s.includes('seniores sub 23') || s.includes('seniores sub-23')
-    );
-  }
+  function isAnuidadeObrigatoria(escalao?: string | null | undefined) {
+  const s = (escalao || "").toLowerCase();
+  const isMasters = s.includes("masters");
+  const isSub23 = /sub[-\s]?23/.test(s); // apanha "sub23", "sub-23" e "sub 23"
+  return isMasters || isSub23;
+}
+
   const parseISO = (s?: string | null) => (s ? new Date(s + 'T00:00:00') : null);
   const isSocioPro = (t?: string | null) => !!t && /pro/i.test(t || '');
 
