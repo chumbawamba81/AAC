@@ -19,7 +19,11 @@ import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import ImagesDialog from "./components/ImagesDialog";
 import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
-import { ensureScheduleForAtleta } from "./services/pagamentosService";
+import {
+  ensureOnlyInscricaoForAtleta,
+  ensureInscricaoEQuotasForAtleta,
+} from "./services/pagamentosService";
+
 import { estimateCosts, eur, socioInscricaoAmount } from "./utils/pricing";
 import {
   createInscricaoSocioIfMissing,
@@ -1725,10 +1729,18 @@ export default function App() {
 
       const force = !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
-      await ensureScheduleForAtleta(
-        { id: saved.id, escalao: saved.escalao, planoPagamento: saved.planoPagamento },
-        { forceRebuild: force }
-      );
+      const isOnlyInscricao = isAnuidadeObrigatoria(saved.escalao); // Sub-23 / Masters
+
+if (isOnlyInscricao) {
+  // NUNCA criar quotas — só garantir a inscrição e limpar eventuais quotas antigas
+  await ensureOnlyInscricaoForAtleta(saved.id);
+} else {
+  // Restantes escalões — inscrição + quotas conforme plano
+  await ensureInscricaoEQuotasForAtleta(
+    { id: saved.id, planoPagamento: saved.planoPagamento },
+    { forceRebuild: !!force }
+  );
+}
 
       setAthModalOpen(false);
       setAthEditing(undefined);
