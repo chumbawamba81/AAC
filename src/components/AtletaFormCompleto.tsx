@@ -75,17 +75,43 @@ export default function AtletaFormCompleto({ initial, onSave, onCancel, dadosPes
   }, [a.dataNascimento, a.genero]);
 
   const isMinor = useMemo(()=> a.dataNascimento ? yearsAtSeasonStart(a.dataNascimento) < 18 : false, [a.dataNascimento]);
+  // Masters ou Sub-23 (apenas estes dois é que forçam a anuidade na UI)
   const isMastersOrSub23 = useMemo(() => {
-  const s = (a.escalao || '').toLowerCase();
-  return (
-    s.includes('masters') ||
-    s.includes('sub 23') || s.includes('sub-23') || s.includes('sub23') ||
-    s.includes('seniores sub 23') || s.includes('seniores sub-23')
-  );
+  const s = (a.escalao || "").toLowerCase();
+  const isSub23 = s.includes("sub23") || s.includes("sub 23") || s.includes("sub-23");
+  const isMasters = s.includes("masters");
+  return isSub23 || isMasters;
 }, [a.escalao]);
 
+// Mensagem de bloqueio por regras de elegibilidade (ano civil + exceções)
+const eligibilityError = useMemo(() => {
+  if (!a.dataNascimento) return null;
 
-  // -------- Estimativa (recalcula quando muda escalão ou tipo de sócio) --------
+  const esc = (a.escalao || "").toLowerCase();
+
+  // fora dos intervalos desta época
+  if (/fora de escal(õ|o)es/.test(esc)) {
+    return "A inscrição está fora dos intervalos de anos desta época (regra por ano civil). Verifique o ano de nascimento.";
+  }
+
+  const isSub23 = /sub[-\s]?23/.test(esc) || esc.includes("sub23");
+  const isSeniorGeneric =
+    (esc.includes("senior") || esc.includes("sénior") || esc.includes("seniores")) && !isSub23;
+
+  // Seniores (M/F) — não inscrevem na app
+  if (isSeniorGeneric) {
+    return "As inscrições de Seniores (masculino/feminino) não são feitas nesta aplicação. Regularize diretamente com os treinadores/direção.";
+  }
+
+  // Sub-23 feminino não existe
+  if (isSub23 && a.genero === "Feminino") {
+    return "Não existe escalão Sub-23 feminino. Contacte os treinadores/direção.";
+  }
+
+  return null;
+}, [a.escalao, a.genero, a.dataNascimento]);
+
+
   // -------- Estimativa (recalcula quando muda escalão / data / tipo de sócio / agregado) --------
 const [est, setEst] = useState<EstimateResult | null>(null);
 useEffect(() => {
@@ -152,6 +178,7 @@ useEffect(() => {
     if (a.nacionalidade === 'Outra' && !a.nacionalidadeOutra?.trim()) errs.push('Indicar a nacionalidade');
     if (isMinor && !a.encarregadoEducacao) errs.push('Selecionar Encarregado de Educação');
     if (a.encarregadoEducacao === 'Outro' && !a.parentescoOutro?.trim()) errs.push('Indicar parentesco (Outro)');
+	if (eligibilityError) errs.push(eligibilityError);
     if (errs.length) { alert(errs.join('\n')); return; }
     onSave(a);
   }
@@ -178,7 +205,12 @@ useEffect(() => {
       </Field>
 
       {/* Escalão calculado (só leitura) */}
-      <Field label="Escalão (sugestão automática)"><input className="input bg-gray-100" value={a.escalao} readOnly/></Field>
+<Field label="Escalão (sugestão automática)">
+  <input className="input bg-gray-100" value={a.escalao} readOnly />
+  {eligibilityError && (
+    <div className="mt-1 text-sm text-red-600">{eligibilityError}</div>
+  )}
+</Field>
 
       {/* Plano (continua visível, mas SENIORS/Sub23/Masters forçam Anual no backend) */}
       <Field label="Opção de Pagamentos *">
@@ -344,7 +376,9 @@ useEffect(() => {
 
       <div className="md:col-span-2 flex justify-end gap-2 pt-2">
         {onCancel && <button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>}
-        <button type="submit" className="btn primary">Guardar atleta</button>
+        <button
+  type="submit" className="btn primary" disabled={!!eligibilityError} title={eligibilityError || undefined}>Guardar atleta</button>
+
       </div>
 
       {/* Lightbox */}

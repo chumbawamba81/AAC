@@ -12,14 +12,16 @@ export function isValidNIF(nif: string): boolean {
   return check === n[8];
 }
 
-export function yearsAtSeasonStart(dobIso: string) {
-  const ref = new Date('2025-09-01T00:00:00Z');
-  const dob = new Date(dobIso);
-  let age = ref.getUTCFullYear() - dob.getUTCFullYear();
-  const md = ref.getUTCMonth() - dob.getUTCMonth();
-  if (md < 0 || (md === 0 && ref.getUTCDate() < dob.getUTCDate())) age--;
-  return age;
+// Idade por ANO CIVIL: diferença entre o ano atual e o ano de nascimento
+export function yearsAtSeasonStart(isoDate: string): number {
+  // isoDate esperado "YYYY-MM-DD" — usamos apenas o ano
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(isoDate);
+  if (!m) return NaN;
+  const birthYear = Number(m[1]);
+  const currentYear = new Date().getFullYear();
+  return currentYear - birthYear;
 }
+
 
 export function computeEscalao(dobIso: string, genero: 'Feminino'|'Masculino'): string {
   if (!dobIso) return 'Fora de escalões';
