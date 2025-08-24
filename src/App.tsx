@@ -902,14 +902,17 @@ try {
                       <StatusBadge s={stIns} />
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm">
-                        <span className="text-gray-700">Quotas</span>
-                        {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
-                        {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
-                      </div>
-                      <StatusBadge s={stQ} />
-                    </div>
+                    {!isAnuidadeObrigatoria(a.escalao) && (
+  <div className="flex items-center justify-between">
+    <div className="text-sm">
+      <span className="text-gray-700">Quotas</span>
+      {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
+      {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
+    </div>
+    <StatusBadge s={stQ} />
+  </div>
+)}
+
                   </div>
                 );
               })}
@@ -1196,15 +1199,6 @@ async function handleUploadSocio(file: File) {
   }
 }
 
-
-  // NOVO: remover comprovativo (sem apagar a linha)
-  async function clearComprovativo(row: PagamentoRowWithUrl) {
-    const { error } = await supabase
-      .from("pagamentos")
-      .update({ comprovativo_url: null, validado: false })
-      .eq("id", row.id);
-    if (error) throw error;
-  }
 
   async function handleRemoveSocioInscricao(row: PagamentoRowWithUrl) {
     if (!confirm("Remover o comprovativo da inscrição de sócio?")) return;
@@ -1632,7 +1626,7 @@ function AtletasSection({
                   </div>
                   <div className="text-xs text-gray-500">
                     {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento:{" "}
-                    {isAnuidadeObrigatoria(a.escalao) ? "Anual (obrigatório)" : a.planoPagamento}
+                    {isAnuidadeObrigatoria(a.escalao) ? "Sem quotas (apenas inscrição)" : a.planoPagamento}
                   </div>
                 </div>
                 <div className="flex gap-2">
