@@ -72,7 +72,7 @@ export type PagamentoRow = {
 export const DOCS_ATLETA = [
   "Ficha de sócio de atleta",
   "Ficha de jogador FPB",
-  "Ficha inscrição AAC",
+  "Termo de responsabilidade",
   "Exame médico",
   "Comprovativo de pagamento de inscrição",
 ] as const;
@@ -179,7 +179,7 @@ export async function getMissingCountsForAtletas(atletaIds: string[]): Promise<R
   const want = new Set<string>([
     "Ficha de sócio de atleta",
     "Ficha de jogador FPB",
-    "Ficha inscrição AAC",
+    "Termo de responsabilidade",
     "Exame médico",
   ]);
   const byAth = new Map<string, Set<string>>();
