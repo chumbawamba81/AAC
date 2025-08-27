@@ -74,7 +74,6 @@ export const DOCS_ATLETA = [
   "Ficha de jogador FPB",
   "Termo de responsabilidade",
   "Exame médico",
-  "Comprovativo de pagamento de inscrição",
 ] as const;
 
 /** ------- Helpers ------- */
