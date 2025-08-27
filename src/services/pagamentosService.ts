@@ -301,7 +301,7 @@ export async function ensureOnlyInscricaoForAtleta(atletaId: string) {
     .from("pagamentos")
     .delete()
     .eq("atleta_id", atletaId)
-    .eq("tipo", "quota");
+    .eq("tipo", ["quota", "mensalidade"]);
   if (delErr) throw delErr;
   await bumpAtletaInscricaoToSep30(atletaId);
 }
@@ -318,7 +318,7 @@ export async function ensureInscricaoEQuotasForAtleta(
       .from("pagamentos")
       .delete()
       .eq("atleta_id", atleta.id)
-      .eq("tipo", "quota");
+      .eq("tipo", ["quota", "mensalidade"]);
     if (delErr) throw delErr;
   }
 
