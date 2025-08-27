@@ -162,13 +162,3 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
   }
 }
 
-/** Chama a função SQL que apaga e recria os slots de mensalidades */
-export async function seedMensalidades(atletaId: string, plano: PlanoPagamento) {
-  const { error } = await supabase.rpc("seed_pagamentos_for_atleta", {
-    p_atleta_id: atletaId,
-    p_plano: plano,
-    p_epoca: "2025/26",
-    p_reset: true,
-  });
-  if (error) throw error;
-}
