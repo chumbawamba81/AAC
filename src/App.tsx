@@ -943,7 +943,7 @@ try {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dados Pessoais</CardTitle>
+        <CardTitle>Dados Pessoais do Sócio/Encarregado de Educação</CardTitle>
       </CardHeader>
       <CardContent>
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
