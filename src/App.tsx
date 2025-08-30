@@ -809,6 +809,11 @@ try {
 
     return (
       <div className="space-y-4">
+	  <div className="rounded-xl border bg-yellow-50 text-yellow-900 p-3 text-sm">
+  <strong>Nota:</strong> Estes dados referem-se ao <em>sócio/encarregado de educação</em>.
+  A inscrição de cada atleta deve ser feita no separador <span className="font-medium">Atletas</span>.
+</div>
+
         <div className="mb-1 rounded-xl border p-3 bg-white">
           <div className="flex items-center justify-between">
             <div>
@@ -946,6 +951,11 @@ try {
         <CardTitle>Dados Pessoais do Sócio/Encarregado de Educação</CardTitle>
       </CardHeader>
       <CardContent>
+	  <div className="mb-4 rounded-xl border bg-yellow-50 text-yellow-900 p-3 text-sm">
+  <strong>Nota:</strong> Estes dados referem-se ao <em>sócio/encarregado de educação</em>.
+  A inscrição do atleta é realizada no separador <span className="font-medium">Atletas</span>.
+</div>
+
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
           <div className="space-y-1">
             <Label>Nome Completo *</Label>
