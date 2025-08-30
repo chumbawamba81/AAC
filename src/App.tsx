@@ -809,11 +809,6 @@ try {
 
     return (
       <div className="space-y-4">
-	  <div className="rounded-xl border bg-yellow-50 text-yellow-900 p-3 text-sm">
-  <strong>Nota:</strong> Estes dados referem-se ao <em>sócio/encarregado de educação</em>.
-  A inscrição de cada atleta deve ser feita no separador <span className="font-medium">Atletas</span>.
-</div>
-
         <div className="mb-1 rounded-xl border p-3 bg-white">
           <div className="flex items-center justify-between">
             <div>
@@ -831,6 +826,10 @@ try {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+	  <div className="rounded-xl border bg-yellow-50 text-yellow-900 p-3 text-sm">
+  <strong>Nota:</strong> Estes dados referem-se ao <em>sócio/encarregado de educação</em>.
+  A inscrição de cada atleta deve ser feita no separador <span className="font-medium">Atletas</span>.
+</div>
   {/* Só mostra o chip de sócio se realmente for sócio */}
   {showSocioArea && (
     <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
