@@ -1,67 +1,33 @@
 // src/App.tsx
-import React, { useEffect, useState, useCallback } from "react";
-
-import { signIn, signUp, signOut } from "./services/authService";
-import { getMyProfile, upsertMyProfile } from "./services/profileService";
-import { listAtletas, upsertAtleta as saveAtleta, deleteAtleta as removeAtleta } from "./services/atletasService";
-
-import { Button } from "./components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
-import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import ImagesDialog from "./components/ImagesDialog";
-import TemplatesDownloadSection from "./components/TemplatesDownloadSection";
-import { ensureOnlyInscricaoForAtleta, ensureInscricaoEQuotasForAtleta } from "./services/pagamentosService";
-
-import { estimateCosts, eur, socioInscricaoAmount } from "./utils/pricing";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
+import { Button } from "./ui/button";
 import {
-  createInscricaoSocioIfMissing,
-  listSocioInscricao,
-  saveComprovativoSocioInscricao,
-  saveComprovativoInscricaoAtleta,
-  clearComprovativo,
-  listByAtleta as listPagamentosByAtleta,
-  saveComprovativo as saveComprovativoPagamento,
-  withSignedUrls as withSignedUrlsPagamentos,
-  type PagamentoRowWithUrl,
-  deleteSocioInscricaoIfAny,
-} from "./services/pagamentosService";
-
-import {
+  Upload,
+  Trash2,
+  Link as LinkIcon,
   AlertCircle,
   CheckCircle2,
-  FileUp,
-  LogIn,
-  LogOut,
-  Shield,
-  UserPlus,
-  Users,
-  PencilLine,
   Plus,
-  Trash2,
-  Upload,
-  Facebook,
-  Instagram,
-  Mail,
+  FileUp,
   RefreshCw,
-  Link as LinkIcon,
 } from "lucide-react";
 
-import type { PessoaDados } from "./types/PessoaDados";
-import type { Atleta, PlanoPagamento } from "./types/Atleta";
+import { supabase } from "../supabaseClient";
+import type { State } from "../types/AppState";
 
-import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
+import {
+  listDocs,
+  withSignedUrls,
+  uploadDoc,
+  replaceDoc,
+  deleteDoc,
+  type DocumentoRow,
+} from "../services/documentosService";
 
-import AtletaFormCompleto from "./components/AtletaFormCompleto";
-import UploadDocsSection from "./components/UploadDocsSection";
-import FilePickerButton from "./components/FilePickerButton";
+// (se fores usar os toasts aqui — recomendado)
+import { showToast } from "./MiniToast";
 
-import { supabase } from "./supabaseClient";
-
-// TOASTS
-import { MiniToastPortal, showToast, inferFileName } from "./components/minitoast";
 
 /* -------------------- Constantes -------------------- */
 const DOCS_ATLETA = ["Ficha de sócio de atleta", "Ficha de jogador FPB", "Termo de responsabilidade", "Exame médico"] as const;

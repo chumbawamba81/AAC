@@ -76,7 +76,7 @@ import { supabase } from "./supabaseClient";
 
 // Mini-toast + filename helper
 import { useMiniToast, inferFileName } from "./components/MiniToast";
-import { MiniToastPortal } from "./components/minitoast";
+import { MiniToastPortal } from "./components/MiniToast";
 
 /* -------------------- Constantes locais -------------------- */
 const DOCS_ATLETA = [
@@ -1900,7 +1900,7 @@ useEffect(() => {
           </div>
         ) : (
           <>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs key={activeTab} defaultValue={activeTab}>
               <TabsList>
                 <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
                 {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
