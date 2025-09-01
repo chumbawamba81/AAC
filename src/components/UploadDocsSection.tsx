@@ -478,14 +478,17 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                                 Ficheiro {idx + 1}
                               </span>
                               <a
-                                href={row.signedUrl || undefined}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline inline-flex items-center gap-1"
-                              >
-                                <LinkIcon className="h-4 w-4" />
-                                {row.nome || "ficheiro"}
-                              </a>
+  href={row.signedUrl || undefined}
+  target="_blank"
+  rel="noreferrer"
+  className="underline inline-flex items-center gap-1"
+>
+  <LinkIcon className="h-4 w-4" />
+  <span className="inline-block max-w-[240px] truncate" title={row.nome || "ficheiro"}>
+    {row.nome || "ficheiro"}
+  </span>
+</a>
+
                             </div>
                             <div className="flex items-center gap-2">
                               <input
@@ -588,10 +591,18 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                               <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
                                 <div className="text-sm flex items-center gap-2">
                                   <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">Ficheiro {idx + 1}</span>
-                                  <a href={row.signedUrl || undefined} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
-                                    <LinkIcon className="h-4 w-4" />
-                                    {row.nome || "ficheiro"}
-                                  </a>
+                                  <a
+  href={row.signedUrl || undefined}
+  target="_blank"
+  rel="noreferrer"
+  className="underline inline-flex items-center gap-1"
+>
+  <LinkIcon className="h-4 w-4" />
+  <span className="inline-block max-w-[240px] truncate" title={row.nome || "ficheiro"}>
+    {row.nome || "ficheiro"}
+  </span>
+</a>
+
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <input

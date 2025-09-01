@@ -1209,6 +1209,41 @@ function PagamentosSection({ state }: { state: State }) {
     };
   }, [state.atletas, refreshPayments]);
 
+// === Helpers de normalização de nomes (Android-friendly) ===
+function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
+  const dot = originalName.lastIndexOf(".");
+  const rawBase = dot > 0 ? originalName.slice(0, dot) : originalName;
+  const rawExt = dot > 0 ? originalName.slice(dot + 1) : "";
+
+  const base = rawBase
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "");
+
+  const safeBase = (base || "ficheiro").slice(0, maxBaseLen);
+  const ext = rawExt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+  return ext ? `${safeBase}.${ext}` : safeBase;
+}
+async function withSafeName(file: File): Promise<File> {
+  const safeName = sanitizeFileName(file.name);
+  if (safeName === file.name) return file;
+  const buf = await file.arrayBuffer();
+  return new File([new Uint8Array(buf)], safeName, {
+    type: file.type || "application/octet-stream",
+    lastModified: file.lastModified,
+  });
+}
+
+
   function isOverdue(row: PagamentoRowWithUrl | null): boolean {
     if (!row || row.validado) return false;
     const due = row.devido_em || sep8OfCurrentYear();
@@ -1216,43 +1251,47 @@ function PagamentosSection({ state }: { state: State }) {
     return new Date().getTime() > dt.getTime();
   }
 
-  async function handleUpload(athlete: Atleta, idx: number, file: File) {
-    if (!userId || !file) {
-      alert("Sessão ou ficheiro em falta");
-      return;
-    }
-    setBusy(true);
-    try {
-      const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
-      const label = getPagamentoLabel(planoEfetivo, idx);
-      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file });
-      await refreshPayments();
-      toast("Comprovativo carregado");
-    } catch (e: any) {
-      console.error("[Pagamentos] upload/replace", e);
-      toast(e?.message || "Falha no upload", "err");
-    } finally {
-      setBusy(false);
-    }
+async function handleUpload(athlete: Atleta, idx: number, file: File) {
+  if (!userId || !file) {
+    alert("Sessão ou ficheiro em falta");
+    return;
   }
+  setBusy(true);
+  try {
+    const safe = await withSafeName(file); // 💡 normaliza nome
+    const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
+    const label = getPagamentoLabel(planoEfetivo, idx);
+    await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file: safe });
+    await refreshPayments();
+    toast("Comprovativo carregado");
+  } catch (e: any) {
+    console.error("[Pagamentos] upload/replace", e);
+    toast(e?.message || "Falha no upload", "err");
+  } finally {
+    setBusy(false);
+  }
+}
+
 
   async function handleUploadInscricao(athlete: Atleta, file: File) {
-    if (!userId || !file) {
-      alert("Sessão ou ficheiro em falta");
-      return;
-    }
-    setBusy(true);
-    try {
-      await saveComprovativoInscricaoAtleta({ userId, atletaId: athlete.id, file });
-      await refreshPayments();
-      toast("Comprovativo de inscrição carregado");
-    } catch (e: any) {
-      console.error("[Pagamentos] upload inscrição", e);
-      toast(e?.message || "Falha no upload", "err");
-    } finally {
-      setBusy(false);
-    }
+  if (!userId || !file) {
+    alert("Sessão ou ficheiro em falta");
+    return;
   }
+  setBusy(true);
+  try {
+    const safe = await withSafeName(file); // 💡 normaliza nome
+    await saveComprovativoInscricaoAtleta({ userId, atletaId: athlete.id, file: safe });
+    await refreshPayments();
+    toast("Comprovativo de inscrição carregado");
+  } catch (e: any) {
+    console.error("[Pagamentos] upload inscrição", e);
+    toast(e?.message || "Falha no upload", "err");
+  } finally {
+    setBusy(false);
+  }
+}
+
 
   async function handleDelete(athlete: Atleta, idx: number) {
     const row = payments[athlete.id]?.[idx];
@@ -1272,22 +1311,24 @@ function PagamentosSection({ state }: { state: State }) {
   }
 
   async function handleUploadSocio(file: File) {
-    if (!userId || !file) {
-      alert("Sessão ou ficheiro em falta");
-      return;
-    }
-    setBusy(true);
-    try {
-      await saveComprovativoSocioInscricao(userId, file);
-      await refreshPayments();
-      toast("Comprovativo de sócio carregado");
-    } catch (e: any) {
-      console.error("[Pagamentos] socio upload", e);
-      toast(e?.message || "Falha no upload", "err");
-    } finally {
-      setBusy(false);
-    }
+  if (!userId || !file) {
+    alert("Sessão ou ficheiro em falta");
+    return;
   }
+  setBusy(true);
+  try {
+    const safe = await withSafeName(file); // 💡 normaliza nome
+    await saveComprovativoSocioInscricao(userId, safe);
+    await refreshPayments();
+    toast("Comprovativo de sócio carregado");
+  } catch (e: any) {
+    console.error("[Pagamentos] socio upload", e);
+    toast(e?.message || "Falha no upload", "err");
+  } finally {
+    setBusy(false);
+  }
+}
+
 
   async function handleRemoveSocioInscricao(row: PagamentoRowWithUrl) {
     if (!confirm("Remover o comprovativo da inscrição de sócio?")) return;
@@ -1888,7 +1929,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            <Tabs key={activeTab} defaultValue={activeTab}>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList>
                 <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
                 {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
