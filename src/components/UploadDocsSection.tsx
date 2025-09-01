@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import {
+  Upload,
   Trash2,
   Link as LinkIcon,
   AlertCircle,
@@ -61,76 +62,10 @@ function groupByTipo(rows: DocumentoRow[]) {
   return map;
 }
 
-/* --------- Utilitários para Android/Honor --------- */
-
-// Mapa básico para inferir MIME por extensão (inclui HEIC/HEIF)
-const EXT_TO_MIME: Record<string, string> = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  jpe: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  gif: "image/gif",
-  heic: "image/heic",
-  heif: "image/heif",
-  pdf: "application/pdf",
-};
-
-function inferMimeFromName(name?: string): string | null {
-  if (!name) return null;
-  const dot = name.lastIndexOf(".");
-  if (dot < 0) return null;
-  const ext = name.slice(dot + 1).toLowerCase().split("?")[0];
-  return EXT_TO_MIME[ext] || null;
-}
-
-/** Alguns seletores (Honor/Huawei) entregam File com type vazio ou HEIC/HEIF.
- *  Esta função cria um novo File com `type` ajustado quando necessário.
- */
-async function normalizeFileMime(original: File): Promise<File> {
-  let type = original.type;
-  if (!type || type === "" || type === "application/octet-stream") {
-    const guessed = inferMimeFromName(original.name);
-    if (guessed) type = guessed;
-  }
-  // Mantemos HEIC/HEIF (o Supabase aceita; browsers podem não pré-visualizar, mas o upload funciona).
-  if (type === original.type && original.size > 0) return original;
-
-  // Recria o File com o tipo corrigido para ajudar o storage/preview
-  const buf = await original.arrayBuffer();
-  return new File([new Uint8Array(buf)], original.name, { type: type || "application/octet-stream", lastModified: original.lastModified });
-}
-
-/** Input invisível mas clicável (evita display:none em Android) */
-function StealthFileInput(
-  props: React.InputHTMLAttributes<HTMLInputElement> & {
-    inputRef?: (el: HTMLInputElement | null) => void;
-  }
-) {
-  const { inputRef, style, ...rest } = props;
-  return (
-    <input
-      {...rest}
-      ref={inputRef as any}
-      type="file"
-      style={{
-        position: "fixed",
-        inset: 0,
-        width: 1,
-        height: 1,
-        opacity: 0,
-        pointerEvents: "auto",
-        ...style,
-      }}
-      tabIndex={-1}
-      aria-hidden
-    />
-  );
-}
-
 export default function UploadDocsSection({ state, setState, hideSocioDoc }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [diagMsg, setDiagMsg] = useState<string>("");
 
   const [socioDocs, setSocioDocs] = useState<Map<string, DocumentoRow[]>>(new Map());
   const [athDocs, setAthDocs] = useState<Record<string, Map<string, DocumentoRow[]>>>({});
@@ -186,13 +121,14 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
   }, [userId, state.atletas.map((a) => a.id).join(",")]);
 
   const socioMissingCount = useMemo(() => {
-    if (hideSocioDoc) return 0;
-    let miss = 0;
-    for (const t of DOCS_SOCIO_UI) {
-      if (!socioDocs.get(t)?.length) miss++;
-    }
-    return miss;
-  }, [socioDocs, hideSocioDoc]);
+  if (hideSocioDoc) return 0; // sem documentos de sócio quando “Não pretendo ser sócio”
+  let miss = 0;
+  for (const t of DOCS_SOCIO_UI) {
+    if (!socioDocs.get(t)?.length) miss++;
+  }
+  return miss;
+}, [socioDocs, hideSocioDoc]);
+
 
   /* ======================= Upload Many ======================= */
 
@@ -206,21 +142,12 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
       const current = socioDocs.get(tipo) || [];
       const start = current.length + 1;
       const files = Array.from(filesList);
-
       for (let i = 0; i < files.length; i++) {
-        let f = files[i];
-        console.log("[upload socio] original:", { name: f.name, type: f.type, size: f.size });
-        if (f.size === 0) {
-          alert(`Atenção: o ficheiro "${f.name}" foi reportado com 0 bytes. No Honor, use a opção "Guardar localmente" na galeria antes de selecionar, ou reabra o seletor e escolha novamente.`);
-        }
-        f = await normalizeFileMime(f);
-        console.log("[upload socio] normalizado:", { name: f.name, type: f.type, size: f.size });
-
         await uploadDoc({
           nivel: "socio",
           userId,
           tipo,
-          file: f,
+          file: files[i],
           mode: "new",
           page: start + i,
         });
@@ -246,22 +173,13 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
       const current = mapa.get(tipo) || [];
       const start = current.length + 1;
       const files = Array.from(filesList);
-
       for (let i = 0; i < files.length; i++) {
-        let f = files[i];
-        console.log("[upload atleta] original:", { name: f.name, type: f.type, size: f.size });
-        if (f.size === 0) {
-          alert(`Atenção: o ficheiro "${f.name}" foi reportado com 0 bytes. Se veio do "Seletor de meios" do Honor, escolha "Explorador de Ficheiros" ou "Galeria" e tente de novo.`);
-        }
-        f = await normalizeFileMime(f);
-        console.log("[upload atleta] normalizado:", { name: f.name, type: f.type, size: f.size });
-
         await uploadDoc({
           nivel: "atleta",
           userId,
           atletaId,
           tipo,
-          file: f,
+          file: files[i],
           mode: "new",
           page: start + i,
         });
@@ -282,15 +200,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
     if (!file) return;
     setLoading(true);
     try {
-      let f = file;
-      console.log("[replace] original:", { name: f.name, type: f.type, size: f.size });
-      if (f.size === 0) {
-        alert(`Atenção: o ficheiro "${f.name}" tem 0 bytes.`);
-      }
-      f = await normalizeFileMime(f);
-      console.log("[replace] normalizado:", { name: f.name, type: f.type, size: f.size });
-
-      await replaceDoc(row.id, f);
+      await replaceDoc(row.id, file);
       await refreshAll();
       alert("Documento substituído.");
     } catch (e: any) {
@@ -316,6 +226,58 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
     }
   }
 
+  /* ======================= Diagnóstico opcional ======================= */
+
+  async function testStorage() {
+    try {
+      setDiagMsg("A testar Storage…");
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user?.id) throw new Error("Sem sessão");
+      const blob = new Blob(["hello"], { type: "text/plain" });
+      const file = new File([blob], "teste.txt", { type: "text/plain" });
+      const path = `${u.user.id}/socio/Teste/${Date.now()}_teste.txt`;
+      const up = await supabase.storage.from("documentos").upload(path, file, { upsert: false });
+      if (up.error) throw up.error;
+      const sig = await supabase.storage.from("documentos").createSignedUrl(path, 60);
+      if (sig.error) throw sig.error;
+      setDiagMsg("Storage + signed URL OK.");
+      alert("Storage OK ✅");
+    } catch (e: any) {
+      console.error("[diag storage]", e);
+      setDiagMsg(`Storage FAIL: ${e?.message || e}`);
+      alert(`Storage FAIL ❌: ${e?.message || e}`);
+    }
+  }
+
+  async function testTable() {
+    try {
+      setDiagMsg("A testar tabela…");
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user?.id) throw new Error("Sem sessão");
+      const row = {
+        user_id: u.user.id,
+        doc_nivel: "socio",
+        atleta_id: null,
+        doc_tipo: "Teste",
+        page: 1,
+        file_path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
+        path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
+        nome: "dummy.txt",
+        mime_type: "text/plain",
+        file_size: 5,
+        uploaded_at: new Date().toISOString(),
+      };
+      const ins = await supabase.from("documentos").insert(row).select("id").single();
+      if (ins.error) throw ins.error;
+      setDiagMsg("Tabela OK.");
+      alert("Tabela OK ✅");
+    } catch (e: any) {
+      console.error("[diag table]", e);
+      setDiagMsg(`Tabela FAIL: ${e?.message || e}`);
+      alert(`Tabela FAIL ❌: ${e?.message || e}`);
+    }
+  }
+
   /* ======================= Render ======================= */
 
   return (
@@ -331,110 +293,178 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
         <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
           <div className="text-sm">
             <p className="text-sm text-gray-700">
-              Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
-              para upload na secção <strong>Situação de Tesouraria</strong>.
-              <br />
-              <span className="text-gray-600">
-                Recomenda-se a utilização de apps de digitalização (Adobe Scan / CamScanner) para garantir boa legibilidade.
-              </span>
-            </p>
+  Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
+  para upload na secção <strong>Situação de Tesouraria</strong>.
+  <br />
+  <span className="text-gray-600">
+    Recomenda-se a utilização das aplicações de digitalização no smartphone, como as apps
+    <strong> Adobe Scan</strong>{" "}
+    <span className="whitespace-nowrap">
+      (
+      <a
+        className="underline inline"
+        href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
+        target="_blank"
+        rel="noreferrer"
+        title="Adobe Scan (Android)"
+      >
+        Android
+      </a>
+      {" / "}
+      <a
+        className="underline inline"
+        href="https://apps.apple.com/app/adobe-scan-pdf-scanner-ocr/id1199564834"
+        target="_blank"
+        rel="noreferrer"
+        title="Adobe Scan (iOS)"
+      >
+        iOS
+      </a>
+      )
+    </span>
+    {" "}ou<strong> CamScanner</strong>{" "}
+    <span className="whitespace-nowrap">
+      (
+      <a
+        className="underline inline"
+        href="https://play.google.com/store/apps/details?id=com.intsig.camscanner"
+        target="_blank"
+        rel="noreferrer"
+        title="CamScanner (Android)"
+      >
+        Android
+      </a>
+      {" / "}
+      <a
+        className="underline inline"
+        href="https://apps.apple.com/app/camscanner-pdf-scanner-app/id388627783"
+        target="_blank"
+        rel="noreferrer"
+        title="CamScanner (iOS)"
+      >
+        iOS
+      </a>
+      )
+    </span>
+    , para garantir boa legibilidade dos documentos.
+  </span>
+</p>
+
           </div>
         </div>
 
-        {/* ---- SOCIO ---- */}
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <div className="font-medium">
-              Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
+        {/* ---- DIAGNÓSTICO ---- */}
+			{/*        <div className="border rounded-lg p-3 bg-slate-50">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium">Diagnóstico rápido</div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={testStorage}>Testar Storage</Button>
+              <Button variant="outline" onClick={testTable}>Testar Tabela</Button>
+            </div>
+          </div>
+          {!!diagMsg && <div className="text-xs text-gray-600 mt-2">{diagMsg}</div>}
+        </div>
+*/}
+{ /* ---- SOCIO ---- */ }
+<section>
+  <div className="mb-2 flex items-center justify-between">
+  <div className="font-medium">
+    Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
+  </div>
+
+  {socioMissingCount > 0 ? (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700">
+      <AlertCircle className="h-3 w-3" /> {socioMissingCount} doc(s) em falta
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-700">
+      <CheckCircle2 className="h-3 w-3" /> Sem documentos
+    </span>
+  )}
+</div>
+
+
+
+  {hideSocioDoc ? null : (
+    <div className="grid md:grid-cols-2 gap-3">
+      {DOCS_SOCIO_UI.map((tipo) => {
+        const files = socioDocs.get(tipo) || [];
+        return (
+          <div key={tipo} className="border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="font-medium">
+                {tipo}
+                {state.perfil?.tipoSocio && tipo === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  ref={(el) => (socioPickersRef.current[tipo] = el)}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    const fs = e.target.files;
+                    await handleUploadSocioMany(tipo, fs);
+                    e.currentTarget.value = "";
+                  }}
+                />
+                <Button variant="outline" onClick={() => socioPickersRef.current[tipo]?.click()}>
+                  <Plus className="h-4 w-4 mr-1" /> Adicionar
+                </Button>
+              </div>
             </div>
 
-            { (hideSocioDoc ? 0 : DOCS_SOCIO_UI.filter((t)=>!(socioDocs.get(t)||[]).length).length) > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700">
-                <AlertCircle className="h-3 w-3" /> {DOCS_SOCIO_UI.filter((t)=>!(socioDocs.get(t)||[]).length).length} doc(s) em falta
-              </span>
+            {files.length === 0 ? (
+              <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-700">
-                <CheckCircle2 className="h-3 w-3" /> Sem documentos
-              </span>
+              <ul className="space-y-2">
+                {files.map((row, idx) => (
+                  <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
+                    <div className="text-sm flex items-center gap-2">
+                      <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
+                        Ficheiro {idx + 1}
+                      </span>
+                      <a
+                        href={row.signedUrl || undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline inline-flex items-center gap-1"
+                      >
+                        <LinkIcon className="h-4 w-4" />
+                        {row.nome || "ficheiro"}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={(el) => (replacePickersRef.current[row.id] = el)}
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (f) await handleReplace(row, f);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                      <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                        <RefreshCw className="h-4 w-4 mr-1" /> Substituir
+                      </Button>
+                      <Button variant="destructive" onClick={() => handleDelete(row)}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Apagar
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
+        );
+      })}
+    </div>
+  )}
+</section>
 
-          {hideSocioDoc ? null : (
-            <div className="grid md:grid-cols-2 gap-3">
-              {DOCS_SOCIO_UI.map((tipo) => {
-                const files = socioDocs.get(tipo) || [];
-                return (
-                  <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">
-                        {tipo}
-                        {state.perfil?.tipoSocio && tipo === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
-                      </div>
-                      <div className="flex gap-2">
-                        <StealthFileInput
-                          inputRef={(el) => (socioPickersRef.current[tipo] = el)}
-                          // Aceitação ampla para contornar o seletor do Honor
-                          accept="image/*,application/pdf,application/*,*/*"
-                          multiple
-                          onChange={async (e) => {
-                            const fs = (e.target as HTMLInputElement).files;
-                            await handleUploadSocioMany(tipo, fs || null);
-                            (e.currentTarget as HTMLInputElement).value = "";
-                          }}
-                        />
-                        <Button variant="outline" onClick={() => socioPickersRef.current[tipo]?.click()}>
-                          <Plus className="h-4 w-4 mr-1" /> Adicionar
-                        </Button>
-                      </div>
-                    </div>
-
-                    {files.length === 0 ? (
-                      <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
-                    ) : (
-                      <ul className="space-y-2">
-                        {files.map((row, idx) => (
-                          <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
-                            <div className="text-sm flex items-center gap-2">
-                              <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                                Ficheiro {idx + 1}
-                              </span>
-                              <a
-                                href={row.signedUrl || undefined}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline inline-flex items-center gap-1"
-                              >
-                                <LinkIcon className="h-4 w-4" />
-                                {row.nome || "ficheiro"}
-                              </a>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <StealthFileInput
-                                inputRef={(el) => (replacePickersRef.current[row.id] = el)}
-                                accept="image/*,application/pdf,application/*,*/*"
-                                onChange={async (e) => {
-                                  const f = (e.target as HTMLInputElement).files?.[0];
-                                  if (f) await handleReplace(row, f);
-                                  (e.currentTarget as HTMLInputElement).value = "";
-                                }}
-                              />
-                              <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
-                                <RefreshCw className="h-4 w-4 mr-1" /> Substituir
-                              </Button>
-                              <Button variant="destructive" onClick={() => handleDelete(row)}>
-                                <Trash2 className="h-4 w-4 mr-1" /> Apagar
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
 
         {/* ---- ATLETAS ---- */}
         <section className="space-y-3">
@@ -471,14 +501,16 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                         <div className="flex items-center justify-between">
                           <div className="font-medium">{tipo}</div>
                           <div className="flex gap-2">
-                            <StealthFileInput
-                              inputRef={(el) => (atletaPickersRef.current[a.id][tipo] = el)}
-                              accept="image/*,application/pdf,application/*,*/*"
+                            <input
+                              ref={(el) => (atletaPickersRef.current[a.id][tipo] = el)}
+                              type="file"
+                              accept="image/*,application/pdf"
                               multiple
+                              className="hidden"
                               onChange={async (e) => {
-                                const fs = (e.target as HTMLInputElement).files;
-                                await handleUploadAtletaMany(a.id, tipo, fs || null);
-                                (e.currentTarget as HTMLInputElement).value = "";
+                                const fs = e.target.files;
+                                await handleUploadAtletaMany(a.id, tipo, fs);
+                                e.currentTarget.value = "";
                               }}
                             />
                             <Button variant="outline" onClick={() => atletaPickersRef.current[a.id][tipo]?.click()}>
@@ -501,13 +533,15 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                                   </a>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <StealthFileInput
-                                    inputRef={(el) => (replacePickersRef.current[row.id] = el)}
-                                    accept="image/*,application/pdf,application/*,*/*"
+                                  <input
+                                    ref={(el) => (replacePickersRef.current[row.id] = el)}
+                                    type="file"
+                                    accept="image/*,application/pdf"
+                                    className="hidden"
                                     onChange={async (e) => {
-                                      const f = (e.target as HTMLInputElement).files?.[0];
+                                      const f = e.target.files?.[0];
                                       if (f) await handleReplace(row, f);
-                                      (e.currentTarget as HTMLInputElement).value = "";
+                                      e.currentTarget.value = "";
                                     }}
                                   />
                                   <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
