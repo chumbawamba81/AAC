@@ -25,8 +25,6 @@ import {
   type DocumentoRow,
 } from "../services/documentosService";
 
-import { useToast } from "./ui/toaster"; // <= TOAST
-
 /** ⚠️ Nesta UI não mostramos os comprovativos de inscrição:
  *  - Sócio: "Comprovativo de pagamento de sócio"
  *  - Atleta: "Comprovativo de pagamento de inscrição"
@@ -64,10 +62,54 @@ function groupByTipo(rows: DocumentoRow[]) {
   return map;
 }
 
+/* ======================= Normalização de nomes ======================= */
+/** Normaliza o nome do ficheiro para evitar erros de “Invalid key” em Storage:
+ *  - remove acentos/cedilha via NFD
+ *  - substitui espaços por "_"
+ *  - mantém só [a-z0-9._-]
+ *  - força minúsculas
+ *  - preserva extensão
+ *  - limita comprimento
+ */
+function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
+  const dot = originalName.lastIndexOf(".");
+  const rawBase = dot > 0 ? originalName.slice(0, dot) : originalName;
+  const rawExt = dot > 0 ? originalName.slice(dot + 1) : "";
+
+  const base = rawBase
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove diacríticos
+    .replace(/\s+/g, "_")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "");
+
+  const safeBase = (base || "ficheiro").slice(0, maxBaseLen);
+  const ext = rawExt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+  return ext ? `${safeBase}.${ext}` : safeBase;
+}
+
+/** Recria um File com nome “limpo”, mantendo conteúdo e tipo. */
+async function withSafeName(file: File): Promise<File> {
+  const safeName = sanitizeFileName(file.name);
+  if (safeName === file.name) return file;
+  const buf = await file.arrayBuffer();
+  return new File([new Uint8Array(buf)], safeName, {
+    type: file.type || "application/octet-stream",
+    lastModified: file.lastModified,
+  });
+}
+
 export default function UploadDocsSection({ state, setState, hideSocioDoc }: Props) {
-  const { toast } = useToast(); // <= TOAST
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [diagMsg, setDiagMsg] = useState<string>("");
 
   const [socioDocs, setSocioDocs] = useState<Map<string, DocumentoRow[]>>(new Map());
   const [athDocs, setAthDocs] = useState<Record<string, Map<string, DocumentoRow[]>>>({});
@@ -111,7 +153,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
       setAthDocs(nextAth);
     } catch (e: any) {
       console.error("[refreshAll]", e);
-      toast({ variant: "destructive", title: "Falha ao carregar documentos", description: e?.message || String(e) });
+      alert(`Falha ao carregar documentos: ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
@@ -135,7 +177,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
 
   async function handleUploadSocioMany(tipo: DocSocioUI, filesList: FileList | null) {
     if (!userId || !filesList || filesList.length === 0) {
-      toast({ variant: "destructive", title: "Sessão ou ficheiros em falta" });
+      alert("Sessão ou ficheiros em falta");
       return;
     }
     setLoading(true);
@@ -144,20 +186,22 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
       const start = current.length + 1;
       const files = Array.from(filesList);
       for (let i = 0; i < files.length; i++) {
+        // ➜ normaliza o nome antes de enviar
+        const safe = await withSafeName(files[i]);
         await uploadDoc({
           nivel: "socio",
           userId,
           tipo,
-          file: files[i],
+          file: safe,
           mode: "new",
           page: start + i,
         });
       }
       await refreshAll();
-      toast({ title: "Upload concluído", description: `${files.length} ficheiro(s) para “${tipo}”.` });
+      alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
       console.error("[upload socio many]", e);
-      toast({ variant: "destructive", title: "Falha no upload (sócio)", description: e?.message || String(e) });
+      alert(`Falha no upload (sócio): ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
@@ -165,7 +209,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
 
   async function handleUploadAtletaMany(atletaId: string, tipo: DocAtletaUI, filesList: FileList | null) {
     if (!userId || !filesList || filesList.length === 0) {
-      toast({ variant: "destructive", title: "Sessão ou ficheiros em falta" });
+      alert("Sessão ou ficheiros em falta");
       return;
     }
     setLoading(true);
@@ -175,21 +219,22 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
       const start = current.length + 1;
       const files = Array.from(filesList);
       for (let i = 0; i < files.length; i++) {
+        const safe = await withSafeName(files[i]); // ➜ normaliza nome
         await uploadDoc({
           nivel: "atleta",
           userId,
           atletaId,
           tipo,
-          file: files[i],
+          file: safe,
           mode: "new",
           page: start + i,
         });
       }
       await refreshAll();
-      toast({ title: "Upload concluído", description: `${files.length} ficheiro(s) para “${tipo}”.` });
+      alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
       console.error("[upload atleta many]", e);
-      toast({ variant: "destructive", title: "Falha no upload (atleta)", description: e?.message || String(e) });
+      alert(`Falha no upload (atleta): ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
@@ -201,12 +246,13 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
     if (!file) return;
     setLoading(true);
     try {
-      await replaceDoc(row.id, file);
+      const safe = await withSafeName(file); // ➜ normaliza nome
+      await replaceDoc(row.id, safe);
       await refreshAll();
-      toast({ title: "Documento substituído" });
+      alert("Documento substituído.");
     } catch (e: any) {
       console.error("[replace]", e);
-      toast({ variant: "destructive", title: "Falha a substituir", description: e?.message || String(e) });
+      alert(`Falha a substituir: ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
@@ -218,12 +264,64 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
     try {
       await deleteDoc(row.id);
       await refreshAll();
-      toast({ title: "Documento apagado" });
+      alert("Apagado.");
     } catch (e: any) {
       console.error("[delete]", e);
-      toast({ variant: "destructive", title: "Falha a apagar", description: e?.message || String(e) });
+      alert(`Falha a apagar: ${e?.message || e}`);
     } finally {
       setLoading(false);
+    }
+  }
+
+  /* ======================= Diagnóstico opcional ======================= */
+
+  async function testStorage() {
+    try {
+      setDiagMsg("A testar Storage…");
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user?.id) throw new Error("Sem sessão");
+      const blob = new Blob(["hello"], { type: "text/plain" });
+      const file = new File([blob], "teste.txt", { type: "text/plain" });
+      const path = `${u.user.id}/socio/Teste/${Date.now()}_teste.txt`;
+      const up = await supabase.storage.from("documentos").upload(path, file, { upsert: false });
+      if (up.error) throw up.error;
+      const sig = await supabase.storage.from("documentos").createSignedUrl(path, 60);
+      if (sig.error) throw sig.error;
+      setDiagMsg("Storage + signed URL OK.");
+      alert("Storage OK ✅");
+    } catch (e: any) {
+      console.error("[diag storage]", e);
+      setDiagMsg(`Storage FAIL: ${e?.message || e}`);
+      alert(`Storage FAIL ❌: ${e?.message || e}`);
+    }
+  }
+
+  async function testTable() {
+    try {
+      setDiagMsg("A testar tabela…");
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user?.id) throw new Error("Sem sessão");
+      const row = {
+        user_id: u.user.id,
+        doc_nivel: "socio",
+        atleta_id: null,
+        doc_tipo: "Teste",
+        page: 1,
+        file_path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
+        path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
+        nome: "dummy.txt",
+        mime_type: "text/plain",
+        file_size: 5,
+        uploaded_at: new Date().toISOString(),
+      };
+      const ins = await supabase.from("documentos").insert(row).select("id").single();
+      if (ins.error) throw ins.error;
+      setDiagMsg("Tabela OK.");
+      alert("Tabela OK ✅");
+    } catch (e: any) {
+      console.error("[diag table]", e);
+      setDiagMsg(`Tabela FAIL: ${e?.message || e}`);
+      alert(`Tabela FAIL ❌: ${e?.message || e}`);
     }
   }
 
@@ -249,15 +347,51 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                 Recomenda-se a utilização das aplicações de digitalização no smartphone, como as apps
                 <strong> Adobe Scan</strong>{" "}
                 <span className="whitespace-nowrap">
-                  (<a className="underline inline" href="https://play.google.com/store/apps/details?id=com.adobe.scan.android" target="_blank" rel="noreferrer" title="Adobe Scan (Android)">Android</a>
+                  (
+                  <a
+                    className="underline inline"
+                    href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Adobe Scan (Android)"
+                  >
+                    Android
+                  </a>
                   {" / "}
-                  <a className="underline inline" href="https://apps.apple.com/app/adobe-scan-pdf-scanner-ocr/id1199564834" target="_blank" rel="noreferrer" title="Adobe Scan (iOS)">iOS</a>)
+                  <a
+                    className="underline inline"
+                    href="https://apps.apple.com/app/adobe-scan-pdf-scanner-ocr/id1199564834"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Adobe Scan (iOS)"
+                  >
+                    iOS
+                  </a>
+                  )
                 </span>
                 {" "}ou<strong> CamScanner</strong>{" "}
                 <span className="whitespace-nowrap">
-                  (<a className="underline inline" href="https://play.google.com/store/apps/details?id=com.intsig.camscanner" target="_blank" rel="noreferrer" title="CamScanner (Android)">Android</a>
+                  (
+                  <a
+                    className="underline inline"
+                    href="https://play.google.com/store/apps/details?id=com.intsig.camscanner"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="CamScanner (Android)"
+                  >
+                    Android
+                  </a>
                   {" / "}
-                  <a className="underline inline" href="https://apps.apple.com/app/camscanner-pdf-scanner-app/id388627783" target="_blank" rel="noreferrer" title="CamScanner (iOS)">iOS</a>)
+                  <a
+                    className="underline inline"
+                    href="https://apps.apple.com/app/camscanner-pdf-scanner-app/id388627783"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="CamScanner (iOS)"
+                  >
+                    iOS
+                  </a>
+                  )
                 </span>
                 , para garantir boa legibilidade dos documentos.
               </span>
@@ -265,6 +399,18 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
           </div>
         </div>
 
+        {/* ---- DIAGNÓSTICO ---- */}
+        {/*        <div className="border rounded-lg p-3 bg-slate-50">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium">Diagnóstico rápido</div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={testStorage}>Testar Storage</Button>
+              <Button variant="outline" onClick={testTable}>Testar Tabela</Button>
+            </div>
+          </div>
+          {!!diagMsg && <div className="text-xs text-gray-600 mt-2">{diagMsg}</div>}
+        </div>
+        */}
         {/* ---- SOCIO ---- */}
         <section>
           <div className="mb-2 flex items-center justify-between">
@@ -303,7 +449,15 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                           className="hidden"
                           onChange={async (e) => {
                             const fs = e.target.files;
-                            await handleUploadSocioMany(tipo, fs);
+                            // normaliza todos os nomes antes do upload
+                            if (fs && fs.length) {
+                              const arr = await Promise.all(Array.from(fs).map(withSafeName));
+                              const dt = new DataTransfer();
+                              arr.forEach((f) => dt.items.add(f));
+                              await handleUploadSocioMany(tipo, dt.files);
+                            } else {
+                              await handleUploadSocioMany(tipo, fs);
+                            }
                             e.currentTarget.value = "";
                           }}
                         />
@@ -341,7 +495,10 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                                 className="hidden"
                                 onChange={async (e) => {
                                   const f = e.target.files?.[0];
-                                  if (f) await handleReplace(row, f);
+                                  if (f) {
+                                    const safe = await withSafeName(f);
+                                    await handleReplace(row, safe);
+                                  }
                                   e.currentTarget.value = "";
                                 }}
                               />
@@ -377,7 +534,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                   <div className="font-medium flex items-center gap-2">
                     {a.nomeCompleto}{" "}
                     {missing > 0 ? (
-                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
+                      <span className="inline-flex items gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
                         <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
                       </span>
                     ) : (
@@ -406,7 +563,14 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                               className="hidden"
                               onChange={async (e) => {
                                 const fs = e.target.files;
-                                await handleUploadAtletaMany(a.id, tipo, fs);
+                                if (fs && fs.length) {
+                                  const arr = await Promise.all(Array.from(fs).map(withSafeName));
+                                  const dt = new DataTransfer();
+                                  arr.forEach((f) => dt.items.add(f));
+                                  await handleUploadAtletaMany(a.id, tipo, dt.files);
+                                } else {
+                                  await handleUploadAtletaMany(a.id, tipo, fs);
+                                }
                                 e.currentTarget.value = "";
                               }}
                             />
@@ -437,7 +601,10 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                                     className="hidden"
                                     onChange={async (e) => {
                                       const f = e.target.files?.[0];
-                                      if (f) await handleReplace(row, f);
+                                      if (f) {
+                                        const safe = await withSafeName(f);
+                                        await handleReplace(row, safe);
+                                      }
                                       e.currentTarget.value = "";
                                     }}
                                   />
