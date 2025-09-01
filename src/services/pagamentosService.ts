@@ -9,7 +9,7 @@ export type PagamentoRow = {
   atleta_id: string | null;
   tipo: "inscricao" | "quota";
   descricao: string;                 // único por atleta (ux_pagamentos_atleta_descricao)
-  comprovativo_url: string | null;
+  comprovativo_url: string | null;   // path no bucket "pagamentos"
   validado: boolean;                 // NOT NULL (false = pendente)
   devido_em: string | null;          // 'YYYY-MM-DD'
   created_at: string | null;
@@ -76,21 +76,52 @@ function buildDueDates(plano: PlanoPagamento): string[] {
   const out: string[] = [];
   out.push(`${year}-09-30`); // Setembro
   const monthlyDays = [
-    { y: year, m: 9, d: 8 },    // Out
-    { y: year, m: 10, d: 8 },   // Nov
-    { y: year, m: 11, d: 8 },   // Dez
-    { y: year + 1, m: 0, d: 8 },  // Jan
-    { y: year + 1, m: 1, d: 8 },  // Fev
-    { y: year + 1, m: 2, d: 8 },  // Mar
-    { y: year + 1, m: 3, d: 8 },  // Abr
-    { y: year + 1, m: 4, d: 8 },  // Mai
-    { y: year + 1, m: 5, d: 8 },  // Jun
+    { y: year,     m: 9,  d: 8 },  // Out
+    { y: year,     m: 10, d: 8 },  // Nov
+    { y: year,     m: 11, d: 8 },  // Dez
+    { y: year + 1, m: 0,  d: 8 },  // Jan
+    { y: year + 1, m: 1,  d: 8 },  // Fev
+    { y: year + 1, m: 2,  d: 8 },  // Mar
+    { y: year + 1, m: 3,  d: 8 },  // Abr
+    { y: year + 1, m: 4,  d: 8 },  // Mai
+    { y: year + 1, m: 5,  d: 8 },  // Jun
   ];
   for (const x of monthlyDays) out.push(fmt(new Date(x.y, x.m, x.d)));
   return out;
 }
 
-/* ======================= Storage helpers ======================= */
+/* ======================= Storage path helpers (modo atleta) ======================= */
+
+function toSafeSegment(input: string, fallback = "item"): string {
+  if (!input) return fallback;
+  let s = input.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  s = s.replace(/\s+/g, "-");
+  s = s.replace(/[^a-zA-Z0-9._-]/g, "-");
+  s = s.replace(/-+/g, "-").replace(/\.+/g, ".");
+  s = s.toLowerCase().replace(/^[-.]+|[-.]+$/g, "");
+  return s || fallback;
+}
+function toSafeFilename(name: string, fallback = "ficheiro.bin"): string {
+  if (!name) return fallback;
+  const idx = name.lastIndexOf(".");
+  if (idx <= 0 || idx === name.length - 1) {
+    const base = toSafeSegment(name);
+    return base.includes(".") ? base : `${base}.bin`;
+  }
+  const base = toSafeSegment(name.slice(0, idx)) || "ficheiro";
+  const ext = toSafeSegment(name.slice(idx + 1)) || "bin";
+  return `${base}.${ext}`;
+}
+function joinPath(...parts: Array<string | undefined | null>): string {
+  const cleaned = parts
+    .filter(Boolean)
+    .map((p) => String(p).replace(/^\/+|\/+$/g, ""))
+    .filter((p) => p.length > 0);
+  return cleaned.join("/");
+}
+function nowTs() { return Date.now(); }
+
+/* ======================= Signed URLs ======================= */
 
 async function getSignedUrl(path: string | null | undefined) {
   if (!path) return null;
@@ -100,11 +131,20 @@ async function getSignedUrl(path: string | null | undefined) {
 }
 
 export async function withSignedUrls(rows: PagamentoRow[]): Promise<PagamentoRowWithUrl[]> {
-  const out: PagamentoRowWithUrl[] = [];
-  for (const r of rows) {
-    out.push({ ...r, signedUrl: await getSignedUrl(r.comprovativo_url) });
+  if (!rows?.length) return [];
+  const paths = rows.map(r => r.comprovativo_url).filter(Boolean) as string[];
+  if (paths.length === 0) return rows;
+
+  const { data, error } = await supabase.storage.from("pagamentos").createSignedUrls(paths, 60 * 60);
+  if (error) {
+    // fallback: one-by-one
+    const out: PagamentoRowWithUrl[] = [];
+    for (const r of rows) out.push({ ...r, signedUrl: await getSignedUrl(r.comprovativo_url) });
+    return out;
   }
-  return out;
+  const byPath: Record<string, string | undefined> = {};
+  (data || []).forEach((d: any) => { if (d?.path) byPath[d.path] = d.signedUrl; });
+  return rows.map(r => (r.comprovativo_url ? { ...r, signedUrl: byPath[r.comprovativo_url] } : r));
 }
 
 /* ======================= CRUD Básico ======================= */
@@ -120,11 +160,19 @@ export async function listByAtleta(atletaId: string): Promise<PagamentoRow[]> {
 }
 
 export async function deletePagamento(row: PagamentoRow) {
+  // remove também o ficheiro no storage, se existir
+  const path = row.comprovativo_url || undefined;
+  if (path) {
+    const rm = await supabase.storage.from("pagamentos").remove([path]);
+    if (rm.error && rm.error.message && !/Object not found/i.test(rm.error.message)) {
+      console.warn("[deletePagamento] remove storage:", rm.error.message);
+    }
+  }
   const { error } = await supabase.from("pagamentos").delete().eq("id", row.id);
   if (error) throw error;
 }
 
-/* ======================= Upload de comprovativos ======================= */
+/* ======================= Upload de comprovativos (com normalização) ======================= */
 
 export async function saveComprovativo(params: {
   userId: string;
@@ -132,12 +180,13 @@ export async function saveComprovativo(params: {
   descricao: string; // tem de existir na tabela (foi criado pelo schedule/seed)
   file: File;
 }) {
-  // 1) upload do ficheiro
-  const path = `${params.userId}/atletas/${params.atletaId}/${Date.now()}_${params.file.name}`;
-  const up = await supabase.storage.from("pagamentos").upload(path, params.file, { upsert: false });
+  const safe = toSafeFilename(params.file.name);
+  const path = joinPath(params.userId, "atletas", params.atletaId, `${nowTs()}_${safe}`);
+  const up = await supabase.storage
+    .from("pagamentos")
+    .upload(path, params.file, { upsert: true, contentType: params.file.type || "application/octet-stream", cacheControl: "3600" });
   if (up.error) throw up.error;
 
-  // 2) atualizar a linha (validado permanece false)
   const { error } = await supabase
     .from("pagamentos")
     .update({ comprovativo_url: path, validado: false })
@@ -147,8 +196,11 @@ export async function saveComprovativo(params: {
 }
 
 export async function saveComprovativoSocioInscricao(userId: string, file: File) {
-  const path = `${userId}/socio/${Date.now()}_${file.name}`;
-  const up = await supabase.storage.from("pagamentos").upload(path, file, { upsert: false });
+  const safe = toSafeFilename(file.name);
+  const path = joinPath(userId, "socio", `${nowTs()}_${safe}`);
+  const up = await supabase.storage
+    .from("pagamentos")
+    .upload(path, file, { upsert: true, contentType: file.type || "application/octet-stream", cacheControl: "3600" });
   if (up.error) throw up.error;
 
   const { error } = await supabase
@@ -166,8 +218,11 @@ export async function saveComprovativoInscricaoAtleta(params: {
   atletaId: string;
   file: File;
 }) {
-  const path = `${params.userId}/atletas/${params.atletaId}/inscricao/${Date.now()}_${params.file.name}`;
-  const up = await supabase.storage.from("pagamentos").upload(path, params.file, { upsert: false });
+  const safe = toSafeFilename(params.file.name);
+  const path = joinPath(params.userId, "atletas", params.atletaId, "inscricao", `${nowTs()}_${safe}`);
+  const up = await supabase.storage
+    .from("pagamentos")
+    .upload(path, params.file, { upsert: true, contentType: params.file.type || "application/octet-stream", cacheControl: "3600" });
   if (up.error) throw up.error;
 
   const { error } = await supabase
@@ -180,11 +235,19 @@ export async function saveComprovativoInscricaoAtleta(params: {
 
 // Limpar comprovativo (sem apagar o registo)
 export async function clearComprovativo(row: PagamentoRow) {
+  const old = row.comprovativo_url || undefined;
   const { error } = await supabase
     .from("pagamentos")
     .update({ comprovativo_url: null, validado: false })
     .eq("id", row.id);
   if (error) throw error;
+
+  if (old) {
+    const rm = await supabase.storage.from("pagamentos").remove([old]);
+    if (rm.error && rm.error.message && !/Object not found/i.test(rm.error.message)) {
+      console.warn("[clearComprovativo] remove antigo falhou:", rm.error.message);
+    }
+  }
 }
 
 /* ======================= Sócio — inscrição ======================= */

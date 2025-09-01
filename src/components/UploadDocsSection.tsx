@@ -534,7 +534,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
                   <div className="font-medium flex items-center gap-2">
                     {a.nomeCompleto}{" "}
                     {missing > 0 ? (
-                      <span className="inline-flex items中心 gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
+                      <span className="inline-flex items gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
                         <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
                       </span>
                     ) : (

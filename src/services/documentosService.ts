@@ -1,11 +1,10 @@
 // src/services/documentosService.ts
 import { supabase } from "../supabaseClient";
+import { joinPath, toSafeFilename, toSafeSegment } from "../utils/storagePath";
 
 export type Nivel = "socio" | "atleta";
 
-/**
- * Estrutura da tabela public.documentos (campos relevantes)
- */
+/** Estrutura da tabela public.documentos (campos relevantes) */
 export type DocumentoRow = {
   id: string;
   user_id: string;
@@ -28,51 +27,7 @@ type UploadArgs =
   | ({ nivel: "socio"; userId: string } & UploadArgsBase)
   | ({ nivel: "atleta"; userId: string; atletaId: string } & UploadArgsBase);
 
-type ReplaceArgs = { id: string; file: File };
-type DeleteArgs = { id: string };
-
-type ListArgs =
-  | { nivel: "socio"; userId: string }
-  | { nivel: "atleta"; userId: string; atletaId: string };
-
 const BUCKET = "documentos";
-
-/* -------------------------------------------------------------------------- */
-/*                               Helpers (path)                               */
-/* -------------------------------------------------------------------------- */
-
-/** Normaliza segmentos (remove acentos, espaços → '-', só [a-z0-9._-]) */
-function toSafeSegment(input: string, fallback = "item"): string {
-  if (!input) return fallback;
-  let s = input.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-  s = s.replace(/\s+/g, "-");
-  s = s.replace(/[^a-zA-Z0-9._-]/g, "-");
-  s = s.replace(/-+/g, "-").replace(/\.+/g, ".");
-  s = s.toLowerCase().replace(/^[-.]+|[-.]+$/g, "");
-  return s || fallback;
-}
-
-/** Gera nome de ficheiro seguro preservando extensão */
-function toSafeFilename(name: string, fallback = "ficheiro.bin"): string {
-  if (!name) return fallback;
-  const idx = name.lastIndexOf(".");
-  if (idx <= 0 || idx === name.length - 1) {
-    const base = toSafeSegment(name);
-    return base.includes(".") ? base : `${base}.bin`;
-  }
-  const base = toSafeSegment(name.slice(0, idx)) || "ficheiro";
-  const ext = toSafeSegment(name.slice(idx + 1)) || "bin";
-  return `${base}.${ext}`;
-}
-
-/** Junta segmentos sem // e sem / inicial/final */
-function joinPath(...parts: Array<string | undefined | null>): string {
-  const cleaned = parts
-    .filter(Boolean)
-    .map((p) => String(p).replace(/^\/+|\/+$/g, ""))
-    .filter((p) => p.length > 0);
-  return cleaned.join("/");
-}
 
 /* -------------------------------------------------------------------------- */
 /*                                  Upload                                    */
@@ -83,6 +38,7 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
   if (!userId) throw new Error("uploadDoc: userId em falta");
   if (!file) throw new Error("uploadDoc: file em falta");
 
+  // ——— Modo que já funcionava no Android (replicado p/ Sócio):
   const tipoSafe = toSafeSegment(args.tipo || "tipo");
   const fileSafe = toSafeFilename(file.name);
   const ts = Date.now();
@@ -99,7 +55,7 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
   const up = await supabase.storage.from(BUCKET).upload(storagePath, file, {
     cacheControl: "3600",
     upsert: false,
-    contentType: file.type || undefined,
+    contentType: file.type || "application/octet-stream",
   });
   if (up.error) {
     throw new Error(`Storage upload falhou: ${up.error.message}`);
@@ -145,20 +101,40 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
   }
   const current = sel.data as DocumentoRow;
 
-  // 2) Substituir no mesmo path (upsert)
-  const up = await supabase.storage.from(BUCKET).upload(current.path, file, {
-    upsert: true,
+  // 2) Construir NOVA key “segura” (evita Invalid key se a key antiga tiver acentos/espaços)
+  const tipoSafe = toSafeSegment(current.doc_tipo || "tipo");
+  const fileSafe = toSafeFilename(file.name);
+  const ts = Date.now();
+
+  const base =
+    current.doc_nivel === "socio"
+      ? joinPath(current.user_id, "socio", tipoSafe)
+      : joinPath(current.user_id, "atleta", current.atleta_id || "", tipoSafe);
+
+  const newPath = joinPath(base, `${ts}_${fileSafe}`);
+
+  // 3) Upload para a nova key
+  const up = await supabase.storage.from(BUCKET).upload(newPath, file, {
+    upsert: false,
     cacheControl: "3600",
-    contentType: file.type || undefined,
+    contentType: file.type || "application/octet-stream",
   });
   if (up.error) {
-    throw new Error(`Storage replace falhou: ${up.error.message}`);
+    throw new Error(`Storage replace (nova key) falhou: ${up.error.message}`);
   }
 
-  // 3) Atualizar metadados
+  // 4) Remover a key antiga (ignora "not found")
+  const rm = await supabase.storage.from(BUCKET).remove([current.path]);
+  if (rm.error && rm.error.message && !/Object not found/i.test(rm.error.message)) {
+    console.warn("[replaceDoc] remove antigo falhou:", rm.error.message);
+  }
+
+  // 5) Atualizar metadados + path
   const upd = await supabase
     .from("documentos")
     .update({
+      file_path: newPath,
+      path: newPath,
       nome: file.name,
       mime_type: file.type || null,
       file_size: file.size ?? null,
@@ -206,10 +182,10 @@ export async function deleteDoc(id: string): Promise<void> {
 /*                                   List                                     */
 /* -------------------------------------------------------------------------- */
 
-export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
+export async function listDocs(args: { nivel: "socio"; userId: string } | { nivel: "atleta"; userId: string; atletaId: string }): Promise<DocumentoRow[]> {
   let query = supabase.from("documentos").select("*").eq("user_id", (args as any).userId);
 
-  if (args.nivel === "socio") {
+  if ((args as any).nivel === "socio") {
     query = query.eq("doc_nivel", "socio").is("atleta_id", null);
   } else {
     query = query.eq("doc_nivel", "atleta").eq("atleta_id", (args as any).atletaId);
@@ -218,9 +194,7 @@ export async function listDocs(args: ListArgs): Promise<DocumentoRow[]> {
   query = query.order("doc_tipo", { ascending: true }).order("page", { ascending: true });
 
   const { data, error } = await query;
-  if (error) {
-    throw new Error(`SELECT public.documentos falhou: ${error.message}`);
-  }
+  if (error) throw new Error(`SELECT public.documentos falhou: ${error.message}`);
   return (data || []) as DocumentoRow[];
 }
 
