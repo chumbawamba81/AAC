@@ -25,7 +25,7 @@ import {
   type DocumentoRow,
 } from "../services/documentosService";
 
-import { useToast } from "./ui/use-toast"; // <= TOAST
+import { useToast } from "./ui/toaster"; // <= TOAST
 
 /** ⚠️ Nesta UI não mostramos os comprovativos de inscrição:
  *  - Sócio: "Comprovativo de pagamento de sócio"
