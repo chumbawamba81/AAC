@@ -1817,7 +1817,21 @@ function AtletasSection({
 
 export default function App() {
   const [state, setState] = useState<State>(loadState());
-  const [activeTab, setActiveTab] = useState<string>("home");
+// persiste o separador ativo entre reloads / regresso do Android
+const LS_ACTIVE_TAB = "bb_active_tab_v1";
+const [activeTab, setActiveTab] = useState<string>(() => {
+  try {
+    return localStorage.getItem(LS_ACTIVE_TAB) || "home";
+  } catch {
+    return "home";
+  }
+});
+useEffect(() => {
+  try {
+    localStorage.setItem(LS_ACTIVE_TAB, activeTab);
+  } catch {}
+}, [activeTab]);
+
   const [postSavePrompt, setPostSavePrompt] = useState(false);
   const [syncing, setSyncing] = useState<boolean>(true);
 
@@ -1929,46 +1943,54 @@ export default function App() {
           </div>
         ) : (
           <>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList>
-                <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
-                {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
-                {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
-                {hasPerfil && hasAtletas && <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>}
-              </TabsList>
+            <Tabs key={activeTab} defaultValue={activeTab}>
+  <TabsList>
+    <TabsTrigger value="home" onClick={() => setActiveTab("home")}>
+      {mainTabLabel}
+    </TabsTrigger>
 
-              <TabsContent value="home">
-                <DadosPessoaisSection
-                  state={state}
-                  setState={setState}
-                  onAfterSave={afterSavePerfil}
-                  goTesouraria={() => setActiveTab("tes")}
-                />
-              </TabsContent>
+    {hasPerfil && (
+      <TabsTrigger value="atletas" onClick={() => setActiveTab("atletas")}>
+        Atletas
+      </TabsTrigger>
+    )}
 
-              {hasPerfil && (
-                <TabsContent value="atletas">
-                  <AtletasSection state={state} setState={setState} onOpenForm={openAthForm} />
-                </TabsContent>
-              )}
+    {hasPerfil && (
+      <TabsTrigger value="docs" onClick={() => setActiveTab("docs")}>
+        Documentos
+      </TabsTrigger>
+    )}
 
-              {hasPerfil && (
-                <TabsContent value="docs">
-                  <TemplatesDownloadSection />
-                  <UploadDocsSection
-                    state={state}
-                    setState={(s: State) => setState(s)}
-                    hideSocioDoc={!wantsSocio(state.perfil?.tipoSocio)}
-                  />
-                </TabsContent>
-              )}
+    {hasPerfil && hasAtletas && (
+      <TabsTrigger value="tes" onClick={() => setActiveTab("tes")}>
+        Situação de Tesouraria
+      </TabsTrigger>
+    )}
+  </TabsList>
 
-              {hasPerfil && hasAtletas && (
-                <TabsContent value="tes">
-                  <PagamentosSection state={state} />
-                </TabsContent>
-              )}
-            </Tabs>
+  <TabsContent value="home">
+    {/* …igual ao teu… */}
+  </TabsContent>
+
+  {hasPerfil && (
+    <TabsContent value="atletas">
+      {/* … */}
+    </TabsContent>
+  )}
+
+  {hasPerfil && (
+    <TabsContent value="docs">
+      {/* … */}
+    </TabsContent>
+  )}
+
+  {hasPerfil && hasAtletas && (
+    <TabsContent value="tes">
+      {/* … */}
+    </TabsContent>
+  )}
+</Tabs>
+
           </>
         )}
       </AuthGate>
