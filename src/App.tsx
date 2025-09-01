@@ -75,7 +75,7 @@ import FilePickerButton from "./components/FilePickerButton";
 import { supabase } from "./supabaseClient";
 
 // Mini-toast + filename helper
-import { useMiniToast, inferFileName } from "./components/minitoast";
+import { useMiniToast, inferFileName } from "./components/MiniToast";
 
 /* -------------------- Constantes locais -------------------- */
 const DOCS_ATLETA = [
