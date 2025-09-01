@@ -484,8 +484,8 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
   className="underline inline-flex items-center gap-1"
 >
   <LinkIcon className="h-4 w-4" />
-  <span className="inline-block max-w-[240px] truncate" title={row.nome || "ficheiro"}>
-    {row.nome || "ficheiro"}
+    <span className="inline-block max-w-[240px] truncate" title={row.nome || "ficheiro"}>
+  {row.nome || "ficheiro"}
   </span>
 </a>
 
@@ -598,9 +598,9 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
   className="underline inline-flex items-center gap-1"
 >
   <LinkIcon className="h-4 w-4" />
-  <span className="inline-block max-w-[240px] truncate" title={row.nome || "ficheiro"}>
-    {row.nome || "ficheiro"}
-  </span>
+<span className="inline-block max-w-[240px] truncate" title={row.nome || "ficheiro"}>
+  {row.nome || "ficheiro"}
+</span>
 </a>
 
                                 </div>

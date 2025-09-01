@@ -1831,7 +1831,6 @@ useEffect(() => {
     localStorage.setItem(LS_ACTIVE_TAB, activeTab);
   } catch {}
 }, [activeTab]);
-
   const [postSavePrompt, setPostSavePrompt] = useState(false);
   const [syncing, setSyncing] = useState<boolean>(true);
 
@@ -1943,54 +1942,56 @@ useEffect(() => {
           </div>
         ) : (
           <>
-            <Tabs key={activeTab} defaultValue={activeTab}>
+            <Tabs
+  key={activeTab}
+  defaultValue={activeTab}
+  onValueChange={(v) => {
+    // v é o value do separador selecionado
+    setActiveTab(v as string);
+    try {
+      localStorage.setItem(LS_ACTIVE_TAB, v as string);
+    } catch {}
+  }}
+>
   <TabsList>
-    <TabsTrigger value="home" onClick={() => setActiveTab("home")}>
-      {mainTabLabel}
-    </TabsTrigger>
-
-    {hasPerfil && (
-      <TabsTrigger value="atletas" onClick={() => setActiveTab("atletas")}>
-        Atletas
-      </TabsTrigger>
-    )}
-
-    {hasPerfil && (
-      <TabsTrigger value="docs" onClick={() => setActiveTab("docs")}>
-        Documentos
-      </TabsTrigger>
-    )}
-
-    {hasPerfil && hasAtletas && (
-      <TabsTrigger value="tes" onClick={() => setActiveTab("tes")}>
-        Situação de Tesouraria
-      </TabsTrigger>
-    )}
+    <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
+    {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
+    {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
+    {hasPerfil && hasAtletas && <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>}
   </TabsList>
 
   <TabsContent value="home">
-    {/* …igual ao teu… */}
+    <DadosPessoaisSection
+      state={state}
+      setState={setState}
+      onAfterSave={afterSavePerfil}
+      goTesouraria={() => setActiveTab("tes")}
+    />
   </TabsContent>
 
   {hasPerfil && (
     <TabsContent value="atletas">
-      {/* … */}
+      <AtletasSection state={state} setState={setState} onOpenForm={openAthForm} />
     </TabsContent>
   )}
 
   {hasPerfil && (
     <TabsContent value="docs">
-      {/* … */}
+      <TemplatesDownloadSection />
+      <UploadDocsSection
+        state={state}
+        setState={(s: State) => setState(s)}
+        hideSocioDoc={!wantsSocio(state.perfil?.tipoSocio)}
+      />
     </TabsContent>
   )}
 
   {hasPerfil && hasAtletas && (
     <TabsContent value="tes">
-      {/* … */}
+      <PagamentosSection state={state} />
     </TabsContent>
   )}
 </Tabs>
-
           </>
         )}
       </AuthGate>
