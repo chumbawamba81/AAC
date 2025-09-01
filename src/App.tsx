@@ -76,6 +76,7 @@ import { supabase } from "./supabaseClient";
 
 // Mini-toast + filename helper
 import { useMiniToast, inferFileName } from "./components/MiniToast";
+import { MiniToastPortal } from "./components/minitoast";
 
 /* -------------------- Constantes locais -------------------- */
 const DOCS_ATLETA = [
@@ -103,6 +104,7 @@ export type State = {
 };
 
 const LS_KEY = "bb_app_payments_v1";
+const LS_TAB = "bb_active_tab_v1";
 
 /* -------------------- Helpers -------------------- */
 function isPasswordStrong(p: string) {
@@ -1777,6 +1779,16 @@ function AtletasSection({
 export default function App() {
   const [state, setState] = useState<State>(loadState());
   const [activeTab, setActiveTab] = useState<string>("home");
+  // Restaurar última tab usada (evita voltar ao "home" após abrir o picker externo)
+useEffect(() => {
+  const saved = localStorage.getItem(LS_TAB);
+  if (saved) setActiveTab(saved);
+}, []);
+// Guardar sempre que a tab muda
+useEffect(() => {
+  localStorage.setItem(LS_TAB, activeTab);
+}, [activeTab]);
+
   const [postSavePrompt, setPostSavePrompt] = useState(false);
   const [syncing, setSyncing] = useState<boolean>(true);
 
@@ -1888,7 +1900,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            <Tabs key={activeTab} defaultValue={activeTab}>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList>
                 <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
                 {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
@@ -1998,6 +2010,7 @@ export default function App() {
           <Mail className="h-6 w-6" />
         </a>
       </div>
+	  <MiniToastPortal />
     </div>
   );
 }
