@@ -1818,6 +1818,7 @@ function AtletasSection({
 export default function App() {
   const [state, setState] = useState<State>(loadState());
 // persiste o separador ativo entre reloads / regresso do Android
+// persiste o separador ativo entre reloads / retorno do Android
 const LS_ACTIVE_TAB = "bb_active_tab_v1";
 const [activeTab, setActiveTab] = useState<string>(() => {
   try {
@@ -1826,6 +1827,12 @@ const [activeTab, setActiveTab] = useState<string>(() => {
     return "home";
   }
 });
+useEffect(() => {
+  try {
+    localStorage.setItem(LS_ACTIVE_TAB, activeTab);
+  } catch {}
+}, [activeTab]);
+
 useEffect(() => {
   try {
     localStorage.setItem(LS_ACTIVE_TAB, activeTab);
@@ -1942,22 +1949,49 @@ useEffect(() => {
           </div>
         ) : (
           <>
-            <Tabs
-  key={activeTab}
-  defaultValue={activeTab}
-  onValueChange={(v) => {
-    // v é o value do separador selecionado
-    setActiveTab(v as string);
-    try {
-      localStorage.setItem(LS_ACTIVE_TAB, v as string);
-    } catch {}
-  }}
->
+            <Tabs key={activeTab} defaultValue={activeTab}>
   <TabsList>
-    <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
-    {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
-    {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
-    {hasPerfil && hasAtletas && <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>}
+    <div
+      onClick={() => {
+        setActiveTab("home");
+        try { localStorage.setItem(LS_ACTIVE_TAB, "home"); } catch {}
+      }}
+    >
+      <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
+    </div>
+
+    {hasPerfil && (
+      <div
+        onClick={() => {
+          setActiveTab("atletas");
+          try { localStorage.setItem(LS_ACTIVE_TAB, "atletas"); } catch {}
+        }}
+      >
+        <TabsTrigger value="atletas">Atletas</TabsTrigger>
+      </div>
+    )}
+
+    {hasPerfil && (
+      <div
+        onClick={() => {
+          setActiveTab("docs");
+          try { localStorage.setItem(LS_ACTIVE_TAB, "docs"); } catch {}
+        }}
+      >
+        <TabsTrigger value="docs">Documentos</TabsTrigger>
+      </div>
+    )}
+
+    {hasPerfil && hasAtletas && (
+      <div
+        onClick={() => {
+          setActiveTab("tes");
+          try { localStorage.setItem(LS_ACTIVE_TAB, "tes"); } catch {}
+        }}
+      >
+        <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>
+      </div>
+    )}
   </TabsList>
 
   <TabsContent value="home">
