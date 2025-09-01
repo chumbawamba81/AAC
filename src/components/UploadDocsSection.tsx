@@ -1,4 +1,4 @@
-// src/App.tsx
+// src/components/UploadDocsSection.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
@@ -25,367 +25,98 @@ import {
   type DocumentoRow,
 } from "../services/documentosService";
 
-// (se fores usar os toasts aqui — recomendado)
-import { showToast } from "./MiniToast";
+/** ⚠️ Nesta UI não mostramos os comprovativos de inscrição:
+ *  - Sócio: "Comprovativo de pagamento de sócio"
+ *  - Atleta: "Comprovativo de pagamento de inscrição"
+ *  porque vivem em “Situação de Tesouraria”.
+ */
+const DOCS_SOCIO_UI = ["Ficha de Sócio"] as const;
+const DOCS_ATLETA_UI = [
+  "Ficha de sócio de atleta",
+  "Ficha de jogador FPB",
+  "Termo de responsabilidade",
+  "Exame médico",
+] as const;
 
+type DocSocioUI = (typeof DOCS_SOCIO_UI)[number];
+type DocAtletaUI = (typeof DOCS_ATLETA_UI)[number];
 
-/* -------------------- Constantes -------------------- */
-const DOCS_ATLETA = ["Ficha de sócio de atleta", "Ficha de jogador FPB", "Termo de responsabilidade", "Exame médico"] as const;
-const DOCS_SOCIO = ["Ficha de Sócio"] as const;
-
-type Conta = { email: string };
-type UploadMeta = { name: string; dataUrl: string; uploadedAt: string };
-
-export type State = {
-  conta: Conta | null;
-  perfil: PessoaDados | null;
-  atletas: Atleta[];
-  docsSocio: Partial<Record<(typeof DOCS_SOCIO)[number], UploadMeta>>;
-  docsAtleta: Record<string, Partial<Record<(typeof DOCS_ATLETA)[number], UploadMeta>>>;
-  pagamentos: Record<string, Array<UploadMeta | null>>;
-  tesouraria?: string;
-  noticias?: string;
-  verificationPendingEmail?: string | null;
-};
-
-const LS_KEY = "bb_app_payments_v1";
-
-/* -------------------- Helpers -------------------- */
-function isPasswordStrong(p: string) {
-  const lengthOk = p.length >= 8;
-  const hasUpper = /[A-Z]/.test(p);
-  const hasLower = /[a-z]/.test(p);
-  const hasDigit = /\d/.test(p);
-  const hasSpecial = /[^A-Za-z0-9]/.test(p);
-  return { ok: lengthOk && hasUpper && hasLower && hasDigit && hasSpecial, lengthOk, hasUpper, hasLower, hasDigit, hasSpecial };
-}
-function wantsSocio(tipo?: string | null) {
-  return !!tipo && !/não\s*pretendo\s*ser\s*sócio/i.test(tipo);
-}
-function isPessoaDados(x: any): x is PessoaDados {
-  return x && typeof x === "object" && typeof x.nomeCompleto === "string" && typeof x.dataNascimento === "string" && typeof x.email === "string";
-}
-function normalizePessoaDados(x: any, fallbackEmail?: string): PessoaDados {
-  if (isPessoaDados(x)) return x;
-  return {
-    nomeCompleto: x?.nomeCompleto ?? "",
-    tipoSocio: x?.tipoSocio ?? "Não pretendo ser sócio",
-    dataNascimento: x?.dataNascimento ?? "",
-    morada: x?.morada ?? "",
-    codigoPostal: x?.codigoPostal ?? "",
-    tipoDocumento: x?.tipoDocumento ?? "Cartão de cidadão",
-    numeroDocumento: x?.numeroDocumento ?? "",
-    nif: x?.nif ?? "",
-    telefone: x?.telefone ?? "",
-    email: x?.email ?? fallbackEmail ?? "",
-    profissao: x?.profissao ?? "",
-  };
-}
-function isFutureISODate(s: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const d = new Date(s + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return d.getTime() > today.getTime();
-}
-function isTipoSocio(tipo?: string | null) {
-  return !!(tipo && !/não\s*pretendo/i.test(tipo));
-}
-
-/* --------- Helpers globais (render) --------- */
-export function isAnuidadeObrigatoria(escalao?: string | null) {
-  const s = (escalao || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const isMasters = s.includes("masters");
-  const isSub23 = /(sub|seniores)[^\d]*23/.test(s) || /sub[-\s]?23/.test(s);
-  return isMasters || isSub23;
-}
-function getSlotsForPlano(p: PlanoPagamento) {
-  return p === "Mensal" ? 10 : p === "Trimestral" ? 3 : 1;
-}
-function getPagamentoLabel(plano: PlanoPagamento, idx: number) {
-  if (plano === "Anual") return "Pagamento da anuidade";
-  if (plano === "Trimestral") return `Pagamento - ${idx + 1}º Trimestre`;
-  return `Pagamento - ${idx + 1}º Mês`;
-}
-function sep8OfCurrentYear(): string {
-  const y = new Date().getFullYear();
-  return `${y}-09-08`;
-}
-function sep30OfCurrentYear(): string {
-  const y = new Date().getFullYear();
-  return `${y}-09-30`;
-}
-
-/* -------------------- Persistência local -------------------- */
-function loadState(): State {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) {
-      return {
-        conta: null,
-        perfil: null,
-        atletas: [],
-        docsSocio: {},
-        docsAtleta: {},
-        pagamentos: {},
-        tesouraria: "Campo em atualização",
-        noticias: "",
-        verificationPendingEmail: null,
-      };
-    }
-    const s = JSON.parse(raw);
-    const conta: Conta | null = s?.conta && typeof s.conta.email === "string" ? { email: s.conta.email } : null;
-    const perfil: PessoaDados | null = s?.perfil ? normalizePessoaDados(s.perfil, conta?.email) : null;
-
-    return {
-      conta,
-      perfil,
-      atletas: Array.isArray(s.atletas) ? s.atletas : [],
-      docsSocio: s.docsSocio ?? {},
-      docsAtleta: s.docsAtleta ?? {},
-      pagamentos: s.pagamentos ?? {},
-      tesouraria: s.tesouraria ?? "Campo em atualização",
-      noticias: s.noticias ?? "",
-      verificationPendingEmail: s.verificationPendingEmail ?? null,
-    };
-  } catch {
-    return {
-      conta: null,
-      perfil: null,
-      atletas: [],
-      docsSocio: {},
-      docsAtleta: {},
-      pagamentos: {},
-      tesouraria: "Campo em atualização",
-      noticias: "",
-      verificationPendingEmail: null,
-    };
-  }
-}
-function saveState(s: State) {
-  localStorage.setItem(LS_KEY, JSON.stringify(s));
-}
-
-/* ------------------------------ ContaSection ------------------------------ */
-// (sem alterações relevantes – mantive igual ao teu)
-function PasswordChecklist({ pass }: { pass: string }) {
-  const v = isPasswordStrong(pass);
-  const Item = ({ ok, text }: { ok: boolean; text: string }) => (
-    <div className="flex items-center gap-2 text-sm">
-      {ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-      <span className={ok ? "" : "text-red-600"}>{text}</span>
-    </div>
-  );
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      <Item ok={v.lengthOk} text="Mínimo 8 caracteres" />
-      <Item ok={v.hasUpper} text="Pelo menos 1 letra maiúscula" />
-      <Item ok={v.hasLower} text="Pelo menos 1 letra minúscula" />
-      <Item ok={v.hasDigit} text="Pelo menos 1 dígito" />
-      <Item ok={v.hasSpecial} text="Pelo menos 1 especial" />
-    </div>
-  );
-}
-
-function ContaSection({
-  state,
-  setState,
-  onLogged,
-}: {
+type Props = {
   state: State;
   setState: React.Dispatch<React.SetStateAction<State>>;
-  onLogged: () => void;
-}) {
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState(state.conta?.email || "");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [remember, setRemember] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  const [info, setInfo] = useState<string | undefined>();
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
+  /** Quando true, não mostra a Ficha de Sócio e apresenta a mensagem de “Sem documentos…” */
+  hideSocioDoc?: boolean;
+};
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      if (data.session) {
-        const { data: u } = await supabase.auth.getUser();
-        const next: State = { ...state, conta: u?.user?.email ? { email: u.user.email } : state.conta };
-        setState(next);
-        saveState(next);
-        onLogged();
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []); // eslint-disable-line
-
-  async function submit(ev: React.FormEvent) {
-    ev.preventDefault();
-    setError(undefined);
-    setInfo(undefined);
-    if (mode === "register") {
-      if (password !== confirmPassword) {
-        setError("As palavras-passe não coincidem.");
-        return;
-      }
-      const chk = isPasswordStrong(password);
-      if (!chk.ok) {
-        setError("A palavra-passe não cumpre os requisitos.");
-        return;
-      }
-      try {
-        setLoading(true);
-        await signUp(email, password);
-        const next: State = { ...state, verificationPendingEmail: email, conta: { email } };
-        setState(next);
-        saveState(next);
-        setInfo("Registo efetuado. Verifique o seu email para validar a conta.");
-      } catch (e: any) {
-        setError(e.message || "Erro no registo");
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const data = await signIn(email, password);
-      await supabase.auth.getSession();
-      if (!data?.session?.access_token) throw new Error("Sessão inválida. Verifique o email de confirmação.");
-      const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
-      setState(next);
-      saveState(next);
-      onLogged();
-    } catch (e: any) {
-      setError(e.message || "Erro de autenticação");
-    } finally {
-      setLoading(false);
-    }
+function groupByTipo(rows: DocumentoRow[]) {
+  const map = new Map<string, DocumentoRow[]>();
+  for (const r of rows) {
+    const arr = map.get(r.doc_tipo) || [];
+    arr.push(r);
+    map.set(r.doc_tipo, arr);
   }
-
-  async function submitForgot(ev: React.FormEvent) {
-    ev.preventDefault();
-    setError(undefined);
-    setInfo(undefined);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail || email);
-      if (error) throw error;
-      setInfo("Se o email existir, foi enviado um link de recuperação.");
-      setForgotOpen(false);
-    } catch (e: any) {
-      setError(e.message || "Não foi possível enviar o email de recuperação");
-    }
+  for (const [k, arr] of map) {
+    arr.sort((a, b) => (a.page ?? 0) - (b.page ?? 0));
+    map.set(k, arr);
   }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {mode === "register" ? <UserPlus className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
-          {mode === "register" ? "Criar conta" : "Entrar"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {state.verificationPendingEmail && (
-          <div className="mb-3 rounded-lg bg-blue-50 text-blue-900 text-sm p-2">
-            Registo efetuado para <strong>{state.verificationPendingEmail}</strong>. Verifique o seu email para validar a conta.
-          </div>
-        )}
-        <form className="space-y-4" onSubmit={submit}>
-          <div className="space-y-1">
-            <Label>Email</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div className="space-y-1">
-            <Label>
-              Palavra-passe {mode === "register" && <span className="text-xs text-gray-500">(requisitos abaixo)</span>}
-            </Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            {mode === "register" && <PasswordChecklist pass={password} />}
-          </div>
-
-          {mode === "register" && (
-            <div className="space-y-1">
-              <Label>Repetir palavra-passe *</Label>
-              <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-              Manter sessão iniciada
-            </label>
-            <button
-              type="button"
-              className="text-sm underline"
-              onClick={() => {
-                setForgotEmail(email);
-                setForgotOpen(true);
-              }}
-            >
-              Recuperar palavra-passe
-            </button>
-          </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {info && <p className="text-sm text-green-700">{info}</p>}
-          <div className="flex items-center justify-between">
-            <Button type="submit" disabled={loading}>
-              {loading ? "Aguarde..." : mode === "register" ? "Registar" : "Entrar"}
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => { setMode((m) => (m === "register" ? "login" : "register")); setConfirmPassword(""); }}>
-              {mode === "register" ? "Já tenho conta" : "Criar conta"}
-            </Button>
-          </div>
-          <div className="mt-2 text-xs text-gray-500 flex items-start gap-2">
-            <Shield className="h-4 w-4 mt-[2px]" />
-            <p>Produção: hash Argon2id, cookies httpOnly, sessão, rate limiting, MFA.</p>
-          </div>
-        </form>
-
-        <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Recuperar palavra-passe</DialogTitle>
-            </DialogHeader>
-            <form className="space-y-3" onSubmit={submitForgot}>
-              <div className="space-y-1">
-                <Label>Email</Label>
-                <Input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={() => setForgotOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit">Enviar link</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </CardContent>
-    </Card>
-  );
+  return map;
 }
 
-/* ---------------------------- DadosPessoaisSection ---------------------------- */
-// (mantido igual ao teu; omitido aqui para poupar espaço)
-// …………………………………………………………………………………………………………………………………………………………………………
+/* ======================= Normalização de nomes ======================= */
+/** Normaliza o nome do ficheiro para evitar erros de “Invalid key” em Storage:
+ *  - remove acentos/cedilha via NFD
+ *  - substitui espaços por "_"
+ *  - mantém só [a-z0-9._-]
+ *  - força minúsculas
+ *  - preserva extensão
+ *  - limita comprimento
+ */
+function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
+  const dot = originalName.lastIndexOf(".");
+  const rawBase = dot > 0 ? originalName.slice(0, dot) : originalName;
+  const rawExt = dot > 0 ? originalName.slice(dot + 1) : "";
 
-/* ---------------------------- PagamentosSection --------------------------- */
-function PagamentosSection({ state }: { state: State }) {
+  const base = rawBase
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove diacríticos
+    .replace(/\s+/g, "_")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "");
+
+  const safeBase = (base || "ficheiro").slice(0, maxBaseLen);
+  const ext = rawExt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+  return ext ? `${safeBase}.${ext}` : safeBase;
+}
+
+/** Recria um File com nome “limpo”, mantendo conteúdo e tipo. */
+async function withSafeName(file: File): Promise<File> {
+  const safeName = sanitizeFileName(file.name);
+  if (safeName === file.name) return file;
+  const buf = await file.arrayBuffer();
+  return new File([new Uint8Array(buf)], safeName, {
+    type: file.type || "application/octet-stream",
+    lastModified: file.lastModified,
+  });
+}
+
+export default function UploadDocsSection({ state, setState, hideSocioDoc }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
-  const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
-  const [socioRows, setSocioRows] = useState<PagamentoRowWithUrl[]>([]);
-  const [athleteInscricao, setAthleteInscricao] = useState<Record<string, PagamentoRowWithUrl | null>>({});
-  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [diagMsg, setDiagMsg] = useState<string>("");
+
+  const [socioDocs, setSocioDocs] = useState<Map<string, DocumentoRow[]>>(new Map());
+  const [athDocs, setAthDocs] = useState<Record<string, Map<string, DocumentoRow[]>>>({});
+
+  const socioPickersRef = useRef<Record<string, HTMLInputElement | null>>({});
+  const replacePickersRef = useRef<Record<string, HTMLInputElement | null>>({});
+  const atletaPickersRef = useRef<Record<string, Record<string, HTMLInputElement | null>>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -403,509 +134,500 @@ function PagamentosSection({ state }: { state: State }) {
     };
   }, []);
 
-  const isSocio = (t?: string | null) => wantsSocio(t);
-
-  const refreshPayments = useCallback(async () => {
+  async function refreshAll() {
     if (!userId) return;
+    setLoading(true);
+    try {
+      // Sócio
+      const socioRows = await listDocs({ nivel: "socio", userId });
+      const socioWithUrls = await withSignedUrls(socioRows);
+      setSocioDocs(groupByTipo(socioWithUrls));
 
-    if (isSocio(state.perfil?.tipoSocio)) {
-      await createInscricaoSocioIfMissing(userId);
-      const socio = await listSocioInscricao(userId);
-      setSocioRows(await withSignedUrlsPagamentos(socio));
-    } else {
-      setSocioRows([]);
-      try {
-        await deleteSocioInscricaoIfAny(userId);
-      } catch {}
-    }
-
-    const inscrNext: Record<string, PagamentoRowWithUrl | null> = {};
-    const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
-    for (const a of state.atletas) {
-      const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-      const slots = getSlotsForPlano(planoEfetivo);
-      const labels = Array.from({ length: slots }, (_, i) => getPagamentoLabel(planoEfetivo, i));
-      const rows = await listPagamentosByAtleta(a.id);
-      const rowsWithUrl = await withSignedUrlsPagamentos(rows);
-
-      const byDesc = new Map<string, PagamentoRowWithUrl[]>();
-      for (const r of rowsWithUrl) {
-        const arr = byDesc.get(r.descricao) || [];
-        arr.push(r);
-        byDesc.set(r.descricao, arr);
+      // Atletas
+      const nextAth: Record<string, Map<string, DocumentoRow[]>> = {};
+      for (const a of state.atletas) {
+        const rows = await listDocs({ nivel: "atleta", userId, atletaId: a.id });
+        const withUrls = await withSignedUrls(rows);
+        nextAth[a.id] = groupByTipo(withUrls);
       }
-
-      const inscrArr = rowsWithUrl.filter(
-        (r) => (r as any).tipo === "inscricao" || (r.descricao || "").toLowerCase() === "taxa de inscrição"
-      );
-      inscrArr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-      inscrNext[a.id] = inscrArr[0] || null;
-
-      next[a.id] = labels.map((lab) => {
-        const arr = byDesc.get(lab) || [];
-        if (arr.length === 0) return null;
-        arr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
-        return arr[0];
-      });
+      setAthDocs(nextAth);
+    } catch (e: any) {
+      console.error("[refreshAll]", e);
+      alert(`Falha ao carregar documentos: ${e?.message || e}`);
+    } finally {
+      setLoading(false);
     }
-    setPayments(next);
-    setAthleteInscricao(inscrNext);
-  }, [userId, state.atletas, state.perfil?.tipoSocio]);
+  }
 
   useEffect(() => {
-    refreshPayments();
-  }, [refreshPayments]);
+    refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, state.atletas.map((a) => a.id).join(",")]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel("rt-pagamentos")
-      .on("postgres_changes", { event: "*", schema: "public", table: "pagamentos" }, (payload) => {
-        const newAth = (payload as any)?.new?.atleta_id;
-        const oldAth = (payload as any)?.old?.atleta_id;
-        const ids = new Set(state.atletas.map((a) => a.id));
-        if (ids.has(newAth) || ids.has(oldAth)) refreshPayments();
-        if (!newAth && !oldAth) refreshPayments(); // socio
-      })
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [state.atletas, refreshPayments]);
+  const socioMissingCount = useMemo(() => {
+    if (hideSocioDoc) return 0; // sem documentos de sócio quando “Não pretendo ser sócio”
+    let miss = 0;
+    for (const t of DOCS_SOCIO_UI) {
+      if (!socioDocs.get(t)?.length) miss++;
+    }
+    return miss;
+  }, [socioDocs, hideSocioDoc]);
 
-  function isOverdue(row: PagamentoRowWithUrl | null): boolean {
-    if (!row || row.validado) return false;
-    const due = row.devido_em || sep8OfCurrentYear();
-    const dt = new Date(due + "T23:59:59");
-    return new Date().getTime() > dt.getTime();
-  }
+  /* ======================= Upload Many ======================= */
 
-  async function handleUpload(athlete: Atleta, idx: number, file: File) {
-    if (!userId || !file) {
-      showToast("Sessão ou ficheiro em falta", "err");
+  async function handleUploadSocioMany(tipo: DocSocioUI, filesList: FileList | null) {
+    if (!userId || !filesList || filesList.length === 0) {
+      alert("Sessão ou ficheiros em falta");
       return;
     }
-    setBusy(true);
+    setLoading(true);
     try {
-      const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
-      const label = getPagamentoLabel(planoEfetivo, idx);
-      await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file });
-      await refreshPayments();
-      showToast("Comprovativo carregado com sucesso");
+      const current = socioDocs.get(tipo) || [];
+      const start = current.length + 1;
+      const files = Array.from(filesList);
+      for (let i = 0; i < files.length; i++) {
+        // ➜ normaliza o nome antes de enviar
+        const safe = await withSafeName(files[i]);
+        await uploadDoc({
+          nivel: "socio",
+          userId,
+          tipo,
+          file: safe,
+          mode: "new",
+          page: start + i,
+        });
+      }
+      await refreshAll();
+      alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
-      showToast(e?.message || "Falha no upload", "err");
+      console.error("[upload socio many]", e);
+      alert(`Falha no upload (sócio): ${e?.message || e}`);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
-  // >>>> INSCRIÇÃO DE ATLETA — usa o MESMO picker (accept por defeito), + toast
-  async function handleUploadInscricao(athlete: Atleta, file: File) {
-    if (!userId || !file) {
-      showToast("Sessão ou ficheiro em falta", "err");
+  async function handleUploadAtletaMany(atletaId: string, tipo: DocAtletaUI, filesList: FileList | null) {
+    if (!userId || !filesList || filesList.length === 0) {
+      alert("Sessão ou ficheiros em falta");
       return;
     }
-    setBusy(true);
+    setLoading(true);
     try {
-      await saveComprovativoInscricaoAtleta({ userId, atletaId: athlete.id, file });
-      await refreshPayments();
-      showToast("Comprovativo de inscrição carregado com sucesso");
+      const mapa = athDocs[atletaId] || new Map<string, DocumentoRow[]>();
+      const current = mapa.get(tipo) || [];
+      const start = current.length + 1;
+      const files = Array.from(filesList);
+      for (let i = 0; i < files.length; i++) {
+        const safe = await withSafeName(files[i]); // ➜ normaliza nome
+        await uploadDoc({
+          nivel: "atleta",
+          userId,
+          atletaId,
+          tipo,
+          file: safe,
+          mode: "new",
+          page: start + i,
+        });
+      }
+      await refreshAll();
+      alert(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
-      showToast(e?.message || "Falha no upload", "err");
+      console.error("[upload atleta many]", e);
+      alert(`Falha no upload (atleta): ${e?.message || e}`);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
-  async function handleDelete(athlete: Atleta, idx: number) {
-    const row = payments[athlete.id]?.[idx];
-    if (!row) return;
-    setBusy(true);
+  /* ======================= Replace / Delete ======================= */
+
+  async function handleReplace(row: DocumentoRow, file: File) {
+    if (!file) return;
+    setLoading(true);
     try {
-      await clearComprovativo(row);
-      await refreshPayments();
-      showToast("Comprovativo removido", "err");
+      const safe = await withSafeName(file); // ➜ normaliza nome
+      await replaceDoc(row.id, safe);
+      await refreshAll();
+      alert("Documento substituído.");
     } catch (e: any) {
-      showToast(e?.message || "Falha a remover", "err");
+      console.error("[replace]", e);
+      alert(`Falha a substituir: ${e?.message || e}`);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
-  async function handleUploadSocio(file: File) {
-    if (!userId || !file) {
-      showToast("Sessão ou ficheiro em falta", "err");
-      return;
-    }
-    setBusy(true);
+  async function handleDelete(row: DocumentoRow) {
+    if (!confirm("Apagar este ficheiro?")) return;
+    setLoading(true);
     try {
-      await saveComprovativoSocioInscricao(userId, file);
-      await refreshPayments();
-      showToast("Comprovativo de inscrição (sócio) carregado com sucesso");
+      await deleteDoc(row.id);
+      await refreshAll();
+      alert("Apagado.");
     } catch (e: any) {
-      showToast(e?.message || "Falha no upload", "err");
+      console.error("[delete]", e);
+      alert(`Falha a apagar: ${e?.message || e}`);
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
+
+  /* ======================= Diagnóstico opcional ======================= */
+
+  async function testStorage() {
+    try {
+      setDiagMsg("A testar Storage…");
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user?.id) throw new Error("Sem sessão");
+      const blob = new Blob(["hello"], { type: "text/plain" });
+      const file = new File([blob], "teste.txt", { type: "text/plain" });
+      const path = `${u.user.id}/socio/Teste/${Date.now()}_teste.txt`;
+      const up = await supabase.storage.from("documentos").upload(path, file, { upsert: false });
+      if (up.error) throw up.error;
+      const sig = await supabase.storage.from("documentos").createSignedUrl(path, 60);
+      if (sig.error) throw sig.error;
+      setDiagMsg("Storage + signed URL OK.");
+      alert("Storage OK ✅");
+    } catch (e: any) {
+      console.error("[diag storage]", e);
+      setDiagMsg(`Storage FAIL: ${e?.message || e}`);
+      alert(`Storage FAIL ❌: ${e?.message || e}`);
+    }
+  }
+
+  async function testTable() {
+    try {
+      setDiagMsg("A testar tabela…");
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user?.id) throw new Error("Sem sessão");
+      const row = {
+        user_id: u.user.id,
+        doc_nivel: "socio",
+        atleta_id: null,
+        doc_tipo: "Teste",
+        page: 1,
+        file_path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
+        path: `${u.user.id}/socio/Teste/${Date.now()}_dummy.txt`,
+        nome: "dummy.txt",
+        mime_type: "text/plain",
+        file_size: 5,
+        uploaded_at: new Date().toISOString(),
+      };
+      const ins = await supabase.from("documentos").insert(row).select("id").single();
+      if (ins.error) throw ins.error;
+      setDiagMsg("Tabela OK.");
+      alert("Tabela OK ✅");
+    } catch (e: any) {
+      console.error("[diag table]", e);
+      setDiagMsg(`Tabela FAIL: ${e?.message || e}`);
+      alert(`Tabela FAIL ❌: ${e?.message || e}`);
+    }
+  }
+
+  /* ======================= Render ======================= */
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Situação de Tesouraria
-          {busy && <RefreshCw className="h-4 w-4 animate-spin" />}
+          <FileUp className="h-5 w-5" />
+          Upload de Documentos {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
         </CardTitle>
       </CardHeader>
-
-      <CardContent className="space-y-6">
-        <div className="rounded-xl border bg-slate-50 p-3 text-sm text-gray-800">
-          Os pagamentos devem ser realizados até à data limite indicada, para o seguinte IBAN:
-          <strong className="ml-1">PT50 0036 0414 99106005021 95</strong>
-          <span className="ml-1">(Banco Montepio)</span>.
+      <CardContent className="space-y-8">
+        {/* ---- Aviso: comprovativos migrados ---- */}
+        <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
+          <div className="text-sm">
+            <p className="text-sm text-gray-700">
+              Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
+              para upload na secção <strong>Situação de Tesouraria</strong>.
+              <br />
+              <span className="text-gray-600">
+                Recomenda-se a utilização das aplicações de digitalização no smartphone, como as apps
+                <strong> Adobe Scan</strong>{" "}
+                <span className="whitespace-nowrap">
+                  (
+                  <a
+                    className="underline inline"
+                    href="https://play.google.com/store/apps/details?id=com.adobe.scan.android"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Adobe Scan (Android)"
+                  >
+                    Android
+                  </a>
+                  {" / "}
+                  <a
+                    className="underline inline"
+                    href="https://apps.apple.com/app/adobe-scan-pdf-scanner-ocr/id1199564834"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Adobe Scan (iOS)"
+                  >
+                    iOS
+                  </a>
+                  )
+                </span>
+                {" "}ou<strong> CamScanner</strong>{" "}
+                <span className="whitespace-nowrap">
+                  (
+                  <a
+                    className="underline inline"
+                    href="https://play.google.com/store/apps/details?id=com.intsig.camscanner"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="CamScanner (Android)"
+                  >
+                    Android
+                  </a>
+                  {" / "}
+                  <a
+                    className="underline inline"
+                    href="https://apps.apple.com/app/camscanner-pdf-scanner-app/id388627783"
+                    target="_blank"
+                    rel="noreferrer"
+                    title="CamScanner (iOS)"
+                  >
+                    iOS
+                  </a>
+                  )
+                </span>
+                , para garantir boa legibilidade dos documentos.
+              </span>
+            </p>
+          </div>
         </div>
 
-        {/* Sócio — Inscrição */}
-        {/* (mantido igual; só adicionámos toasts nos handlers) */}
+        {/* ---- DIAGNÓSTICO ---- */}
+        {/*        <div className="border rounded-lg p-3 bg-slate-50">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium">Diagnóstico rápido</div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={testStorage}>Testar Storage</Button>
+              <Button variant="outline" onClick={testTable}>Testar Tabela</Button>
+            </div>
+          </div>
+          {!!diagMsg && <div className="text-xs text-gray-600 mt-2">{diagMsg}</div>}
+        </div>
+        */}
+        {/* ---- SOCIO ---- */}
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="font-medium">
+              Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
+            </div>
 
-        {/* Atletas */}
-        {state.atletas.map((a) => {
-          const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
-          const est = estimateCosts({
-            escalao: a.escalao || "",
-            tipoSocio: state.perfil?.tipoSocio,
-            numAtletasAgregado: Math.max(1, state.atletas.filter((x) => !isAnuidadeObrigatoria(x.escalao)).length),
-            proRank:
-              state.atletas
-                .filter((x) => !isAnuidadeObrigatoria(x.escalao))
-                .sort((x, y) => new Date(x.dataNascimento).getTime() - new Date(y.dataNascimento).getTime())
-                .findIndex((x) => x.id === a.id) ?? undefined,
-          });
+            {socioMissingCount > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700">
+                <AlertCircle className="h-3 w-3" /> {socioMissingCount} doc(s) em falta
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-700">
+                <CheckCircle2 className="h-3 w-3" /> Sem documentos
+              </span>
+            )}
+          </div>
 
-          const onlyInscricao = isAnuidadeObrigatoria(a.escalao);
-          const slots = getSlotsForPlano(planoEfetivo);
-          const rows = payments[a.id] || Array.from({ length: slots }, () => null);
-          const amountForIdx = (idx: number) => (planoEfetivo === "Mensal" ? est.mensal10 : planoEfetivo === "Trimestral" ? est.trimestre3 : est.anual1);
-          const rowInscr = athleteInscricao[a.id] || null;
-          const overdueInscr = rowInscr?.devido_em ? new Date() > new Date(rowInscr.devido_em + "T23:59:59") : false;
+          {hideSocioDoc ? null : (
+            <div className="grid md:grid-cols-2 gap-3">
+              {DOCS_SOCIO_UI.map((tipo) => {
+                const files = socioDocs.get(tipo) || [];
+                return (
+                  <div key={tipo} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">
+                        {tipo}
+                        {state.perfil?.tipoSocio && tipo === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          ref={(el) => (socioPickersRef.current[tipo] = el)}
+                          type="file"
+                          accept="image/*,application/pdf"
+                          multiple
+                          className="hidden"
+                          onChange={async (e) => {
+                            const fs = e.target.files;
+                            // normaliza todos os nomes antes do upload
+                            if (fs && fs.length) {
+                              const arr = await Promise.all(Array.from(fs).map(withSafeName));
+                              const dt = new DataTransfer();
+                              arr.forEach((f) => dt.items.add(f));
+                              await handleUploadSocioMany(tipo, dt.files);
+                            } else {
+                              await handleUploadSocioMany(tipo, fs);
+                            }
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                        <Button variant="outline" onClick={() => socioPickersRef.current[tipo]?.click()}>
+                          <Plus className="h-4 w-4 mr-1" /> Adicionar
+                        </Button>
+                      </div>
+                    </div>
 
-          return (
-            <div key={a.id} className="border rounded-xl p-3">
-              <div className="mb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                <div className="font-medium">Atleta — {a.nomeCompleto}</div>
-                <div className="text-xs text-gray-500 sm:text-right">
-                  Plano: {onlyInscricao ? "Sem quotas (apenas inscrição)" : planoEfetivo}
-                  {isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""}
-                  {!onlyInscricao && <> · {slots} comprovativo(s)</>}
-                </div>
-              </div>
-
-              {/* Inscrição de atleta — usa FilePickerButton SEM sobrescrever accept */}
-              <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">Inscrição de Atleta — {eur(est.taxaInscricao)}</div>
-                  <div className="text-xs text-gray-500">
-                    {rowInscr?.comprovativo_url
-                      ? rowInscr.validado
-                        ? "Comprovativo validado"
-                        : overdueInscr
-                        ? "Comprovativo pendente (em atraso)"
-                        : "Comprovativo pendente"
-                      : overdueInscr
-                      ? "Comprovativo em falta (em atraso)"
-                      : "Comprovativo em falta"}
-                    {rowInscr?.devido_em && <span className="ml-2">· Limite: {rowInscr.devido_em}</span>}
-                    {rowInscr?.signedUrl && (
-                      <a className="underline inline-flex items-center gap-1 p-1 ml-2" href={rowInscr.signedUrl} target="_blank" rel="noreferrer">
-                        <LinkIcon className="h-3 w-3" /> Abrir
-                      </a>
+                    {files.length === 0 ? (
+                      <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
+                    ) : (
+                      <ul className="space-y-2">
+                        {files.map((row, idx) => (
+                          <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
+                            <div className="text-sm flex items-center gap-2">
+                              <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
+                                Ficheiro {idx + 1}
+                              </span>
+                              <a
+                                href={row.signedUrl || undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline inline-flex items-center gap-1"
+                              >
+                                <LinkIcon className="h-4 w-4" />
+                                {row.nome || "ficheiro"}
+                              </a>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                ref={(el) => (replacePickersRef.current[row.id] = el)}
+                                type="file"
+                                accept="image/*,application/pdf"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) {
+                                    const safe = await withSafeName(f);
+                                    await handleReplace(row, safe);
+                                  }
+                                  e.currentTarget.value = "";
+                                }}
+                              />
+                              <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                                <RefreshCw className="h-4 w-4 mr-1" /> Substituir
+                              </Button>
+                              <Button variant="destructive" onClick={() => handleDelete(row)}>
+                                <Trash2 className="h-4 w-4 mr-1" /> Apagar
+                              </Button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FilePickerButton
-                    variant={rowInscr?.comprovativo_url ? "secondary" : "outline"}
-                    onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
-                  >
-                    <Upload className="h-4 w-4 mr-1" />
-                    {rowInscr?.comprovativo_url ? "Substituir" : "Carregar"}
-                  </FilePickerButton>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-                  {rowInscr?.comprovativo_url && (
-                    <Button
-                      variant="destructive"
-                      onClick={async () => {
-                        try {
-                          await clearComprovativo(rowInscr);
-                          await refreshPayments();
-                          showToast("Comprovativo removido", "err");
-                        } catch (e: any) {
-                          showToast(e?.message || "Falha a remover", "err");
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Remover
-                    </Button>
-                  )}
-                </div>
-              </div>
+        {/* ---- ATLETAS ---- */}
+        <section className="space-y-3">
+          <div className="font-medium">Documentos por Atleta</div>
+          {state.atletas.length === 0 && <p className="text-sm text-gray-500">Sem atletas criados.</p>}
+          {state.atletas.map((a) => {
+            const mapa = athDocs[a.id] || new Map<string, DocumentoRow[]>();
+            const missing = DOCS_ATLETA_UI.filter((t) => !(mapa.get(t) || []).length).length;
 
-              {!onlyInscricao && (
+            return (
+              <div key={a.id} className="border rounded-xl p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium flex items-center gap-2">
+                    {a.nomeCompleto}{" "}
+                    {missing > 0 ? (
+                      <span className="inline-flex items gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
+                        <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
+                        <CheckCircle2 className="h-3 w-3" /> Completo
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500">Escalão: {a.escalao}</div>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-3">
-                  {Array.from({ length: slots }).map((_, i) => {
-                    const meta = rows[i];
-                    const label = getPagamentoLabel(planoEfetivo, i);
-                    const overdue = meta?.devido_em ? new Date() > new Date(meta.devido_em + "T23:59:59") : false;
-                    const due = meta?.devido_em || undefined;
+                  {DOCS_ATLETA_UI.map((tipo) => {
+                    if (!atletaPickersRef.current[a.id]) atletaPickersRef.current[a.id] = {};
+                    const files = mapa.get(tipo) || [];
                     return (
-                      <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
-                        <div>
-                          <div className="font-medium">
-                            {label} — {eur(amountForIdx(i))}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {meta?.comprovativo_url ? (
-                              <span className="inline-flex items-center gap-2">
-                                {meta.validado ? "Comprovativo validado" : overdue ? "Comprovativo pendente (em atraso)" : "Comprovativo pendente"}
-                                {meta.signedUrl && (
-                                  <a className="underline inline-flex items-center gap-1" href={meta.signedUrl} target="_blank" rel="noreferrer">
-                                    <LinkIcon className="h-3 w-3" /> Abrir
-                                  </a>
-                                )}
-                              </span>
-                            ) : overdue ? (
-                              "Comprovativo em falta (em atraso)"
-                            ) : (
-                              "Comprovativo em falta"
-                            )}
-                            {due && <span className="ml-2">· Limite: {due}</span>}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <FilePickerButton variant={meta?.comprovativo_url ? "secondary" : "outline"} onFiles={(files) => files?.[0] && handleUpload(a, i, files[0])}>
-                            <Upload className="h-4 w-4 mr-1" />
-                            {meta?.comprovativo_url ? "Substituir" : "Carregar"}
-                          </FilePickerButton>
-                          {meta?.comprovativo_url && (
-                            <Button variant="destructive" onClick={() => handleDelete(a, i)}>
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Remover
+                      <div key={tipo} className="border rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium">{tipo}</div>
+                          <div className="flex gap-2">
+                            <input
+                              ref={(el) => (atletaPickersRef.current[a.id][tipo] = el)}
+                              type="file"
+                              accept="image/*,application/pdf"
+                              multiple
+                              className="hidden"
+                              onChange={async (e) => {
+                                const fs = e.target.files;
+                                if (fs && fs.length) {
+                                  const arr = await Promise.all(Array.from(fs).map(withSafeName));
+                                  const dt = new DataTransfer();
+                                  arr.forEach((f) => dt.items.add(f));
+                                  await handleUploadAtletaMany(a.id, tipo, dt.files);
+                                } else {
+                                  await handleUploadAtletaMany(a.id, tipo, fs);
+                                }
+                                e.currentTarget.value = "";
+                              }}
+                            />
+                            <Button variant="outline" onClick={() => atletaPickersRef.current[a.id][tipo]?.click()}>
+                              <Plus className="h-4 w-4 mr-1" /> Adicionar
                             </Button>
-                          )}
+                          </div>
                         </div>
+
+                        {files.length === 0 ? (
+                          <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
+                        ) : (
+                          <ul className="space-y-2">
+                            {files.map((row, idx) => (
+                              <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
+                                <div className="text-sm flex items-center gap-2">
+                                  <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">Ficheiro {idx + 1}</span>
+                                  <a href={row.signedUrl || undefined} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
+                                    <LinkIcon className="h-4 w-4" />
+                                    {row.nome || "ficheiro"}
+                                  </a>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    ref={(el) => (replacePickersRef.current[row.id] = el)}
+                                    type="file"
+                                    accept="image/*,application/pdf"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const f = e.target.files?.[0];
+                                      if (f) {
+                                        const safe = await withSafeName(f);
+                                        await handleReplace(row, safe);
+                                      }
+                                      e.currentTarget.value = "";
+                                    }}
+                                  />
+                                  <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                                    <RefreshCw className="h-4 w-4 mr-1" /> Substituir
+                                  </Button>
+                                  <Button variant="destructive" onClick={() => handleDelete(row)}>
+                                    <Trash2 className="h-4 w-4 mr-1" /> Apagar
+                                  </Button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
+        </section>
       </CardContent>
     </Card>
   );
-}
-
-/* ----------------------------- AtletasSection ----------------------------- */
-// (mantido como tens)
-
-/* ----------------------------------- App ---------------------------------- */
-
-export default function App() {
-  const [state, setState] = useState<State>(loadState());
-  const [activeTab, setActiveTab] = useState<string>("home");
-  const [postSavePrompt, setPostSavePrompt] = useState(false);
-  const [syncing, setSyncing] = useState<boolean>(true);
-
-  const [athModalOpen, setAthModalOpen] = useState(false);
-  const [athEditing, setAthEditing] = useState<Atleta | undefined>(undefined);
-
-  const doSync = useCallback(async () => {
-    setSyncing(true);
-    try {
-      const [perfilDb, atletasDb] = await Promise.all([getMyProfile(), listAtletas()]);
-      setState((prev) => {
-        const email = perfilDb?.email || prev.conta?.email || "";
-        return {
-          ...prev,
-          conta: email ? { email } : prev.conta,
-          perfil: perfilDb ?? prev.perfil,
-          atletas: Array.isArray(atletasDb) ? atletasDb : prev.atletas,
-        };
-      });
-    } catch (e) {
-      console.error("[App] sync pós-login:", e);
-    } finally {
-      setSyncing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) doSync();
-      else setSyncing(false);
-    });
-    const sub = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) void doSync();
-    });
-    return () => {
-      sub.data.subscription.unsubscribe();
-    };
-  }, [doSync]);
-
-  useEffect(() => {
-    saveState(state);
-  }, [state]);
-
-  const hasPerfil = !!state.perfil;
-  const hasAtletas = state.atletas.length > 0;
-  const mainTabLabel = hasPerfil ? "Página Inicial" : "Dados Pessoais";
-
-  function afterSavePerfil() {
-    setPostSavePrompt(true);
-    setActiveTab("home");
-  }
-
-  const openAthForm = (a?: Atleta) => {
-    setAthEditing(a);
-    setAthModalOpen(true);
-  };
-
-  const handleAthSave = async (novo: Atleta) => {
-    const wasEditingId = athEditing?.id;
-    const planoAntes = athEditing?.planoPagamento;
-    const escalaoAntes = athEditing?.escalao;
-
-    try {
-      const saved = await saveAtleta(novo);
-
-      const nextAtletas = wasEditingId ? state.atletas.map((x) => (x.id === wasEditingId ? saved : x)) : [saved, ...state.atletas];
-
-      setState((prev) => ({ ...prev, atletas: nextAtletas }));
-      saveState({ ...state, atletas: nextAtletas });
-
-      const force = !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
-
-      const isOnlyInscricao = isAnuidadeObrigatoria(saved.escalao);
-
-      if (isOnlyInscricao) {
-        await ensureOnlyInscricaoForAtleta(saved.id);
-      } else {
-        await ensureInscricaoEQuotasForAtleta({ id: saved.id, planoPagamento: saved.planoPagamento }, { forceRebuild: !!force });
-      }
-
-      setAthModalOpen(false);
-      setAthEditing(undefined);
-    } catch (e: any) {
-      showToast(e?.message || "Falha ao guardar o atleta", "err");
-    }
-  };
-
-  return (
-    <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
-      {/* Portal de toasts global */}
-      <MiniToastPortal />
-
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Users className="h-6 w-6" />
-          <h1 className="text-2xl font-bold">AAC-SB</h1>
-        </div>
-        <AuthButton />
-      </header>
-
-      <AuthGate fallback={<ContaSection state={state} setState={setState} onLogged={() => setActiveTab("home")} />}>
-        {syncing ? (
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
-          </div>
-        ) : (
-          <>
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList>
-                <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
-                {hasPerfil && <TabsTrigger value="atletas">Atletas</TabsTrigger>}
-                {hasPerfil && <TabsTrigger value="docs">Documentos</TabsTrigger>}
-                {hasPerfil && hasAtletas && <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>}
-              </TabsList>
-
-              <TabsContent value="home">
-                {/* … DadosPessoaisSection (igual ao teu) */}
-              </TabsContent>
-
-              {hasPerfil && (
-                <TabsContent value="atletas">
-                  {/* … AtletasSection (igual ao teu) */}
-                </TabsContent>
-              )}
-
-              {hasPerfil && (
-                <TabsContent value="docs">
-                  <TemplatesDownloadSection />
-                  <UploadDocsSection state={state} setState={(s: State) => setState(s)} hideSocioDoc={!wantsSocio(state.perfil?.tipoSocio)} />
-                </TabsContent>
-              )}
-
-              {hasPerfil && hasAtletas && (
-                <TabsContent value="tes">
-                  <PagamentosSection state={state} />
-                </TabsContent>
-              )}
-            </Tabs>
-          </>
-        )}
-      </AuthGate>
-
-      {/* (modais e footer iguais ao teu) */}
-    </div>
-  );
-}
-
-/** Botão de autenticação */
-function AuthButton() {
-  const [logged, setLogged] = useState<boolean>(false);
-  useEffect(() => {
-    let mounted = true;
-    const sub = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!mounted) return;
-      setLogged(!!session);
-    });
-    supabase.auth.getSession().then(({ data }) => setLogged(!!data.session));
-    return () => {
-      mounted = false;
-      sub.data.subscription.unsubscribe();
-    };
-  }, []);
-
-  if (!logged) return null;
-  return (
-    <Button
-      variant="outline"
-      onClick={() => {
-        signOut().catch(() => {});
-      }}
-    >
-      <LogOut className="h-4 w-4 mr-1" /> Sair
-    </Button>
-  );
-}
-
-/** Gate de sessão */
-function AuthGate({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
-  const [ready, setReady] = useState<"checking" | "in" | "out">("checking");
-  useEffect(() => {
-    let mounted = true;
-    const sub = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!mounted) return;
-      setReady(session ? "in" : "out");
-    });
-    supabase.auth.getSession().then(({ data }) => setReady(data.session ? "in" : "out"));
-    return () => {
-      mounted = false;
-      sub.data.subscription.unsubscribe();
-    };
-  }, []);
-  if (ready === "checking") return <div className="text-sm text-gray-500">A verificar sessão...</div>;
-  if (ready === "out") return <>{fallback}</>;
-  return <>{children}</>;
 }
