@@ -1208,6 +1208,23 @@ function PagamentosSection({ state }: { state: State }) {
       supabase.removeChannel(channel);
     };
   }, [state.atletas, refreshPayments]);
+  
+  // Refresca pagamentos quando a página volta ao foco (ex.: após escolher ficheiros no Android)
+useEffect(() => {
+  function onFocus() {
+    refreshPayments();
+  }
+  function onVis() {
+    if (document.visibilityState === "visible") refreshPayments();
+  }
+  window.addEventListener("focus", onFocus);
+  document.addEventListener("visibilitychange", onVis);
+  return () => {
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVis);
+  };
+}, [refreshPayments]);
+
 
 // === Helpers de normalização de nomes (Android-friendly) ===
 function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
