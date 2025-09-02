@@ -1186,9 +1186,21 @@ function PagamentosSection({ state }: { state: State }) {
     setAthleteInscricao(inscrNext);
   }, [userId, state.atletas, state.perfil?.tipoSocio]);
 
-  useEffect(() => {
+useEffect(() => {
+  function onFocus() {
     refreshPayments();
-  }, [refreshPayments]);
+  }
+  function onVis() {
+    if (document.visibilityState === "visible") refreshPayments();
+  }
+  window.addEventListener("focus", onFocus);
+  document.addEventListener("visibilitychange", onVis);
+  return () => {
+    window.removeEventListener("focus", onFocus);
+    document.removeEventListener("visibilitychange", onVis);
+  };
+}, [refreshPayments]);
+
 
   useEffect(() => {
     const channel = supabase
@@ -1233,7 +1245,7 @@ function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
 }
 async function withSafeName(file: File): Promise<File> {
   const safeName = sanitizeFileName(file.name);
-  if (safeName === file.name) return file;
+  // Mesmo que o nome já esteja "safe", clonar melhora a fiabilidade no Android/WebView
   const buf = await file.arrayBuffer();
   return new File([new Uint8Array(buf)], safeName, {
     type: file.type || "application/octet-stream",
