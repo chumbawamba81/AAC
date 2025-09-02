@@ -1996,6 +1996,7 @@ useEffect(() => {
         state={state}
         setState={(s: State) => setState(s)}
         hideSocioDoc={!wantsSocio(state.perfil?.tipoSocio)}
+		active={activeTab === "docs"} // 👈 NOVO
       />
     </TabsContent>
   )}

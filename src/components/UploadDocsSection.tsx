@@ -45,6 +45,7 @@ type Props = {
   setState: React.Dispatch<React.SetStateAction<State>>;
   /** Quando true, não mostra a Ficha de Sócio e apresenta a mensagem de “Sem documentos…” */
   hideSocioDoc?: boolean;
+  active?: boolean; // 👈 NOVO
 };
 
 function groupByTipo(rows: DocumentoRow[]) {
@@ -97,7 +98,7 @@ async function withSafeName(file: File): Promise<File> {
   });
 }
 
-export default function UploadDocsSection({ state, setState, hideSocioDoc }: Props) {
+export default function UploadDocsSection({ state, setState, hideSocioDoc, active }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -109,6 +110,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
   const atletaPickersRef = useRef<Record<string, Record<string, HTMLInputElement | null>>>({});
 
   useEffect(() => {
+
     let mounted = true;
     const sub = supabase.auth.onAuthStateChange((_e, session) => {
       if (!mounted) return;
@@ -150,8 +152,8 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
   }, [userId, state.atletas]);
 
   useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    if (active) refreshAll();
+  }, [active, refreshAll]);
 
   // ➜ Importante para Android: refresca ao regressar do picker/scan app
   useEffect(() => {
