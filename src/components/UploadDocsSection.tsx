@@ -152,8 +152,8 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
   }, [userId, state.atletas]);
 
   useEffect(() => {
-    if (active) refreshAll();
-  }, [active, refreshAll]);
+    refreshAll();
+  }, [refreshAll]);
 
   // ➜ Importante para Android: refresca ao regressar do picker/scan app
   useEffect(() => {
