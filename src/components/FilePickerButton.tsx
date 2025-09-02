@@ -1,58 +1,69 @@
 import React, { useRef } from "react";
 import { Button } from "./ui/button";
 
-type Props = {
-  children: React.ReactNode;
+/**
+ * Botão robusto para abrir o seletor de ficheiros.
+ * Usa showOpenFilePicker quando disponível e faz fallback para input.click().
+ */
+export default function FilePickerButton({
+  onFiles,
+  accept = "image/*,application/pdf",
+  multiple = false,
+  children,
+  variant = "outline",
+}: {
+  onFiles: (files: FileList) => void;
   accept?: string;
   multiple?: boolean;
-  disabled?: boolean;
-  variant?: React.ComponentProps<typeof Button>["variant"];
-  className?: string;
-  onFiles?: (files: FileList | null) => void;
-};
+  children: React.ReactNode;
+  variant?: "outline" | "secondary" | "destructive" | "default";
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
 
-const IS_ANDROID = /Android/i.test(navigator.userAgent);
-// No Android, alguns pickers são mais “esquisitos” com accept — usar mais permissivo ajuda
-const ANDROID_ACCEPT = "*/*";
-
-export default function FilePickerButton({
-  children,
-  accept = "image/*,application/pdf",
-  multiple,
-  disabled,
-  variant = "outline",
-  className,
-  onFiles,
-}: Props) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  async function handleClick() {
+    const anyWin = window as any;
+    if (typeof anyWin.showOpenFilePicker === "function") {
+      try {
+        const handles = await anyWin.showOpenFilePicker({
+          multiple,
+          types: [
+            {
+              description: "Ficheiros",
+              accept: {
+                "image/*": [".png", ".jpg", ".jpeg", ".webp"],
+                "application/pdf": [".pdf"],
+              },
+            },
+          ],
+        });
+        const files = await Promise.all(handles.map((h: any) => h.getFile()));
+        const dt = new DataTransfer();
+        files.forEach((f) => dt.items.add(f));
+        onFiles(dt.files);
+        return;
+      } catch {
+        /* cancelado → usa fallback */
+      }
+    }
+    inputRef.current?.click();
+  }
 
   return (
     <>
       <input
         ref={inputRef}
         type="file"
-        className="hidden"
-        accept={IS_ANDROID ? ANDROID_ACCEPT : accept}
+        accept={accept}
         multiple={multiple}
-        // MUITO IMPORTANTE: limpar para garantir novo onChange mesmo com o mesmo ficheiro
-        onClick={(e) => {
-          (e.currentTarget as HTMLInputElement).value = "";
-        }}
+        style={{ position: "fixed", opacity: 0, width: 1, height: 1, top: 0, left: 0 }}
         onChange={(e) => {
-          const el = e.currentTarget;
-          const files = el.files;
-          // limpar ANTES de começar o processamento (Android)
-          el.value = "";
-          onFiles?.(files);
+          if (e.currentTarget.files && e.currentTarget.files.length > 0) {
+            onFiles(e.currentTarget.files);
+          }
+          e.currentTarget.value = ""; // permite selecionar o mesmo ficheiro novamente
         }}
       />
-      <Button
-        type="button"
-        variant={variant}
-        disabled={disabled}
-        className={className}
-        onClick={() => inputRef.current?.click()}
-      >
+      <Button type="button" variant={variant as any} onClick={handleClick}>
         {children}
       </Button>
     </>
