@@ -1233,7 +1233,7 @@ function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
 }
 async function withSafeName(file: File): Promise<File> {
   const safeName = sanitizeFileName(file.name);
-  if (safeName === file.name) return file;
+  // Mesmo que o nome já esteja "safe", clonar melhora a fiabilidade no Android/WebView
   const buf = await file.arrayBuffer();
   return new File([new Uint8Array(buf)], safeName, {
     type: file.type || "application/octet-stream",
