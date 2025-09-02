@@ -45,7 +45,7 @@ type Props = {
   setState: React.Dispatch<React.SetStateAction<State>>;
   /** Quando true, não mostra a Ficha de Sócio e apresenta a mensagem de “Sem documentos…” */
   hideSocioDoc?: boolean;
-  active?: boolean; // mantido para eventual uso futuro
+  active?: boolean; // não usado (mantido para compatibilidade)
 };
 
 function groupByTipo(rows: DocumentoRow[]) {
@@ -87,10 +87,9 @@ function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
   return ext ? `${safeBase}.${ext}` : safeBase;
 }
 
-/** Recria um File com nome “limpo”, mantendo conteúdo e tipo. (Android-safe) */
+/** Recria um File com nome “limpo”, mantendo conteúdo e tipo (Android-friendly). */
 async function withSafeName(file: File): Promise<File> {
   const safeName = sanitizeFileName(file.name);
-  // Mesmo que o nome já esteja "safe", clonar melhora a fiabilidade no Android/WebView
   const buf = await file.arrayBuffer();
   return new File([new Uint8Array(buf)], safeName, {
     type: file.type || "application/octet-stream",
@@ -98,15 +97,7 @@ async function withSafeName(file: File): Promise<File> {
   });
 }
 
-/** Adiciona um query param volátil para contornar cache agressivo no Android WebView */
-function cacheBust(url?: string | null): string | undefined {
-  if (!url) return undefined;
-  const sep = url.includes("?") ? "&" : "?";
-  const t = Math.floor(Date.now() / 1000); // estável por segundo
-  return `${url}${sep}cb=${t}`;
-}
-
-export default function UploadDocsSection({ state, setState, hideSocioDoc, active }: Props) {
+export default function UploadDocsSection({ state, setState, hideSocioDoc }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -117,6 +108,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
   const replacePickersRef = useRef<Record<string, HTMLInputElement | null>>({});
   const atletaPickersRef = useRef<Record<string, Record<string, HTMLInputElement | null>>>({});
 
+  /* ---------------- Sessão ---------------- */
   useEffect(() => {
     let mounted = true;
     const sub = supabase.auth.onAuthStateChange((_e, session) => {
@@ -133,16 +125,30 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
     };
   }, []);
 
+  /* ---------------- Refresh helpers (simples e locais) ---------------- */
+  const refreshSocio = React.useCallback(async () => {
+    if (!userId) return;
+    const socioRows = await listDocs({ nivel: "socio", userId });
+    const socioWithUrls = await withSignedUrls(socioRows);
+    setSocioDocs(groupByTipo(socioWithUrls)); // substitui o Map → re-render garantido
+  }, [userId]);
+
+  const refreshAtleta = React.useCallback(
+    async (atletaId: string) => {
+      if (!userId) return;
+      const rows = await listDocs({ nivel: "atleta", userId, atletaId });
+      const withUrls = await withSignedUrls(rows);
+      // substitui só o mapa daquele atleta e cria novo objeto → re-render garantido
+      setAthDocs((prev) => ({ ...prev, [atletaId]: groupByTipo(withUrls) }));
+    },
+    [userId]
+  );
+
   const refreshAll = React.useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      // Sócio
-      const socioRows = await listDocs({ nivel: "socio", userId });
-      const socioWithUrls = await withSignedUrls(socioRows);
-      setSocioDocs(groupByTipo(socioWithUrls));
-
-      // Atletas
+      await refreshSocio();
       const nextAth: Record<string, Map<string, DocumentoRow[]>> = {};
       for (const a of state.atletas) {
         const rows = await listDocs({ nivel: "atleta", userId, atletaId: a.id });
@@ -156,23 +162,13 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
     } finally {
       setLoading(false);
     }
-  }, [userId, state.atletas]);
+  }, [userId, state.atletas, refreshSocio]);
 
-  /** Retry curto para consistência eventual do Storage no Android */
-  async function refreshAllWithRetry(tries = 4, delayMs = 350) {
-    for (let i = 0; i < tries; i++) {
-      await refreshAll();
-      if (i < tries - 1) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-    }
-  }
-
+  /* ---------------- Primeira carga + focus/visibility ---------------- */
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
 
-  // ➜ Importante para Android: refresca ao regressar do picker/scan app
   useEffect(() => {
     function onFocus() {
       refreshAll();
@@ -188,25 +184,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
     };
   }, [refreshAll]);
 
-  // ➜ Realtime na tabela documentos (apenas do próprio utilizador)
-  useEffect(() => {
-    if (!userId) return;
-    const channel = supabase
-      .channel("rt-documentos")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "documentos", filter: `user_id=eq.${userId}` },
-        () => {
-          // Recarrega imediatamente quando houver INSERT/UPDATE/DELETE
-          refreshAll();
-        }
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userId, refreshAll]);
-
+  /* ---------------- Contador de sócio ---------------- */
   const socioMissingCount = useMemo(() => {
     if (hideSocioDoc) return 0;
     let miss = 0;
@@ -228,8 +206,9 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
       const current = socioDocs.get(tipo) || [];
       const start = current.length + 1;
       const files = Array.from(filesList);
+
       for (let i = 0; i < files.length; i++) {
-        const safe = await withSafeName(files[i]); // ➜ normaliza + clona (Android)
+        const safe = await withSafeName(files[i]);
         await uploadDoc({
           nivel: "socio",
           userId,
@@ -239,7 +218,9 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
           page: start + i,
         });
       }
-      await refreshAllWithRetry(); // 👈 retry curto pós-upload
+
+      // REFRESH SÓ DA SECÇÃO DE SÓCIO (simples e imediato)
+      await refreshSocio();
       showToast(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
       console.error("[upload socio many]", e);
@@ -260,8 +241,9 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
       const current = mapa.get(tipo) || [];
       const start = current.length + 1;
       const files = Array.from(filesList);
+
       for (let i = 0; i < files.length; i++) {
-        const safe = await withSafeName(files[i]); // ➜ normaliza + clona (Android)
+        const safe = await withSafeName(files[i]);
         await uploadDoc({
           nivel: "atleta",
           userId,
@@ -272,7 +254,9 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
           page: start + i,
         });
       }
-      await refreshAllWithRetry(); // 👈 retry curto
+
+      // REFRESH SÓ DO ATLETA EM QUESTÃO
+      await refreshAtleta(atletaId);
       showToast(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
       console.error("[upload atleta many]", e);
@@ -288,9 +272,18 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
     if (!file) return;
     setLoading(true);
     try {
-      const safe = await withSafeName(file); // ➜ normaliza + clona (Android)
+      const safe = await withSafeName(file);
       await replaceDoc(row.id, safe);
-      await refreshAllWithRetry(); // 👈 retry curto
+
+      // Refresh seletivo conforme nível
+      if (row.doc_nivel === "socio") {
+        await refreshSocio();
+      } else if (row.doc_nivel === "atleta" && row.atleta_id) {
+        await refreshAtleta(row.atleta_id);
+      } else {
+        await refreshAll(); // fallback raro
+      }
+
       showToast("Documento substituído.");
     } catch (e: any) {
       console.error("[replace]", e);
@@ -305,7 +298,16 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
     setLoading(true);
     try {
       await deleteDoc(row.id);
-      await refreshAllWithRetry(); // 👈 retry curto
+
+      // Refresh seletivo conforme nível
+      if (row.doc_nivel === "socio") {
+        await refreshSocio();
+      } else if (row.doc_nivel === "atleta" && row.atleta_id) {
+        await refreshAtleta(row.atleta_id);
+      } else {
+        await refreshAll(); // fallback
+      }
+
       showToast("Apagado.", "ok");
     } catch (e: any) {
       console.error("[delete]", e);
@@ -373,12 +375,9 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
                           onChange={async (e) => {
                             const fs = e.target.files;
                             if (fs && fs.length) {
-                              // normaliza + clona todos os ficheiros antes do upload
                               const arr = await Promise.all(Array.from(fs).map(withSafeName));
                               const dt = new DataTransfer();
-                              arr.forEach((f) => {
-                                dt.items.add(f);
-                              });
+                              arr.forEach((f) => dt.items.add(f));
                               await handleUploadSocioMany(tipo, dt.files);
                             } else {
                               await handleUploadSocioMany(tipo, fs);
@@ -403,7 +402,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
                                 Ficheiro {idx + 1}
                               </span>
                               <a
-                                href={cacheBust(row.signedUrl)}
+                                href={row.signedUrl || undefined}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="underline inline-flex items-center gap-1 min-w-0"
@@ -493,9 +492,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
                                 if (fs && fs.length) {
                                   const arr = await Promise.all(Array.from(fs).map(withSafeName));
                                   const dt = new DataTransfer();
-                                  arr.forEach((f) => {
-                                    dt.items.add(f);
-                                  });
+                                  arr.forEach((f) => dt.items.add(f));
                                   await handleUploadAtletaMany(a.id, tipo, dt.files);
                                 } else {
                                   await handleUploadAtletaMany(a.id, tipo, fs);
@@ -520,7 +517,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc, activ
                                     Ficheiro {idx + 1}
                                   </span>
                                   <a
-                                    href={cacheBust(row.signedUrl)}
+                                    href={row.signedUrl || undefined}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="underline inline-flex items-center gap-1 min-w-0"
