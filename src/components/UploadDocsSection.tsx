@@ -338,7 +338,9 @@ return (
                           // normaliza + clona todos os ficheiros antes do upload
                           const arr = await Promise.all(Array.from(fs).map(withSafeName));
                           const dt = new DataTransfer();
-                          arr.forEach((f) -> dt.items.add(f));
+                          arr.forEach((f) => {
+  dt.items.add(f);
+});
                           await handleUploadSocioMany(tipo, dt.files);
                         } else {
                           await handleUploadSocioMany(tipo, fs);
@@ -453,7 +455,10 @@ return (
                             if (fs && fs.length) {
                               const arr = await Promise.all(Array.from(fs).map(withSafeName));
                               const dt = new DataTransfer();
-                              arr.forEach((f) -> dt.items.add(f));
+                              arr.forEach((f) => {
+  dt.items.add(f);
+});
+
                               await handleUploadAtletaMany(a.id, tipo, dt.files);
                             } else {
                               await handleUploadAtletaMany(a.id, tipo, fs);
