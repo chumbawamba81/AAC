@@ -75,7 +75,7 @@ import FilePickerButton from "./components/FilePickerButton";
 import { supabase } from "./supabaseClient";
 
 // Mini-toast + filename helper
-import { useMiniToast, inferFileName } from "./components/MiniToast";
+import { useMiniToast, inferFileName, MiniToastPortal, showToast } from "./components/MiniToast";
 
 /* -------------------- Constantes locais -------------------- */
 const DOCS_ATLETA = [
@@ -1263,10 +1263,10 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     const label = getPagamentoLabel(planoEfetivo, idx);
     await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file: safe });
     await refreshPayments();
-    toast("Comprovativo carregado");
+    showToast("Comprovativo carregado", "ok");
   } catch (e: any) {
     console.error("[Pagamentos] upload/replace", e);
-    toast(e?.message || "Falha no upload", "err");
+    showToast(`Falha no upload: ${e.message}`, "err");
   } finally {
     setBusy(false);
   }
@@ -1283,10 +1283,10 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     const safe = await withSafeName(file); // 💡 normaliza nome
     await saveComprovativoInscricaoAtleta({ userId, atletaId: athlete.id, file: safe });
     await refreshPayments();
-    toast("Comprovativo de inscrição carregado");
+    showToast("Comprovativo de inscrição carregado", "ok");
   } catch (e: any) {
     console.error("[Pagamentos] upload inscrição", e);
-    toast(e?.message || "Falha no upload", "err");
+    showToast(`Falha no upload: ${e.message}`, "err");
   } finally {
     setBusy(false);
   }
@@ -1301,10 +1301,10 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     try {
       await clearComprovativo(row);
       await refreshPayments();
-      toast("Comprovativo removido");
+      showToast("Comprovativo removido", "ok");
     } catch (e: any) {
       console.error("[Pagamentos] clear", e);
-      toast(e?.message || "Falha a remover", "err");
+      showToast(`Falha no upload: ${e.message}`, "err");
     } finally {
       setBusy(false);
     }
@@ -1817,8 +1817,7 @@ function AtletasSection({
 
 export default function App() {
   const [state, setState] = useState<State>(loadState());
-// persiste o separador ativo entre reloads / regresso do Android
-// persiste o separador ativo entre reloads / retorno do Android
+// Persist active tab across reloads or when returning from Android
 const LS_ACTIVE_TAB = "bb_active_tab_v1";
 const [activeTab, setActiveTab] = useState<string>(() => {
   try {
@@ -1833,11 +1832,6 @@ useEffect(() => {
   } catch {}
 }, [activeTab]);
 
-useEffect(() => {
-  try {
-    localStorage.setItem(LS_ACTIVE_TAB, activeTab);
-  } catch {}
-}, [activeTab]);
   const [postSavePrompt, setPostSavePrompt] = useState(false);
   const [syncing, setSyncing] = useState<boolean>(true);
 
@@ -1934,6 +1928,7 @@ useEffect(() => {
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
+	<MiniToastPortal />
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users className="h-6 w-6" />
@@ -1951,48 +1946,26 @@ useEffect(() => {
           <>
             <Tabs key={activeTab} defaultValue={activeTab}>
   <TabsList>
-    <div
-      onClick={() => {
-        setActiveTab("home");
-        try { localStorage.setItem(LS_ACTIVE_TAB, "home"); } catch {}
-      }}
-    >
-      <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
+  <div onClick={() => { setActiveTab("home"); localStorage.setItem(LS_ACTIVE_TAB, "home"); }}>
+    <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
+  </div>
+  {hasPerfil && (
+    <div onClick={() => { setActiveTab("atletas"); localStorage.setItem(LS_ACTIVE_TAB, "atletas"); }}>
+      <TabsTrigger value="atletas">Atletas</TabsTrigger>
     </div>
+  )}
+  {hasPerfil && (
+    <div onClick={() => { setActiveTab("docs"); localStorage.setItem(LS_ACTIVE_TAB, "docs"); }}>
+      <TabsTrigger value="docs">Documentos</TabsTrigger>
+    </div>
+  )}
+  {hasPerfil && hasAtletas && (
+    <div onClick={() => { setActiveTab("tes"); localStorage.setItem(LS_ACTIVE_TAB, "tes"); }}>
+      <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>
+    </div>
+  )}
+</TabsList>
 
-    {hasPerfil && (
-      <div
-        onClick={() => {
-          setActiveTab("atletas");
-          try { localStorage.setItem(LS_ACTIVE_TAB, "atletas"); } catch {}
-        }}
-      >
-        <TabsTrigger value="atletas">Atletas</TabsTrigger>
-      </div>
-    )}
-
-    {hasPerfil && (
-      <div
-        onClick={() => {
-          setActiveTab("docs");
-          try { localStorage.setItem(LS_ACTIVE_TAB, "docs"); } catch {}
-        }}
-      >
-        <TabsTrigger value="docs">Documentos</TabsTrigger>
-      </div>
-    )}
-
-    {hasPerfil && hasAtletas && (
-      <div
-        onClick={() => {
-          setActiveTab("tes");
-          try { localStorage.setItem(LS_ACTIVE_TAB, "tes"); } catch {}
-        }}
-      >
-        <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>
-      </div>
-    )}
-  </TabsList>
 
   <TabsContent value="home">
     <DadosPessoaisSection

@@ -35,7 +35,6 @@ export function useMiniToast() {
 
 /** ---------------- Portal global ----------------
  *  Permite disparar toasts a partir de QUALQUER ficheiro com showToast()
- *  Sem providers nem props a circular.
  */
 type MiniToastEvent = { text: string; type: "ok" | "err" };
 
