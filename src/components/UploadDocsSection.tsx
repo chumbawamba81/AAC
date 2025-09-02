@@ -45,7 +45,7 @@ type Props = {
   setState: React.Dispatch<React.SetStateAction<State>>;
   /** Quando true, não mostra a Ficha de Sócio e apresenta a mensagem de “Sem documentos…” */
   hideSocioDoc?: boolean;
-  active?: boolean; // não usado (mantido para compatibilidade)
+  active?: boolean; // não usado
 };
 
 function groupByTipo(rows: DocumentoRow[]) {
@@ -97,6 +97,10 @@ async function withSafeName(file: File): Promise<File> {
   });
 }
 
+/* ======================= Backoff simples pós-escrita ======================= */
+const WRITE_BACKOFF_MS = [400, 900, 1600]; // total ~ 2.9s
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export default function UploadDocsSection({ state, setState, hideSocioDoc }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -125,12 +129,12 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
     };
   }, []);
 
-  /* ---------------- Refresh helpers (simples e locais) ---------------- */
+  /* ---------------- Refresh helpers ---------------- */
   const refreshSocio = React.useCallback(async () => {
     if (!userId) return;
     const socioRows = await listDocs({ nivel: "socio", userId });
     const socioWithUrls = await withSignedUrls(socioRows);
-    setSocioDocs(groupByTipo(socioWithUrls)); // substitui o Map → re-render garantido
+    setSocioDocs(groupByTipo(socioWithUrls));
   }, [userId]);
 
   const refreshAtleta = React.useCallback(
@@ -138,11 +142,26 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
       if (!userId) return;
       const rows = await listDocs({ nivel: "atleta", userId, atletaId });
       const withUrls = await withSignedUrls(rows);
-      // substitui só o mapa daquele atleta e cria novo objeto → re-render garantido
       setAthDocs((prev) => ({ ...prev, [atletaId]: groupByTipo(withUrls) }));
     },
     [userId]
   );
+
+  /** Após escrita, refresca e volta a refrescar com pequenos atrasos (Android Storage delay). */
+  async function refreshSocioAfterWrite() {
+    await refreshSocio();
+    for (const ms of WRITE_BACKOFF_MS) {
+      await sleep(ms);
+      await refreshSocio();
+    }
+  }
+  async function refreshAtletaAfterWrite(atletaId: string) {
+    await refreshAtleta(atletaId);
+    for (const ms of WRITE_BACKOFF_MS) {
+      await sleep(ms);
+      await refreshAtleta(atletaId);
+    }
+  }
 
   const refreshAll = React.useCallback(async () => {
     if (!userId) return;
@@ -219,8 +238,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
         });
       }
 
-      // REFRESH SÓ DA SECÇÃO DE SÓCIO (simples e imediato)
-      await refreshSocio();
+      await refreshSocioAfterWrite(); // 👈 backoff 0.4s/0.9s/1.6s
       showToast(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
       console.error("[upload socio many]", e);
@@ -255,8 +273,7 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
         });
       }
 
-      // REFRESH SÓ DO ATLETA EM QUESTÃO
-      await refreshAtleta(atletaId);
+      await refreshAtletaAfterWrite(atletaId); // 👈 backoff
       showToast(`${files.length} ficheiro(s) carregado(s) para ${tipo}.`);
     } catch (e: any) {
       console.error("[upload atleta many]", e);
@@ -275,13 +292,12 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
       const safe = await withSafeName(file);
       await replaceDoc(row.id, safe);
 
-      // Refresh seletivo conforme nível
       if (row.doc_nivel === "socio") {
-        await refreshSocio();
+        await refreshSocioAfterWrite();
       } else if (row.doc_nivel === "atleta" && row.atleta_id) {
-        await refreshAtleta(row.atleta_id);
+        await refreshAtletaAfterWrite(row.atleta_id);
       } else {
-        await refreshAll(); // fallback raro
+        await refreshAll();
       }
 
       showToast("Documento substituído.");
@@ -299,13 +315,12 @@ export default function UploadDocsSection({ state, setState, hideSocioDoc }: Pro
     try {
       await deleteDoc(row.id);
 
-      // Refresh seletivo conforme nível
       if (row.doc_nivel === "socio") {
-        await refreshSocio();
+        await refreshSocioAfterWrite();
       } else if (row.doc_nivel === "atleta" && row.atleta_id) {
-        await refreshAtleta(row.atleta_id);
+        await refreshAtletaAfterWrite(row.atleta_id);
       } else {
-        await refreshAll(); // fallback
+        await refreshAll();
       }
 
       showToast("Apagado.", "ok");
