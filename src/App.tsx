@@ -1462,7 +1462,7 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 md:justify-end shrink-0">
                     <FilePickerButton
                       variant={row?.comprovativo_url ? "secondary" : "outline"}
                       accept="image/*,application/pdf"
@@ -1562,7 +1562,7 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 md:justify-end shrink-0">
                       <FilePickerButton
                         variant={row?.comprovativo_url ? "secondary" : "outline"}
                         accept="image/*,application/pdf"
@@ -1628,7 +1628,7 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 md:justify-end shrink-0">
                           <FilePickerButton
                             variant={meta?.comprovativo_url ? "secondary" : "outline"}
                             accept="image/*,application/pdf"
