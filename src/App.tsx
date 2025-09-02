@@ -1115,9 +1115,6 @@ function PagamentosSection({ state }: { state: State }) {
   const [athleteInscricao, setAthleteInscricao] = useState<Record<string, PagamentoRowWithUrl | null>>({});
   const [busy, setBusy] = useState(false);
 
-  // mini-toast
-  const { show: toast, Toast } = useMiniToast();
-
   useEffect(() => {
     let mounted = true;
     const sub = supabase.auth.onAuthStateChange((_e, session) => {
@@ -1209,22 +1206,6 @@ function PagamentosSection({ state }: { state: State }) {
     };
   }, [state.atletas, refreshPayments]);
   
-  // Refresca pagamentos quando a página volta ao foco (ex.: após escolher ficheiros no Android)
-useEffect(() => {
-  function onFocus() {
-    refreshPayments();
-  }
-  function onVis() {
-    if (document.visibilityState === "visible") refreshPayments();
-  }
-  window.addEventListener("focus", onFocus);
-  document.addEventListener("visibilitychange", onVis);
-  return () => {
-    window.removeEventListener("focus", onFocus);
-    document.removeEventListener("visibilitychange", onVis);
-  };
-}, [refreshPayments]);
-
 
 // === Helpers de normalização de nomes (Android-friendly) ===
 function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
@@ -1283,7 +1264,7 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     showToast("Comprovativo carregado", "ok");
   } catch (e: any) {
     console.error("[Pagamentos] upload/replace", e);
-    showToast(`Falha no upload: ${e.message}`, "err");
+    showToast(e?.message || "Falha no upload", "err");
   } finally {
     setBusy(false);
   }
@@ -1303,7 +1284,7 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     showToast("Comprovativo de inscrição carregado", "ok");
   } catch (e: any) {
     console.error("[Pagamentos] upload inscrição", e);
-    showToast(`Falha no upload: ${e.message}`, "err");
+    showToast(e?.message || "Falha no upload", "err");
   } finally {
     setBusy(false);
   }
@@ -1321,7 +1302,7 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
       showToast("Comprovativo removido", "ok");
     } catch (e: any) {
       console.error("[Pagamentos] clear", e);
-      showToast(`Falha no upload: ${e.message}`, "err");
+     showToast(e?.message || "Falha a remover", "err");
     } finally {
       setBusy(false);
     }
@@ -1337,10 +1318,10 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     const safe = await withSafeName(file); // 💡 normaliza nome
     await saveComprovativoSocioInscricao(userId, safe);
     await refreshPayments();
-    toast("Comprovativo de sócio carregado");
+    showToast("Comprovativo de sócio carregado", "ok");
   } catch (e: any) {
     console.error("[Pagamentos] socio upload", e);
-    toast(e?.message || "Falha no upload", "err");
+    showToast(e?.message || "Falha no upload", "err");
   } finally {
     setBusy(false);
   }
@@ -1353,9 +1334,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     try {
       await clearComprovativo(row);
       await refreshPayments();
-      toast("Comprovativo removido");
+      showToast("Comprovativo removido", "ok");
     } catch (e: any) {
-      toast(e?.message || "Falha a remover", "err");
+      showToast(e?.message || "Falha a remover", "err");
     } finally {
       setBusy(false);
     }
@@ -1367,9 +1348,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
     try {
       await clearComprovativo(row);
       await refreshPayments();
-      toast("Comprovativo removido");
+      showToast("Comprovativo removido", "ok");
     } catch (e: any) {
-      toast(e?.message || "Falha a remover", "err");
+      showToast(e?.message || "Falha a remover", "err");
     } finally {
       setBusy(false);
     }
@@ -1429,9 +1410,6 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* mini-toast overlay */}
-        <Toast />
-
         {/* Aviso / Instruções de pagamento */}
         <div className="rounded-xl border bg-slate-50 p-3 text-sm text-gray-800">
           Os pagamentos devem ser realizados até à data limite indicada, para o seguinte IBAN:
