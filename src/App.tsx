@@ -349,18 +349,23 @@ function ContaSection({
   }
 
   async function submitForgot(ev: React.FormEvent) {
-    ev.preventDefault();
-    setError(undefined);
-    setInfo(undefined);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail || email);
-      if (error) throw error;
-      setInfo("Se o email existir, foi enviado um link de recuperação.");
-      setForgotOpen(false);
-    } catch (e: any) {
-      setError(e.message || "Não foi possível enviar o email de recuperação");
-    }
+  ev.preventDefault();
+  setError(undefined);
+  setInfo(undefined);
+  try {
+    const redirectTo = `${window.location.origin}/#reset`; // volta à tua app
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      forgotEmail || email,
+      { redirectTo }
+    );
+    if (error) throw error;
+    setInfo("Se o email existir, foi enviado um link de recuperação.");
+    setForgotOpen(false);
+  } catch (e: any) {
+    setError(e.message || "Não foi possível enviar o email de recuperação");
   }
+}
+
 
   return (
     <Card>
@@ -1808,12 +1813,62 @@ function AtletasSection({
   );
 }
 
+
+function ResetPasswordForm({ onDone }: { onDone: () => void }) {
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | undefined>();
+
+  const v = isPasswordStrong(p1);
+
+  async function submit(ev: React.FormEvent) {
+    ev.preventDefault();
+    setErr(undefined);
+    if (p1 !== p2) return setErr("As palavras-passe não coincidem.");
+    if (!v.ok) return setErr("A palavra-passe não cumpre os requisitos.");
+    try {
+      setBusy(true);
+      const { error } = await supabase.auth.updateUser({ password: p1 });
+      if (error) throw error;
+      await supabase.auth.signOut(); // termina sessão de recuperação
+      onDone();
+      showToast?.("Palavra-passe atualizada. Faça login novamente.", "ok");
+    } catch (e: any) {
+      setErr(e?.message || "Falha ao atualizar a palavra-passe");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="space-y-3" onSubmit={submit}>
+      <div className="space-y-1">
+        <Label>Nova palavra-passe</Label>
+        <Input type="password" value={p1} onChange={(e) => setP1(e.target.value)} required />
+        <PasswordChecklist pass={p1} />
+      </div>
+      <div className="space-y-1">
+        <Label>Repetir nova palavra-passe</Label>
+        <Input type="password" value={p2} onChange={(e) => setP2(e.target.value)} required />
+      </div>
+      {err && <p className="text-sm text-red-600">{err}</p>}
+      <div className="flex justify-end gap-2">
+        <Button type="submit" disabled={busy}>
+          {busy ? "A atualizar..." : "Guardar nova palavra-passe"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 /* ----------------------------------- App ---------------------------------- */
 
 export default function App() {
   const [state, setState] = useState<State>(loadState());
 // Persist active tab across reloads or when returning from Android
 const LS_ACTIVE_TAB = "bb_active_tab_v1";
+const [resetOpen, setResetOpen] = useState(false);
 const [activeTab, setActiveTab] = useState<string>(() => {
   try {
     return localStorage.getItem(LS_ACTIVE_TAB) || "home";
@@ -1854,6 +1909,20 @@ useEffect(() => {
       setSyncing(false);
     }
   }, []);
+
+useEffect(() => {
+  const sub = supabase.auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") setResetOpen(true);
+  });
+  // fallback: se a URL já traz o hash de recuperação
+  if (typeof window !== "undefined" && /type=recovery/.test(window.location.hash)) {
+    setResetOpen(true);
+  }
+  return () => {
+    sub.data.subscription.unsubscribe();
+  };
+}, []);
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -2040,6 +2109,14 @@ useEffect(() => {
           </div>
         </DialogContent>
       </Dialog>
+<Dialog open={resetOpen} onOpenChange={setResetOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Definir nova palavra-passe</DialogTitle>
+    </DialogHeader>
+    <ResetPasswordForm onDone={() => setResetOpen(false)} />
+  </DialogContent>
+</Dialog>
 
       <div className="flex items-center justify-center gap-4 pt-6">
         <a
