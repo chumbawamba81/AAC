@@ -353,11 +353,9 @@ function ContaSection({
   setError(undefined);
   setInfo(undefined);
   try {
-    const redirectTo = `${window.location.origin}/#reset`; // volta à tua app
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      forgotEmail || email,
-      { redirectTo }
-    );
+    // usa um path “normal” (sem #) para o Supabase poder anexar ?code=...
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail || email, { redirectTo });
     if (error) throw error;
     setInfo("Se o email existir, foi enviado um link de recuperação.");
     setForgotOpen(false);
@@ -365,7 +363,6 @@ function ContaSection({
     setError(e.message || "Não foi possível enviar o email de recuperação");
   }
 }
-
 
   return (
     <Card>
@@ -1876,6 +1873,8 @@ const [activeTab, setActiveTab] = useState<string>(() => {
     return "home";
   }
 });
+
+
 useEffect(() => {
   try {
     localStorage.setItem(LS_ACTIVE_TAB, activeTab);
@@ -1918,6 +1917,28 @@ useEffect(() => {
   if (typeof window !== "undefined" && /type=recovery/.test(window.location.hash)) {
     setResetOpen(true);
   }
+  return () => {
+    sub.data.subscription.unsubscribe();
+  };
+}, []);
+
+// Abre o diálogo de reset quando voltamos do email de recuperação
+useEffect(() => {
+  // 1) Trocar ?code=... por sessão (passo obrigatório no v2)
+  (async () => {
+    const url = window.location.href;
+    if (/\?code=/.test(url) && /type=recovery/.test(url)) {
+      const { error } = await supabase.auth.exchangeCodeForSession(url);
+      if (error) {
+        console.error("[exchangeCodeForSession]", error);
+      }
+    }
+  })();
+
+  // 2) Quando a sessão de recovery ficar ativa, mostramos o diálogo
+  const sub = supabase.auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") setResetOpen(true);
+  });
   return () => {
     sub.data.subscription.unsubscribe();
   };
