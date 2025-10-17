@@ -2013,10 +2013,10 @@ useEffect(() => {
 
   return (
     <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
-	<MiniToastPortal />
+	    <MiniToastPortal />
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Users className="h-6 w-6" />
+          <img className="h-24 object-contain" src="../public/imgs/AAC-white1.png" />
           <h1 className="text-2xl font-bold">AAC-SB</h1>
         </div>
         <AuthButton />
