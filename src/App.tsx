@@ -2017,7 +2017,7 @@ useEffect(() => {
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <img className="h-24 object-contain" src="../public/imgs/AAC-white1.png" />
-          <h1 className="text-2xl font-bold">AAC-SB</h1>
+          <h1 className="text-2xl font-bold">AAC - Secção de basquetebol</h1>
         </div>
         <AuthButton />
       </header>

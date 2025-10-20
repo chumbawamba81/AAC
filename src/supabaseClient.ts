@@ -11,11 +11,13 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 const w = typeof window !== "undefined" ? (window as any) : undefined;
 
 // Tenta primeiro Vite env, depois variáveis que possas meter manualmente em window.*
-const SUPABASE_URL: string | undefined =
-  (import.meta as any)?.env?.VITE_SUPABASE_URL ?? w?.VITE_SUPABASE_URL;
+//const SUPABASE_URL: string | undefined =
+//  (import.meta as any)?.env?.VITE_SUPABASE_URL ?? w?.VITE_SUPABASE_URL;
+//const SUPABASE_ANON_KEY: string | undefined =
+//  (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY ?? w?.VITE_SUPABASE_ANON_KEY;
 
-const SUPABASE_ANON_KEY: string | undefined =
-  (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY ?? w?.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   // Não quebramos o build: apenas avisamos claramente.
