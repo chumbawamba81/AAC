@@ -1,6 +1,6 @@
 import React from 'react'
 export function Card(props: React.HTMLAttributes<HTMLDivElement>) {
-  return <div {...props} className={['bg-neutral-50 text-card-foreground flex flex-col gap-6 rounded-xl border py-6 pb-0 lg:hidden xl:flex', props.className].join(' ')} />
+  return <div {...props} className={['bg-neutral-50 text-card-foreground flex flex-col gap-6 rounded-sm border py-6 pb-0 lg:hidden xl:flex', props.className].join(' ')} />
 }
 
 export function CardHeader(props: React.HTMLAttributes<HTMLDivElement>) {
