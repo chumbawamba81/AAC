@@ -524,7 +524,7 @@ function DadosPessoaisSection({
 
   function StatusBadge({ s }: { s: ResumoStatus }) {
     const map: Record<ResumoStatus, string> = {
-      regularizado: "bg-green-100 text-green-700",
+      regularizado: "bg-green-800 text-white",
       pendente: "bg-blue-100 text-blue-700",
       em_dia: "bg-gray-100 text-gray-700",
       em_atraso: "bg-red-100 text-red-700",
@@ -537,7 +537,7 @@ function DadosPessoaisSection({
       em_atraso: "Em atraso",
       sem_lancamento: "Sem lançamento",
     };
-    return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${map[s]}`}>{label[s]}</span>;
+    return <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${map[s]}`}>{label[s]}</span>;
   }
 
   function buildProRankMap(atletas: Atleta[]) {
@@ -847,108 +847,182 @@ function DadosPessoaisSection({
 
     return (
       <div className="space-y-4">
-        <div className="mb-1 rounded-xl border p-3 bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-gray-600 mb-1">
+        {/* DADOS */}
+          <div className="relative flex flex-col my-6 bg-white border 
+   border-slate-200 rounded-lg">
+            <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
+                <span className="text-md p-4 font-medium uppercase">
                 Dados do <span className="font-medium">sócio/encarregado de educação</span>
-              </div>
-              <div className="font-semibold">{basePerfil.nomeCompleto}</div>
-              <div className="text-xs text-gray-500">
-                {basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}
-                {isTipoSocio(basePerfil.tipoSocio) && <> · {basePerfil.tipoSocio}</>}
-              </div>
+                </span>
             </div>
-            <div className="text-right">
-              <Button variant="outline" onClick={() => setEditMode(true)}>
-                <PencilLine className="h-4 w-4 mr-1" /> Editar dados
-              </Button>
+            <div className="flex">
+                <div className="flex-1 flex-col space-y-4 p-4">
+                  <div data-slot="card-content">
+                      <div className="font-semibold">{basePerfil.nomeCompleto}</div>
+                      <div className="text-xs text-gray-500">
+                        {basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}
+                        {isTipoSocio(basePerfil.tipoSocio) && <> · {basePerfil.tipoSocio}</>}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                        {showSocioArea && (
+                          socioMissing > 0 ? (
+                            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-400 text-black">
+                                <FileUp className="h-3 w-3" />
+                                Sócio (docs): {socioMissing} documento(s) em falta
+                            </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-800 text-white">
+                                <FileUp className="h-3 w-3" />
+                                Sócio (docs): {socioMissing} documento(s) em falta
+                            </div>
+                            )
+                        )}
+                        {missingAthDocs > 0 ? ( 
+                          <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-400 text-black">
+                            <FileUp className="h-3 w-3" />
+                            Atletas (docs): {missingAthDocs} documento(s) em falta
+                        </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-800 text-white">
+                            <FileUp className="h-3 w-3" />
+                            Atletas (docs): {missingAthDocs} documento(s) em falta
+                          </div>
+                        )}
+                        
+                        {!showSocioArea && missingAthDocs === 0 && (
+                        <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-50 text-green-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Sem documentos em falta
+                        </div>
+                        )}
+                      </div>
+                  </div>
+                </div>
+                <div className="w-[20%] flex-col p-4">
+                  <div className="text-right">
+                      <Button variant="outline" onClick={() =>
+                        setEditMode(true)}>
+                        <PencilLine className="h-4 w-4 mr-1" />
+                        Editar dados
+                      </Button>
+                  </div>
+                </div>
             </div>
           </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-            {showSocioArea && (
-              <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-                <FileUp className="h-3 w-3" /> Sócio (docs): {socioMissing} documento(s) em falta
-              </div>
-            )}
-            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-50 text-yellow-800">
-              <FileUp className="h-3 w-3" /> Atletas (docs): {missingAthDocs} documento(s) em falta
-            </div>
-            {!showSocioArea && missingAthDocs === 0 && (
-              <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-50 text-green-700">
-                <CheckCircle2 className="h-3 w-3" /> Sem documentos em falta
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* Resumo de Situação de Tesouraria */}
-        <div className="mt-4">
-          <div className="text-lg font-semibold mb-2">Resumo de Situação de Tesouraria</div>
 
-          {showSocioArea && (
-            <div className="border rounded-xl px-3 py-2 mb-2">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Sócio — Inscrição</div>
-                <Button variant="outline" onClick={goTesouraria}>
-                  Ir para Situação de Tesouraria
-                </Button>
-              </div>
-              <div className="mt-1 flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
-                  {socioInscrResumo?.due && <span className="ml-2">· Limite: {socioInscrResumo.due}</span>}
-                </div>
-                <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
-              </div>
+        <div className="relative flex flex-col my-6 bg-white border 
+   border-slate-200 rounded-lg">
+            <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
+            <span className="text-md p-4 font-medium uppercase">
+                Resumo de Situação de Tesouraria
+                </span>
             </div>
-          )}
-
-          {state.atletas.length > 0 && (
-            <div className="space-y-2">
-              {state.atletas.map((a) => {
-                const stIns = athInscr[a.id]?.status ?? "sem_lancamento";
-                const dueIns = athInscr[a.id]?.due ?? sep30OfCurrentYear();
-                const valIns = athInscr[a.id]?.valor;
-
-                const stQ = athQuotaNext[a.id]?.status ?? "sem_lancamento";
-                const dueQ = athQuotaNext[a.id]?.due;
-                const valQ = athQuotaNext[a.id]?.valor;
-
-                return (
-                  <div key={a.id} className="border rounded-xl px-3 py-2 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">Atleta — {a.nomeCompleto}</div>
-                      <Button variant="outline" onClick={goTesouraria}>
+            {showSocioArea && (
+              <div className="flex bg-stone-300">
+                <div className="flex-1 flex-col space-y-4 p-4">
+                  <div data-slot="card-content">
+                    <div className="text-sm font-medium">Sócio — Inscrição</div>
+                    <div className="text-xs">
+                      <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                        {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
+                        {socioInscrResumo?.due && <span>· Limite: {socioInscrResumo.due}</span>}
+                      </span>
+                  </div>
+                  </div>
+                </div>
+                <div className="w-[30%] flex-col py-2 px-4 my-2.5">
+                  <div className="text-right">
+                    <Button variant="stone" onClick={goTesouraria}>
                         Ir para Situação de Tesouraria
                       </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm">
-                        <span className="text-gray-700">Inscrição</span>
-                        {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
-                        {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
-                      </div>
-                      <StatusBadge s={stIns} />
-                    </div>
-
-                    {!isAnuidadeObrigatoria(a.escalao) && (
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm">
-                          <span className="text-gray-700">Quotas</span>
-                          {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
-                          {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
-                        </div>
-                        <StatusBadge s={stQ} />
-                      </div>
-                    )}
+                    <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
                   </div>
-                );
-              })}
+                </div>
+              </div>
+            )}
+
+            {/* Atletas */}
+
+            {state.atletas.length > 0 && (
+              <div>
+                {state.atletas.map((a) => {
+                  const stIns = athInscr[a.id]?.status ?? "sem_lancamento";
+                  const dueIns = athInscr[a.id]?.due ?? sep30OfCurrentYear();
+                  const valIns = athInscr[a.id]?.valor;
+
+                  const stQ = athQuotaNext[a.id]?.status ?? "sem_lancamento";
+                  const dueQ = athQuotaNext[a.id]?.due;
+                  const valQ = athQuotaNext[a.id]?.valor;
+
+                  return (
+                    <div>
+                      <div className="p-1 bg-white"></div>
+                      <div key={a.id} className="flex bg-stone-300">
+                        <div className="flex-1 flex-col space-y-4 p-4">
+                          <div data-slot="card-content">
+                            <div className="text-sm font-medium">Atleta — {a.nomeCompleto}</div>
+
+                            <div className="text-xs">
+                              <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                              <span className="text-gray-700">Inscrição</span>
+                              {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
+                              {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
+                              </span>
+                            </div>
+                            {!isAnuidadeObrigatoria(a.escalao) && (
+                              <div className="text-xs">
+                                <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                                <span className="text-gray-700">Quotas</span>
+                                {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
+                                {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="w-[30%] flex-col py-2 px-4 my-2.5">
+                          <div className="text-right">
+                            <Button variant="stone" onClick={goTesouraria}>
+                                Ir para Situação de Tesouraria
+                              </Button>
+                            <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                  );
+                })}
+              </div>
+            )}
+
+
+            {/*
+            <div className="flex">
+                <div className="flex-1 flex-col space-y-4 p-4">
+                  <div data-slot="card-content" className="p-6">
+
+                  </div>
+                </div>
+                <div className="w-[20%] flex-col p-4">
+                  <div className="text-right">
+
+                  </div>
+                </div>
             </div>
-          )}
+            */}
+          </div>
+
+
+
+
+        <div className="mt-4">
+          <div className="text-lg font-semibold mb-2"></div>
+
+
+   
         </div>
 
         <Card>

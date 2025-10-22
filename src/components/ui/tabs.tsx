@@ -8,7 +8,7 @@ export function TabsList({children}:{children:React.ReactNode}){ return <div cla
 export function TabsTrigger({value, children}:{value:string, children:React.ReactNode}){
   const ctx=useContext(TabsCtx)!
   const active = ctx.value===value
-  return <button onClick={()=>ctx.setValue(value)} className={['rounded-xl border px-3 py-1.5 text-sm', active?'bg-blue-600 text-white border-blue-600':'bg-white'].join(' ')}>{children}</button>
+  return <button onClick={()=>ctx.setValue(value)} className={['rounded-sm border px-3 py-1.5 text-lg font-semibold', active?'bg-gray-800 text-white':'bg-white'].join(' ')}>{children}</button>
 }
 export function TabsContent({value, children}:{value:string, children:React.ReactNode}){
   const ctx=useContext(TabsCtx)!
