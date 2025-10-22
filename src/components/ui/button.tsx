@@ -1,5 +1,5 @@
 import React from 'react'
-export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'outline'|'secondary'|'destructive' }) {
+export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'outline'|'secondary'|'destructive'|'stone' }) {
   const base = 'inline-flex items-center justify-center h-8 rounded-md gap-1.5 px-3 py-2 text-sm font-medium transition active:scale-[.98] cursor-pointer'
   const variants: Record<string,string> = {
     default: 'bg-sky-600 text-white hover:bg-sky-800',
