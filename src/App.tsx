@@ -1832,15 +1832,15 @@ function AtletasSection({
 
   return (
     <Card>
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
+      <CardHeader>
+        <CardTitle className="p-0 inline-flex items-center gap-2">
           <Users className="h-5 w-5" /> Inscrição de Atletas
         </CardTitle>
-        <Button onClick={() => onOpenForm(undefined)}>
-          <Plus className="h-4 w-4 mr-1" /> Novo atleta
-        </Button>
       </CardHeader>
       <CardContent>
+      <Button onClick={() => onOpenForm(undefined)}>
+          <Plus className="h-4 w-4 mr-1" /> Novo atleta
+        </Button>
         {state.atletas.length === 0 && (
           <p className="text-sm text-gray-500">Sem atletas. Clique em "Novo atleta".</p>
         )}
