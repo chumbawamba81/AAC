@@ -8,7 +8,7 @@ export function CardHeader(props: React.HTMLAttributes<HTMLDivElement>) {
   
 }
 export function CardTitle(props: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <span {...props} className={['text-md px-4 font-medium uppercase', props.className].join(' ')} />
+  return <span {...props} className={['px-4 text-xs xs:text-sm sm:text-base md:text-lg font-medium uppercase', props.className].join(' ')} />
 }
 export function CardContent(props: React.HTMLAttributes<HTMLDivElement>) {
   return <div {...props} className={['p-4', props.className].join(' ')} />

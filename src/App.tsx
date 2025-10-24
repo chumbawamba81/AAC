@@ -13,7 +13,12 @@ import {
 // UI
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "./components/ui/dialog";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
@@ -75,7 +80,12 @@ import FilePickerButton from "./components/FilePickerButton";
 import { supabase } from "./supabaseClient";
 
 // Mini-toast + filename helper
-import { useMiniToast, inferFileName, MiniToastPortal, showToast } from "./components/MiniToast";
+import {
+  useMiniToast,
+  inferFileName,
+  MiniToastPortal,
+  showToast,
+} from "./components/MiniToast";
 
 /* -------------------- Constantes locais -------------------- */
 const DOCS_ATLETA = [
@@ -95,7 +105,10 @@ export type State = {
   perfil: PessoaDados | null;
   atletas: Atleta[];
   docsSocio: Partial<Record<(typeof DOCS_SOCIO)[number], UploadMeta>>;
-  docsAtleta: Record<string, Partial<Record<(typeof DOCS_ATLETA)[number], UploadMeta>>>;
+  docsAtleta: Record<
+    string,
+    Partial<Record<(typeof DOCS_ATLETA)[number], UploadMeta>>
+  >;
   pagamentos: Record<string, Array<UploadMeta | null>>; // legado
   tesouraria?: string;
   noticias?: string;
@@ -211,8 +224,12 @@ function loadState(): State {
     }
     const s = JSON.parse(raw);
     const conta: Conta | null =
-      s?.conta && typeof s.conta.email === "string" ? { email: s.conta.email } : null;
-    const perfil: PessoaDados | null = s?.perfil ? normalizePessoaDados(s.perfil, conta?.email) : null;
+      s?.conta && typeof s.conta.email === "string"
+        ? { email: s.conta.email }
+        : null;
+    const perfil: PessoaDados | null = s?.perfil
+      ? normalizePessoaDados(s.perfil, conta?.email)
+      : null;
 
     return {
       conta,
@@ -249,7 +266,11 @@ function PasswordChecklist({ pass }: { pass: string }) {
   const v = isPasswordStrong(pass);
   const Item = ({ ok, text }: { ok: boolean; text: string }) => (
     <div className="flex items-center gap-2 text-sm">
-      {ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+      {ok ? (
+        <CheckCircle2 className="h-4 w-4" />
+      ) : (
+        <AlertCircle className="h-4 w-4" />
+      )}
       <span className={ok ? "" : "text-red-600"}>{text}</span>
     </div>
   );
@@ -291,7 +312,10 @@ function ContaSection({
       if (!mounted) return;
       if (data.session) {
         const { data: u } = await supabase.auth.getUser();
-        const next: State = { ...state, conta: u?.user?.email ? { email: u.user.email } : state.conta };
+        const next: State = {
+          ...state,
+          conta: u?.user?.email ? { email: u.user.email } : state.conta,
+        };
         setState(next);
         saveState(next);
         onLogged();
@@ -320,10 +344,16 @@ function ContaSection({
       try {
         setLoading(true);
         await signUp(email, password);
-        const next: State = { ...state, verificationPendingEmail: email, conta: { email } };
+        const next: State = {
+          ...state,
+          verificationPendingEmail: email,
+          conta: { email },
+        };
         setState(next);
         saveState(next);
-        setInfo("Registo efetuado. Verifique o seu email para validar a conta.");
+        setInfo(
+          "Registo efetuado. Verifique o seu email para validar a conta."
+        );
       } catch (e: any) {
         setError(e.message || "Erro no registo");
       } finally {
@@ -336,8 +366,13 @@ function ContaSection({
       setLoading(true);
       const data = await signIn(email, password);
       await supabase.auth.getSession();
-      if (!data?.session?.access_token) throw new Error("Sessão inválida. Verifique o email de confirmação.");
-      const next: State = { ...state, conta: { email }, verificationPendingEmail: null };
+      if (!data?.session?.access_token)
+        throw new Error("Sessão inválida. Verifique o email de confirmação.");
+      const next: State = {
+        ...state,
+        conta: { email },
+        verificationPendingEmail: null,
+      };
       setState(next);
       saveState(next);
       onLogged();
@@ -349,58 +384,91 @@ function ContaSection({
   }
 
   async function submitForgot(ev: React.FormEvent) {
-  ev.preventDefault();
-  setError(undefined);
-  setInfo(undefined);
-  try {
-    // usa um path “normal” (sem #) para o Supabase poder anexar ?code=...
-    const redirectTo = `${window.location.origin}/auth/callback`;
-    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail || email, { redirectTo });
-    if (error) throw error;
-    setInfo("Se o email existir, foi enviado um link de recuperação.");
-    setForgotOpen(false);
-  } catch (e: any) {
-    setError(e.message || "Não foi possível enviar o email de recuperação");
+    ev.preventDefault();
+    setError(undefined);
+    setInfo(undefined);
+    try {
+      // usa um path “normal” (sem #) para o Supabase poder anexar ?code=...
+      const redirectTo = `${window.location.origin}/auth/callback`;
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        forgotEmail || email,
+        { redirectTo }
+      );
+      if (error) throw error;
+      setInfo("Se o email existir, foi enviado um link de recuperação.");
+      setForgotOpen(false);
+    } catch (e: any) {
+      setError(e.message || "Não foi possível enviar o email de recuperação");
+    }
   }
-}
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          {mode === "register" ? <UserPlus className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+          {mode === "register" ? (
+            <UserPlus className="h-5 w-5" />
+          ) : (
+            <LogIn className="h-5 w-5" />
+          )}
           {mode === "register" ? "Criar conta" : "Entrar"}
         </CardTitle>
       </CardHeader>
       <CardContent>
         {state.verificationPendingEmail && (
           <div className="mb-3 rounded-lg bg-blue-50 text-blue-900 text-sm p-2">
-            Registo efetuado para <strong>{state.verificationPendingEmail}</strong>. Verifique o seu email para validar a conta.
+            Registo efetuado para{" "}
+            <strong>{state.verificationPendingEmail}</strong>. Verifique o seu
+            email para validar a conta.
           </div>
         )}
         <form className="space-y-4" onSubmit={submit}>
           <div className="space-y-1">
             <Label>Email</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-1">
             <Label>
-              Palavra-passe {mode === "register" && <span className="text-xs text-gray-500">(requisitos abaixo)</span>}
+              Palavra-passe{" "}
+              {mode === "register" && (
+                <span className="text-xs text-gray-500">
+                  (requisitos abaixo)
+                </span>
+              )}
             </Label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
             {mode === "register" && <PasswordChecklist pass={password} />}
           </div>
 
           {mode === "register" && (
             <div className="space-y-1">
               <Label>Repetir palavra-passe *</Label>
-              <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
             </div>
           )}
 
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+              />
               Manter sessão iniciada
             </label>
             <button
@@ -418,7 +486,11 @@ function ContaSection({
           {info && <p className="text-sm text-green-700">{info}</p>}
           <div className="flex items-center justify-between">
             <Button type="submit" disabled={loading}>
-              {loading ? "Aguarde..." : mode === "register" ? "Registar" : "Entrar"}
+              {loading
+                ? "Aguarde..."
+                : mode === "register"
+                ? "Registar"
+                : "Entrar"}
             </Button>
             <Button
               type="button"
@@ -433,7 +505,10 @@ function ContaSection({
           </div>
           <div className="mt-2 text-xs text-gray-500 flex items-start gap-2">
             <Shield className="h-4 w-4 mt-[2px]" />
-            <p>Produção: hash Argon2id, cookies httpOnly, sessão, rate limiting, MFA.</p>
+            <p>
+              Produção: hash Argon2id, cookies httpOnly, sessão, rate limiting,
+              MFA.
+            </p>
           </div>
         </form>
 
@@ -445,10 +520,19 @@ function ContaSection({
             <form className="space-y-3" onSubmit={submitForgot}>
               <div className="space-y-1">
                 <Label>Email</Label>
-                <Input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} required />
+                <Input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                />
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={() => setForgotOpen(false)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setForgotOpen(false)}
+                >
                   Cancelar
                 </Button>
                 <Button type="submit">Enviar link</Button>
@@ -483,7 +567,9 @@ function DadosPessoaisSection({
     return d.slice(0, 4) + "-" + d.slice(4);
   }
 
-  const basePerfil = state.perfil ? normalizePessoaDados(state.perfil, state.conta?.email) : null;
+  const basePerfil = state.perfil
+    ? normalizePessoaDados(state.perfil, state.conta?.email)
+    : null;
 
   const [editMode, setEditMode] = useState<boolean>(!basePerfil);
   const [form, setForm] = useState<PessoaDadosWithVal>(
@@ -513,14 +599,37 @@ function DadosPessoaisSection({
 
   // ===== Contadores reais do Supabase (documentos) =====
   const [userId, setUserId] = useState<string | null>(null);
-  const [socioMissingCount, setSocioMissingCount] = useState<number>(DOCS_SOCIO.length);
-  const [athMissingCount, setAthMissingCount] = useState<number>(state.atletas.length * DOCS_ATLETA.length);
+  const [socioMissingCount, setSocioMissingCount] = useState<number>(
+    DOCS_SOCIO.length
+  );
+  const [athMissingCount, setAthMissingCount] = useState<number>(
+    state.atletas.length * DOCS_ATLETA.length
+  );
 
   // Resumo Tesouraria — inscrições + quotas
-  type ResumoStatus = "regularizado" | "pendente" | "em_dia" | "em_atraso" | "sem_lancamento";
-  const [athInscr, setAthInscr] = useState<Record<string, { status: ResumoStatus; due?: string | null; valor?: number }>>({});
-  const [athQuotaNext, setAthQuotaNext] = useState<Record<string, { status: ResumoStatus; due?: string | null; valor?: number }>>({});
-  const [socioInscrResumo, setSocioInscrResumo] = useState<{ status: ResumoStatus; due?: string | null; valor?: number } | null>(null);
+  type ResumoStatus =
+    | "regularizado"
+    | "pendente"
+    | "em_dia"
+    | "em_atraso"
+    | "sem_lancamento";
+  const [athInscr, setAthInscr] = useState<
+    Record<
+      string,
+      { status: ResumoStatus; due?: string | null; valor?: number }
+    >
+  >({});
+  const [athQuotaNext, setAthQuotaNext] = useState<
+    Record<
+      string,
+      { status: ResumoStatus; due?: string | null; valor?: number }
+    >
+  >({});
+  const [socioInscrResumo, setSocioInscrResumo] = useState<{
+    status: ResumoStatus;
+    due?: string | null;
+    valor?: number;
+  } | null>(null);
 
   function StatusBadge({ s }: { s: ResumoStatus }) {
     const map: Record<ResumoStatus, string> = {
@@ -537,14 +646,24 @@ function DadosPessoaisSection({
       em_atraso: "Em atraso",
       sem_lancamento: "Sem lançamento",
     };
-    return <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${map[s]}`}>{label[s]}</span>;
+    return (
+      <span
+        className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${map[s]}`}
+      >
+        {label[s]}
+      </span>
+    );
   }
 
   function buildProRankMap(atletas: Atleta[]) {
     const elegiveis = atletas
       .filter((a) => !isAnuidadeObrigatoria(a.escalao))
       .slice()
-      .sort((a, b) => new Date(a.dataNascimento).getTime() - new Date(b.dataNascimento).getTime());
+      .sort(
+        (a, b) =>
+          new Date(a.dataNascimento).getTime() -
+          new Date(b.dataNascimento).getTime()
+      );
     const map: Record<string, number> = {};
     elegiveis.forEach((a, i) => {
       map[a.id] = i;
@@ -584,7 +703,9 @@ function DadosPessoaisSection({
         .eq("doc_nivel", "socio")
         .is("atleta_id", null);
 
-      const socioSet = new Set<string>((socioSel.data || []).map((r: any) => r.doc_tipo));
+      const socioSet = new Set<string>(
+        (socioSel.data || []).map((r: any) => r.doc_tipo)
+      );
       const socioMiss = DOCS_SOCIO.filter((t) => !socioSet.has(t)).length;
       setSocioMissingCount(socioMiss);
 
@@ -633,7 +754,8 @@ function DadosPessoaisSection({
               ? "regularizado"
               : row.comprovativo_url
               ? "pendente"
-              : row.devido_em && new Date() > new Date(row.devido_em + "T23:59:59")
+              : row.devido_em &&
+                new Date() > new Date(row.devido_em + "T23:59:59")
               ? "em_atraso"
               : "em_dia"
             : "sem_lancamento";
@@ -655,7 +777,10 @@ function DadosPessoaisSection({
       }
 
       // Atletas — inscrição
-      const out: Record<string, { status: ResumoStatus; due?: string | null; valor?: number }> = {};
+      const out: Record<
+        string,
+        { status: ResumoStatus; due?: string | null; valor?: number }
+      > = {};
       const numAgregado = Math.max(
         1,
         state.atletas.filter((x) => !isAnuidadeObrigatoria(x.escalao)).length
@@ -665,7 +790,9 @@ function DadosPessoaisSection({
       for (const a of state.atletas) {
         const { data, error } = await supabase
           .from("pagamentos")
-          .select("id,descricao,tipo,comprovativo_url,validado,devido_em,created_at")
+          .select(
+            "id,descricao,tipo,comprovativo_url,validado,devido_em,created_at"
+          )
           .eq("atleta_id", a.id)
           .eq("tipo", "inscricao")
           .order("created_at", { ascending: false })
@@ -684,7 +811,8 @@ function DadosPessoaisSection({
             ? "regularizado"
             : row.comprovativo_url
             ? "pendente"
-            : row.devido_em && new Date() > new Date(row.devido_em + "T23:59:59")
+            : row.devido_em &&
+              new Date() > new Date(row.devido_em + "T23:59:59")
             ? "em_atraso"
             : "em_dia"
           : "sem_lancamento";
@@ -697,8 +825,14 @@ function DadosPessoaisSection({
       }
       setAthInscr(out);
     }
-    fetchInscricoes().catch((e) => console.error("[Resumo Tesouraria] inscrições:", e));
-  }, [userId, state.atletas.map((a) => a.id).join(","), state.perfil?.tipoSocio]);
+    fetchInscricoes().catch((e) =>
+      console.error("[Resumo Tesouraria] inscrições:", e)
+    );
+  }, [
+    userId,
+    state.atletas.map((a) => a.id).join(","),
+    state.perfil?.tipoSocio,
+  ]);
 
   // QUOTAS — próxima a vencer por atleta
   useEffect(() => {
@@ -707,7 +841,10 @@ function DadosPessoaisSection({
         setAthQuotaNext({});
         return;
       }
-      const out: Record<string, { status: ResumoStatus; due?: string | null; valor?: number }> = {};
+      const out: Record<
+        string,
+        { status: ResumoStatus; due?: string | null; valor?: number }
+      > = {};
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -722,7 +859,8 @@ function DadosPessoaisSection({
           .slice()
           .sort(
             (a, b) =>
-              new Date(a.dataNascimento).getTime() - new Date(b.dataNascimento).getTime()
+              new Date(a.dataNascimento).getTime() -
+              new Date(b.dataNascimento).getTime()
           );
         const m: Record<string, number> = {};
         elegiveis.forEach((a, i) => {
@@ -733,7 +871,9 @@ function DadosPessoaisSection({
 
       for (const a of state.atletas) {
         const rowsAll = await listPagamentosByAtleta(a.id);
-        const rows = rowsAll.filter((r) => (r as any).tipo !== "inscricao" && r.devido_em);
+        const rows = rowsAll.filter(
+          (r) => (r as any).tipo !== "inscricao" && r.devido_em
+        );
 
         const future = rows
           .filter(
@@ -743,15 +883,18 @@ function DadosPessoaisSection({
           )
           .sort(
             (x, y) =>
-              new Date(x.devido_em!).getTime() - new Date(y.devido_em!).getTime()
+              new Date(x.devido_em!).getTime() -
+              new Date(y.devido_em!).getTime()
           );
 
         const candidate =
-          (future[0] ||
-            rows.sort(
-              (x, y) =>
-                new Date(y.devido_em!).getTime() - new Date(x.devido_em!).getTime()
-            )[0]) || null;
+          future[0] ||
+          rows.sort(
+            (x, y) =>
+              new Date(y.devido_em!).getTime() -
+              new Date(x.devido_em!).getTime()
+          )[0] ||
+          null;
 
         if (!candidate) {
           out[a.id] = { status: "sem_lancamento" };
@@ -779,7 +922,8 @@ function DadosPessoaisSection({
           ? "regularizado"
           : candidate.comprovativo_url
           ? "pendente"
-          : candidate.devido_em && new Date() > new Date(candidate.devido_em + "T23:59:59")
+          : candidate.devido_em &&
+            new Date() > new Date(candidate.devido_em + "T23:59:59")
           ? "em_atraso"
           : "em_dia";
 
@@ -787,8 +931,14 @@ function DadosPessoaisSection({
       }
       setAthQuotaNext(out);
     }
-    fetchQuotasNext().catch((e) => console.error("[Resumo Tesouraria] quotas next:", e));
-  }, [userId, state.atletas.map((a) => a.id).join(","), state.perfil?.tipoSocio]);
+    fetchQuotasNext().catch((e) =>
+      console.error("[Resumo Tesouraria] quotas next:", e)
+    );
+  }, [
+    userId,
+    state.atletas.map((a) => a.id).join(","),
+    state.perfil?.tipoSocio,
+  ]);
 
   async function save(ev: React.FormEvent) {
     ev.preventDefault();
@@ -796,15 +946,21 @@ function DadosPessoaisSection({
     if (!form.nomeCompleto.trim()) errs.push("Nome obrigatório");
     const isValidISODate = (s: string) =>
       /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime());
-    if (!isValidISODate(form.dataNascimento)) errs.push("Data de nascimento inválida");
+    if (!isValidISODate(form.dataNascimento))
+      errs.push("Data de nascimento inválida");
     if (!form.morada.trim()) errs.push("Morada obrigatória");
-    if (!isValidPostalCode(form.codigoPostal)) errs.push("Código-postal inválido (####-###)");
-    if (!form.numeroDocumento.trim()) errs.push("Número de documento obrigatório");
+    if (!isValidPostalCode(form.codigoPostal))
+      errs.push("Código-postal inválido (####-###)");
+    if (!form.numeroDocumento.trim())
+      errs.push("Número de documento obrigatório");
     if (!isValidNIF(form.nif)) errs.push("NIF inválido");
     if (!form.telefone.trim()) errs.push("Telefone obrigatório");
     if (!form.email.trim()) errs.push("Email obrigatório");
     if (form.tipoDocumento === "Cartão de cidadão") {
-      if (!form.dataValidadeDocumento || !/^\d{4}-\d{2}-\d{2}$/.test(form.dataValidadeDocumento)) {
+      if (
+        !form.dataValidadeDocumento ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(form.dataValidadeDocumento)
+      ) {
         errs.push("Validade do cartão de cidadão é obrigatória");
       } else if (!isFutureISODate(form.dataValidadeDocumento)) {
         errs.push("A validade do cartão de cidadão deve ser futura");
@@ -817,7 +973,10 @@ function DadosPessoaisSection({
 
     try {
       const savedPerfil = await upsertMyProfile(form as PessoaDados);
-      const next: State = { ...state, perfil: normalizePessoaDados(savedPerfil, state.conta?.email) };
+      const next: State = {
+        ...state,
+        perfil: normalizePessoaDados(savedPerfil, state.conta?.email),
+      };
       setState(next);
       saveState(next);
       try {
@@ -848,158 +1007,183 @@ function DadosPessoaisSection({
     return (
       <div className="space-y-4">
         {/* DADOS */}
-          <div className="relative flex flex-col my-6 bg-white border 
-   border-slate-200 rounded-lg">
-            <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
-                <span className="text-md p-4 font-medium uppercase">
-                Dados do <span className="font-medium">sócio/encarregado de educação</span>
-                </span>
+        <div
+          className="relative flex flex-col my-6 bg-white border 
+   border-slate-200 rounded-lg"
+        >
+          <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
+            <span className="p-4 text-xs xs:text-sm sm:text-base md:text-lg font-medium uppercase">
+              Dados do sócio/encarregado de educação
+            </span>
+          </div>
+          <div className="flex">
+            <div className="flex-1 flex-col space-y-4 p-4">
+              <div data-slot="card-content">
+                <div className="font-semibold">{basePerfil.nomeCompleto}</div>
+                <div className="text-xs text-gray-500">
+                  {basePerfil.email} · {basePerfil.telefone} ·{" "}
+                  {basePerfil.codigoPostal}
+                  {isTipoSocio(basePerfil.tipoSocio) && (
+                    <> · {basePerfil.tipoSocio}</>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                  {showSocioArea &&
+                    (socioMissing > 0 ? (
+                      <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-400 text-black">
+                        <FileUp className="h-3 w-3" />
+                        Sócio (docs): {socioMissing} documento(s) em falta
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-800 text-white">
+                        <FileUp className="h-3 w-3" />
+                        Sócio (docs): {socioMissing} documento(s) em falta
+                      </div>
+                    ))}
+                  {missingAthDocs > 0 ? (
+                    <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-400 text-black">
+                      <FileUp className="h-3 w-3" />
+                      Atletas (docs): {missingAthDocs} documento(s) em falta
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-800 text-white">
+                      <FileUp className="h-3 w-3" />
+                      Atletas (docs): {missingAthDocs} documento(s) em falta
+                    </div>
+                  )}
+
+                  {!showSocioArea && missingAthDocs === 0 && (
+                    <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-50 text-green-700">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Sem documentos em falta
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="flex">
-                <div className="flex-1 flex-col space-y-4 p-4">
-                  <div data-slot="card-content">
-                      <div className="font-semibold">{basePerfil.nomeCompleto}</div>
-                      <div className="text-xs text-gray-500">
-                        {basePerfil.email} · {basePerfil.telefone} · {basePerfil.codigoPostal}
-                        {isTipoSocio(basePerfil.tipoSocio) && <> · {basePerfil.tipoSocio}</>}
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                        {showSocioArea && (
-                          socioMissing > 0 ? (
-                            <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-400 text-black">
-                                <FileUp className="h-3 w-3" />
-                                Sócio (docs): {socioMissing} documento(s) em falta
-                            </div>
-                            ) : (
-                              <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-800 text-white">
-                                <FileUp className="h-3 w-3" />
-                                Sócio (docs): {socioMissing} documento(s) em falta
-                            </div>
-                            )
-                        )}
-                        {missingAthDocs > 0 ? ( 
-                          <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-yellow-400 text-black">
-                            <FileUp className="h-3 w-3" />
-                            Atletas (docs): {missingAthDocs} documento(s) em falta
-                        </div>
-                        ) : (
-                          <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-800 text-white">
-                            <FileUp className="h-3 w-3" />
-                            Atletas (docs): {missingAthDocs} documento(s) em falta
-                          </div>
-                        )}
-                        
-                        {!showSocioArea && missingAthDocs === 0 && (
-                        <div className="inline-flex items-center gap-1 rounded-full px-2 py-1 bg-green-50 text-green-700">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Sem documentos em falta
-                        </div>
-                        )}
-                      </div>
-                  </div>
-                </div>
-                <div className="w-[20%] flex-col p-4">
-                  <div className="text-right">
-                      <Button variant="outline" onClick={() =>
-                        setEditMode(true)}>
-                        <PencilLine className="h-4 w-4 mr-1" />
-                        Editar dados
-                      </Button>
-                  </div>
-                </div>
+            <div className="w-[20%] flex-col p-4">
+              <div className="text-right">
+                <Button variant="outline" onClick={() => setEditMode(true)}>
+                  <PencilLine className="h-4 w-4 mr-1" />
+                  Editar dados
+                </Button>
+              </div>
             </div>
           </div>
+        </div>
 
         {/* Resumo de Situação de Tesouraria */}
 
-        <div className="relative flex flex-col my-6 bg-white border 
-   border-slate-200 rounded-lg">
-            <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
-            <span className="text-md p-4 font-medium uppercase">
-                Resumo de Situação de Tesouraria
-                </span>
-            </div>
-            {showSocioArea && (
-              <div className="flex bg-stone-300">
-                <div className="flex-1 flex-col space-y-4 p-4">
-                  <div data-slot="card-content">
-                    <div className="text-sm font-medium">Sócio — Inscrição</div>
-                    <div className="text-xs">
-                      <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
-                        {socioInscrResumo?.valor != null && <span>{eur(socioInscrResumo.valor)}</span>}
-                        {socioInscrResumo?.due && <span>· Limite: {socioInscrResumo.due}</span>}
-                      </span>
-                  </div>
-                  </div>
-                </div>
-                <div className="w-[30%] flex-col py-2 px-4 my-2.5">
-                  <div className="text-right">
-                    <Button variant="stone" onClick={goTesouraria}>
-                        Ir para Situação de Tesouraria
-                      </Button>
-                    <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+        <div
+          className="relative flex flex-col my-6 bg-white border 
+   border-slate-200 rounded-lg"
+        >
+          <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
+            <span className="p-4 text-xs xs:text-sm sm:text-base md:text-lg font-medium uppercase">
+              Resumo de Situação de Tesouraria
+            </span>
+          </div>
+          {showSocioArea && (
+            <div className="flex bg-stone-300">
+              <div className="flex-1 flex-col space-y-4 p-4">
+                <div data-slot="card-content">
+                  <div className="text-sm font-medium">Sócio — Inscrição</div>
+                  <div className="text-xs">
+                    <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                      {socioInscrResumo?.valor != null && (
+                        <span>{eur(socioInscrResumo.valor)}</span>
+                      )}
+                      {socioInscrResumo?.due && (
+                        <span>· Limite: {socioInscrResumo.due}</span>
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
-            )}
+              <div className="w-[30%] flex-col py-2 px-4 my-2.5">
+                <div className="text-right">
+                  <Button variant="stone" onClick={goTesouraria}>
+                    Ir para Situação de Tesouraria
+                  </Button>
+                  <StatusBadge
+                    s={socioInscrResumo?.status ?? "sem_lancamento"}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
-            {/* Atletas */}
+          {/* Atletas */}
 
-            {state.atletas.length > 0 && (
-              <div>
-                {state.atletas.map((a) => {
-                  const stIns = athInscr[a.id]?.status ?? "sem_lancamento";
-                  const dueIns = athInscr[a.id]?.due ?? sep30OfCurrentYear();
-                  const valIns = athInscr[a.id]?.valor;
+          {state.atletas.length > 0 && (
+            <div>
+              {state.atletas.map((a) => {
+                const stIns = athInscr[a.id]?.status ?? "sem_lancamento";
+                const dueIns = athInscr[a.id]?.due ?? sep30OfCurrentYear();
+                const valIns = athInscr[a.id]?.valor;
 
-                  const stQ = athQuotaNext[a.id]?.status ?? "sem_lancamento";
-                  const dueQ = athQuotaNext[a.id]?.due;
-                  const valQ = athQuotaNext[a.id]?.valor;
+                const stQ = athQuotaNext[a.id]?.status ?? "sem_lancamento";
+                const dueQ = athQuotaNext[a.id]?.due;
+                const valQ = athQuotaNext[a.id]?.valor;
 
-                  return (
-                    <div>
-                      <div className="p-1 bg-white"></div>
-                      <div key={a.id} className="flex bg-stone-300">
-                        <div className="flex-1 flex-col space-y-4 p-4">
-                          <div data-slot="card-content">
-                            <div className="text-sm font-medium">Atleta — {a.nomeCompleto}</div>
+                return (
+                  <div key={a.id}>
+                    <div className="p-1 bg-white"></div>
+                    <div key={a.id} className="flex bg-stone-300">
+                      <div className="flex-1 flex-col space-y-4 p-4">
+                        <div data-slot="card-content">
+                          <div className="text-sm font-medium">
+                            Atleta — {a.nomeCompleto}
+                          </div>
 
+                          <div className="text-xs">
+                            <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                              <span className="text-gray-700">Inscrição</span>
+                              {valIns != null && (
+                                <span className="ml-2">{eur(valIns)}</span>
+                              )}
+                              {dueIns && (
+                                <span className="ml-2 text-gray-600">
+                                  · Limite: {dueIns}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          {!isAnuidadeObrigatoria(a.escalao) && (
                             <div className="text-xs">
                               <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
-                              <span className="text-gray-700">Inscrição</span>
-                              {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
-                              {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
+                                <span className="text-gray-700">Quotas</span>
+                                {valQ != null && (
+                                  <span className="ml-2">{eur(valQ)}</span>
+                                )}
+                                {dueQ && (
+                                  <span className="ml-2 text-gray-600">
+                                    · Limite: {dueQ}
+                                  </span>
+                                )}
                               </span>
                             </div>
-                            {!isAnuidadeObrigatoria(a.escalao) && (
-                              <div className="text-xs">
-                                <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
-                                <span className="text-gray-700">Quotas</span>
-                                {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
-                                {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                          )}
                         </div>
-                        <div className="w-[30%] flex-col py-2 px-4 my-2.5">
-                          <div className="text-right">
-                            <Button variant="stone" onClick={goTesouraria}>
-                                Ir para Situação de Tesouraria
-                              </Button>
-                            <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
-                          </div>
+                      </div>
+                      <div className="w-[30%] flex-col py-2 px-4 my-2.5">
+                        <div className="text-right">
+                          <Button variant="stone" onClick={goTesouraria}>
+                            Ir para Situação de Tesouraria
+                          </Button>
+                          <StatusBadge
+                            s={socioInscrResumo?.status ?? "sem_lancamento"}
+                          />
                         </div>
                       </div>
                     </div>
-                    
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-
-            {/*
+          {/*
             <div className="flex">
                 <div className="flex-1 flex-col space-y-4 p-4">
                   <div data-slot="card-content" className="p-6">
@@ -1013,16 +1197,10 @@ function DadosPessoaisSection({
                 </div>
             </div>
             */}
-          </div>
-
-
-
+        </div>
 
         <div className="mt-4">
           <div className="text-lg font-semibold mb-2"></div>
-
-
-   
         </div>
 
         <Card>
@@ -1048,7 +1226,8 @@ function DadosPessoaisSection({
       </CardHeader>
       <CardContent>
         <div className="mb-4 rounded-xl border bg-yellow-50 text-yellow-900 p-3 text-sm">
-          <strong>Nota:</strong> Estes dados referem-se ao <em>sócio/encarregado de educação</em>. A inscrição do atleta é
+          <strong>Nota:</strong> Estes dados referem-se ao{" "}
+          <em>sócio/encarregado de educação</em>. A inscrição do atleta é
           realizada no separador <span className="font-medium">Atletas</span>.
         </div>
 
@@ -1057,7 +1236,9 @@ function DadosPessoaisSection({
             <Label>Nome Completo *</Label>
             <Input
               value={form.nomeCompleto}
-              onChange={(e) => setForm({ ...form, nomeCompleto: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, nomeCompleto: e.target.value })
+              }
               required
             />
           </div>
@@ -1067,7 +1248,12 @@ function DadosPessoaisSection({
               Tipo de sócio *
               <ImagesDialog
                 title="Tabela de Preços — Sócios"
-                images={[{ src: "/precos/socios-2025.png", alt: "Tabela de preços de sócios" }]}
+                images={[
+                  {
+                    src: "/precos/socios-2025.png",
+                    alt: "Tabela de preços de sócios",
+                  },
+                ]}
                 triggerText="Tabela de Preços"
               />
             </Label>
@@ -1075,7 +1261,10 @@ function DadosPessoaisSection({
               className="w-full rounded-xl border px-3 py-2 text-sm"
               value={form.tipoSocio}
               onChange={(e) =>
-                setForm({ ...form, tipoSocio: e.target.value as PessoaDados["tipoSocio"] })
+                setForm({
+                  ...form,
+                  tipoSocio: e.target.value as PessoaDados["tipoSocio"],
+                })
               }
             >
               <option>Sócio Pro</option>
@@ -1091,21 +1280,29 @@ function DadosPessoaisSection({
             <Input
               type="date"
               value={form.dataNascimento}
-              onChange={(e) => setForm({ ...form, dataNascimento: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, dataNascimento: e.target.value })
+              }
               required
             />
           </div>
 
           <div className="space-y-1 md:col-span-2">
             <Label>Morada *</Label>
-            <Input value={form.morada} onChange={(e) => setForm({ ...form, morada: e.target.value })} required />
+            <Input
+              value={form.morada}
+              onChange={(e) => setForm({ ...form, morada: e.target.value })}
+              required
+            />
           </div>
 
           <div className="space-y-1">
             <Label>Código Postal *</Label>
             <Input
               value={form.codigoPostal}
-              onChange={(e) => setForm({ ...form, codigoPostal: formatPostal(e.target.value) })}
+              onChange={(e) =>
+                setForm({ ...form, codigoPostal: formatPostal(e.target.value) })
+              }
               placeholder="0000-000"
               required
             />
@@ -1117,7 +1314,10 @@ function DadosPessoaisSection({
               className="w-full rounded-xl border px-3 py-2 text-sm"
               value={form.tipoDocumento}
               onChange={(e) =>
-                setForm({ ...form, tipoDocumento: e.target.value as PessoaDados["tipoDocumento"] })
+                setForm({
+                  ...form,
+                  tipoDocumento: e.target.value as PessoaDados["tipoDocumento"],
+                })
               }
             >
               <option>Cartão de cidadão</option>
@@ -1130,19 +1330,29 @@ function DadosPessoaisSection({
             <Label>Nº documento *</Label>
             <Input
               value={form.numeroDocumento}
-              onChange={(e) => setForm({ ...form, numeroDocumento: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, numeroDocumento: e.target.value })
+              }
               required
             />
           </div>
 
           <div className="space-y-1">
             <Label>NIF *</Label>
-            <Input value={form.nif} onChange={(e) => setForm({ ...form, nif: e.target.value })} required />
+            <Input
+              value={form.nif}
+              onChange={(e) => setForm({ ...form, nif: e.target.value })}
+              required
+            />
           </div>
 
           <div className="space-y-1">
             <Label>Contacto telefónico *</Label>
-            <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} required />
+            <Input
+              value={form.telefone}
+              onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+              required
+            />
           </div>
 
           <div className="space-y-1">
@@ -1161,7 +1371,9 @@ function DadosPessoaisSection({
               <Input
                 type="date"
                 value={form.dataValidadeDocumento || ""}
-                onChange={(e) => setForm({ ...form, dataValidadeDocumento: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, dataValidadeDocumento: e.target.value })
+                }
                 required
               />
             </div>
@@ -1169,7 +1381,10 @@ function DadosPessoaisSection({
 
           <div className="space-y-1 md:col-span-2">
             <Label>Profissão (opcional)</Label>
-            <Input value={form.profissao || ""} onChange={(e) => setForm({ ...form, profissao: e.target.value })} />
+            <Input
+              value={form.profissao || ""}
+              onChange={(e) => setForm({ ...form, profissao: e.target.value })}
+            />
           </div>
 
           <div className="md:col-span-2 flex justify-end gap-2">
@@ -1186,9 +1401,13 @@ function DadosPessoaisSection({
 /* ---------------------------- PagamentosSection --------------------------- */
 function PagamentosSection({ state }: { state: State }) {
   const [userId, setUserId] = useState<string | null>(null);
-  const [payments, setPayments] = useState<Record<string, Array<PagamentoRowWithUrl | null>>>({});
+  const [payments, setPayments] = useState<
+    Record<string, Array<PagamentoRowWithUrl | null>>
+  >({});
   const [socioRows, setSocioRows] = useState<PagamentoRowWithUrl[]>([]);
-  const [athleteInscricao, setAthleteInscricao] = useState<Record<string, PagamentoRowWithUrl | null>>({});
+  const [athleteInscricao, setAthleteInscricao] = useState<
+    Record<string, PagamentoRowWithUrl | null>
+  >({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -1231,9 +1450,13 @@ function PagamentosSection({ state }: { state: State }) {
     const inscrNext: Record<string, PagamentoRowWithUrl | null> = {};
     const next: Record<string, Array<PagamentoRowWithUrl | null>> = {};
     for (const a of state.atletas) {
-      const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
+      const planoEfetivo = isAnuidadeObrigatoria(a.escalao)
+        ? "Anual"
+        : a.planoPagamento;
       const slots = getSlotsForPlano(planoEfetivo);
-      const labels = Array.from({ length: slots }, (_, i) => getPagamentoLabel(planoEfetivo, i));
+      const labels = Array.from({ length: slots }, (_, i) =>
+        getPagamentoLabel(planoEfetivo, i)
+      );
       const rows = await listPagamentosByAtleta(a.id);
       const rowsWithUrl = await withSignedUrlsPagamentos(rows);
 
@@ -1246,15 +1469,25 @@ function PagamentosSection({ state }: { state: State }) {
 
       // Inscrição do atleta
       const inscrArr = rowsWithUrl.filter(
-        (r) => (r as any).tipo === "inscricao" || (r.descricao || "").toLowerCase() === "taxa de inscrição"
+        (r) =>
+          (r as any).tipo === "inscricao" ||
+          (r.descricao || "").toLowerCase() === "taxa de inscrição"
       );
-      inscrArr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
+      inscrArr.sort(
+        (x, y) =>
+          new Date(y.created_at || 0).getTime() -
+          new Date(x.created_at || 0).getTime()
+      );
       inscrNext[a.id] = inscrArr[0] || null;
 
       next[a.id] = labels.map((lab) => {
         const arr = byDesc.get(lab) || [];
         if (arr.length === 0) return null;
-        arr.sort((x, y) => new Date(y.created_at || 0).getTime() - new Date(x.created_at || 0).getTime());
+        arr.sort(
+          (x, y) =>
+            new Date(y.created_at || 0).getTime() -
+            new Date(x.created_at || 0).getTime()
+        );
         return arr[0];
       });
     }
@@ -1269,54 +1502,56 @@ function PagamentosSection({ state }: { state: State }) {
   useEffect(() => {
     const channel = supabase
       .channel("rt-pagamentos")
-      .on("postgres_changes", { event: "*", schema: "public", table: "pagamentos" }, (payload) => {
-        const newAth = (payload as any)?.new?.atleta_id;
-        const oldAth = (payload as any)?.old?.atleta_id;
-        const ids = new Set(state.atletas.map((a) => a.id));
-        if (ids.has(newAth) || ids.has(oldAth)) refreshPayments();
-        if (!newAth && !oldAth) refreshPayments(); // socio
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pagamentos" },
+        (payload) => {
+          const newAth = (payload as any)?.new?.atleta_id;
+          const oldAth = (payload as any)?.old?.atleta_id;
+          const ids = new Set(state.atletas.map((a) => a.id));
+          if (ids.has(newAth) || ids.has(oldAth)) refreshPayments();
+          if (!newAth && !oldAth) refreshPayments(); // socio
+        }
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
   }, [state.atletas, refreshPayments]);
-  
 
-// === Helpers de normalização de nomes (Android-friendly) ===
-function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
-  const dot = originalName.lastIndexOf(".");
-  const rawBase = dot > 0 ? originalName.slice(0, dot) : originalName;
-  const rawExt = dot > 0 ? originalName.slice(dot + 1) : "";
+  // === Helpers de normalização de nomes (Android-friendly) ===
+  function sanitizeFileName(originalName: string, maxBaseLen = 80): string {
+    const dot = originalName.lastIndexOf(".");
+    const rawBase = dot > 0 ? originalName.slice(0, dot) : originalName;
+    const rawExt = dot > 0 ? originalName.slice(dot + 1) : "";
 
-  const base = rawBase
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "_")
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-_.]+|[-_.]+$/g, "");
+    const base = rawBase
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, "_")
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[-_.]+|[-_.]+$/g, "");
 
-  const safeBase = (base || "ficheiro").slice(0, maxBaseLen);
-  const ext = rawExt
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+    const safeBase = (base || "ficheiro").slice(0, maxBaseLen);
+    const ext = rawExt
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
 
-  return ext ? `${safeBase}.${ext}` : safeBase;
-}
-async function withSafeName(file: File): Promise<File> {
-  const safeName = sanitizeFileName(file.name);
-  // Mesmo que o nome já esteja "safe", clonar melhora a fiabilidade no Android/WebView
-  const buf = await file.arrayBuffer();
-  return new File([new Uint8Array(buf)], safeName, {
-    type: file.type || "application/octet-stream",
-    lastModified: file.lastModified,
-  });
-}
-
+    return ext ? `${safeBase}.${ext}` : safeBase;
+  }
+  async function withSafeName(file: File): Promise<File> {
+    const safeName = sanitizeFileName(file.name);
+    // Mesmo que o nome já esteja "safe", clonar melhora a fiabilidade no Android/WebView
+    const buf = await file.arrayBuffer();
+    return new File([new Uint8Array(buf)], safeName, {
+      type: file.type || "application/octet-stream",
+      lastModified: file.lastModified,
+    });
+  }
 
   function isOverdue(row: PagamentoRowWithUrl | null): boolean {
     if (!row || row.validado) return false;
@@ -1325,47 +1560,56 @@ async function withSafeName(file: File): Promise<File> {
     return new Date().getTime() > dt.getTime();
   }
 
-async function handleUpload(athlete: Atleta, idx: number, file: File) {
-  if (!userId || !file) {
-    alert("Sessão ou ficheiro em falta");
-    return;
+  async function handleUpload(athlete: Atleta, idx: number, file: File) {
+    if (!userId || !file) {
+      alert("Sessão ou ficheiro em falta");
+      return;
+    }
+    setBusy(true);
+    try {
+      const safe = await withSafeName(file); // 💡 normaliza nome
+      const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao)
+        ? "Anual"
+        : athlete.planoPagamento;
+      const label = getPagamentoLabel(planoEfetivo, idx);
+      await saveComprovativoPagamento({
+        userId,
+        atletaId: athlete.id,
+        descricao: label,
+        file: safe,
+      });
+      await refreshPayments();
+      showToast("Comprovativo carregado", "ok");
+    } catch (e: any) {
+      console.error("[Pagamentos] upload/replace", e);
+      showToast(e?.message || "Falha no upload", "err");
+    } finally {
+      setBusy(false);
+    }
   }
-  setBusy(true);
-  try {
-    const safe = await withSafeName(file); // 💡 normaliza nome
-    const planoEfetivo = isAnuidadeObrigatoria(athlete.escalao) ? "Anual" : athlete.planoPagamento;
-    const label = getPagamentoLabel(planoEfetivo, idx);
-    await saveComprovativoPagamento({ userId, atletaId: athlete.id, descricao: label, file: safe });
-    await refreshPayments();
-    showToast("Comprovativo carregado", "ok");
-  } catch (e: any) {
-    console.error("[Pagamentos] upload/replace", e);
-    showToast(e?.message || "Falha no upload", "err");
-  } finally {
-    setBusy(false);
-  }
-}
-
 
   async function handleUploadInscricao(athlete: Atleta, file: File) {
-  if (!userId || !file) {
-    alert("Sessão ou ficheiro em falta");
-    return;
+    if (!userId || !file) {
+      alert("Sessão ou ficheiro em falta");
+      return;
+    }
+    setBusy(true);
+    try {
+      const safe = await withSafeName(file); // 💡 normaliza nome
+      await saveComprovativoInscricaoAtleta({
+        userId,
+        atletaId: athlete.id,
+        file: safe,
+      });
+      await refreshPayments();
+      showToast("Comprovativo de inscrição carregado", "ok");
+    } catch (e: any) {
+      console.error("[Pagamentos] upload inscrição", e);
+      showToast(e?.message || "Falha no upload", "err");
+    } finally {
+      setBusy(false);
+    }
   }
-  setBusy(true);
-  try {
-    const safe = await withSafeName(file); // 💡 normaliza nome
-    await saveComprovativoInscricaoAtleta({ userId, atletaId: athlete.id, file: safe });
-    await refreshPayments();
-    showToast("Comprovativo de inscrição carregado", "ok");
-  } catch (e: any) {
-    console.error("[Pagamentos] upload inscrição", e);
-    showToast(e?.message || "Falha no upload", "err");
-  } finally {
-    setBusy(false);
-  }
-}
-
 
   async function handleDelete(athlete: Atleta, idx: number) {
     const row = payments[athlete.id]?.[idx];
@@ -1378,31 +1622,30 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
       showToast("Comprovativo removido", "ok");
     } catch (e: any) {
       console.error("[Pagamentos] clear", e);
-     showToast(e?.message || "Falha a remover", "err");
+      showToast(e?.message || "Falha a remover", "err");
     } finally {
       setBusy(false);
     }
   }
 
   async function handleUploadSocio(file: File) {
-  if (!userId || !file) {
-    alert("Sessão ou ficheiro em falta");
-    return;
+    if (!userId || !file) {
+      alert("Sessão ou ficheiro em falta");
+      return;
+    }
+    setBusy(true);
+    try {
+      const safe = await withSafeName(file); // 💡 normaliza nome
+      await saveComprovativoSocioInscricao(userId, safe);
+      await refreshPayments();
+      showToast("Comprovativo de sócio carregado", "ok");
+    } catch (e: any) {
+      console.error("[Pagamentos] socio upload", e);
+      showToast(e?.message || "Falha no upload", "err");
+    } finally {
+      setBusy(false);
+    }
   }
-  setBusy(true);
-  try {
-    const safe = await withSafeName(file); // 💡 normaliza nome
-    await saveComprovativoSocioInscricao(userId, safe);
-    await refreshPayments();
-    showToast("Comprovativo de sócio carregado", "ok");
-  } catch (e: any) {
-    console.error("[Pagamentos] socio upload", e);
-    showToast(e?.message || "Falha no upload", "err");
-  } finally {
-    setBusy(false);
-  }
-}
-
 
   async function handleRemoveSocioInscricao(row: PagamentoRowWithUrl) {
     if (!confirm("Remover o comprovativo da inscrição de sócio?")) return;
@@ -1433,12 +1676,18 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
   }
 
   // helpers de valor
-  const numAtletasAgregado = state.atletas.filter((a) => !isAnuidadeObrigatoria(a.escalao)).length;
+  const numAtletasAgregado = state.atletas.filter(
+    (a) => !isAnuidadeObrigatoria(a.escalao)
+  ).length;
   const rankMap = (function build() {
     const elegiveis = state.atletas
       .filter((a) => !isAnuidadeObrigatoria(a.escalao))
       .slice()
-      .sort((a, b) => new Date(a.dataNascimento).getTime() - new Date(b.dataNascimento).getTime());
+      .sort(
+        (a, b) =>
+          new Date(a.dataNascimento).getTime() -
+          new Date(b.dataNascimento).getTime()
+      );
     const m: Record<string, number> = {};
     elegiveis.forEach((a, i) => {
       m[a.id] = i;
@@ -1454,7 +1703,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
           <CardTitle>Situação de Tesouraria</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-500">Crie primeiro um atleta ou ative a opção de sócio.</p>
+          <p className="text-sm text-gray-500">
+            Crie primeiro um atleta ou ative a opção de sócio.
+          </p>
         </CardContent>
       </Card>
     );
@@ -1470,7 +1721,10 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
   }) => {
     const name = inferFileName(row) || `Ficheiro ${fallbackIndex}`;
     return (
-      <span className="inline-block max-w-[220px] align-middle truncate" title={name}>
+      <span
+        className="inline-block max-w-[220px] align-middle truncate"
+        title={name}
+      >
         {name}
       </span>
     );
@@ -1488,7 +1742,8 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
       <CardContent className="space-y-6">
         {/* Aviso / Instruções de pagamento */}
         <div className="rounded-xl border bg-slate-50 p-3 text-sm text-gray-800">
-          Os pagamentos devem ser realizados até à data limite indicada, para o seguinte IBAN:
+          Os pagamentos devem ser realizados até à data limite indicada, para o
+          seguinte IBAN:
           <strong className="ml-1">PT50 0036 0414 99106005021 95</strong>
           <span className="ml-1">(Banco Montepio)</span>.
         </div>
@@ -1505,7 +1760,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
               return (
                 <div className="border rounded-lg p-3 flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Inscrição de Sócio — {eur(val)}</div>
+                    <div className="font-medium">
+                      Inscrição de Sócio — {eur(val)}
+                    </div>
                     <div className="text-xs text-gray-500">
                       {row?.comprovativo_url
                         ? row.validado
@@ -1542,14 +1799,19 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                     <FilePickerButton
                       variant={row?.comprovativo_url ? "secondary" : "outline"}
                       accept="image/*,application/pdf"
-                      onFiles={(files) => files?.[0] && handleUploadSocio(files[0])}
+                      onFiles={(files) =>
+                        files?.[0] && handleUploadSocio(files[0])
+                      }
                     >
                       <Upload className="h-4 w-4 mr-1" />
                       {row?.comprovativo_url ? "Substituir" : "Carregar"}
                     </FilePickerButton>
 
                     {row?.comprovativo_url && (
-                      <Button variant="destructive" onClick={() => handleRemoveSocioInscricao(row)}>
+                      <Button
+                        variant="destructive"
+                        onClick={() => handleRemoveSocioInscricao(row)}
+                      >
                         <Trash2 className="h-4 w-4 mr-1" />
                         Remover
                       </Button>
@@ -1563,7 +1825,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
 
         {/* ===== Atletas ===== */}
         {state.atletas.map((a) => {
-          const planoEfetivo = isAnuidadeObrigatoria(a.escalao) ? "Anual" : a.planoPagamento;
+          const planoEfetivo = isAnuidadeObrigatoria(a.escalao)
+            ? "Anual"
+            : a.planoPagamento;
 
           // custos para este atleta
           const est = estimateCosts({
@@ -1576,7 +1840,8 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
           // Masters/Sub-23 → só inscrição
           const onlyInscricao = isAnuidadeObrigatoria(a.escalao);
           const slots = getSlotsForPlano(planoEfetivo);
-          const rows = payments[a.id] || Array.from({ length: slots }, () => null);
+          const rows =
+            payments[a.id] || Array.from({ length: slots }, () => null);
 
           const amountForIdx = (idx: number) => {
             if (planoEfetivo === "Mensal") return est.mensal10;
@@ -1590,8 +1855,13 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
               <div className="mb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                 <div className="font-medium">Atleta — {a.nomeCompleto}</div>
                 <div className="text-xs text-gray-500 sm:text-right">
-                  Plano: {onlyInscricao ? "Sem quotas (apenas inscrição)" : planoEfetivo}
-                  {isAnuidadeObrigatoria(a.escalao) ? " (obrigatório pelo escalão)" : ""}
+                  Plano:{" "}
+                  {onlyInscricao
+                    ? "Sem quotas (apenas inscrição)"
+                    : planoEfetivo}
+                  {isAnuidadeObrigatoria(a.escalao)
+                    ? " (obrigatório pelo escalão)"
+                    : ""}
                   {!onlyInscricao && <> · {slots} comprovativo(s)</>}
                 </div>
               </div>
@@ -1606,7 +1876,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                 return (
                   <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
                     <div>
-                      <div className="font-medium">Inscrição de Atleta — {eur(est.taxaInscricao)}</div>
+                      <div className="font-medium">
+                        Inscrição de Atleta — {eur(est.taxaInscricao)}
+                      </div>
                       <div className="text-xs text-gray-500">
                         {row?.comprovativo_url
                           ? row.validado
@@ -1617,7 +1889,11 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                           : overdue
                           ? "Comprovativo em falta (em atraso)"
                           : "Comprovativo em falta"}
-                        {row?.devido_em && <span className="ml-2">· Limite: {row.devido_em}</span>}
+                        {row?.devido_em && (
+                          <span className="ml-2">
+                            · Limite: {row.devido_em}
+                          </span>
+                        )}
                       </div>
 
                       {/* Nome do ficheiro (truncate) + link */}
@@ -1640,16 +1916,23 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                     </div>
                     <div className="flex items-center gap-2 md:justify-end shrink-0">
                       <FilePickerButton
-                        variant={row?.comprovativo_url ? "secondary" : "outline"}
+                        variant={
+                          row?.comprovativo_url ? "secondary" : "outline"
+                        }
                         accept="image/*,application/pdf"
-                        onFiles={(files) => files?.[0] && handleUploadInscricao(a, files[0])}
+                        onFiles={(files) =>
+                          files?.[0] && handleUploadInscricao(a, files[0])
+                        }
                       >
                         <Upload className="h-4 w-4 mr-1" />
                         {row?.comprovativo_url ? "Substituir" : "Carregar"}
                       </FilePickerButton>
 
                       {row?.comprovativo_url && (
-                        <Button variant="destructive" onClick={() => handleRemoveAtletaInscricao(row)}>
+                        <Button
+                          variant="destructive"
+                          onClick={() => handleRemoveAtletaInscricao(row)}
+                        >
                           <Trash2 className="h-4 w-4 mr-1" />
                           Remover
                         </Button>
@@ -1669,7 +1952,10 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                     const due = meta?.devido_em || undefined;
 
                     return (
-                      <div key={i} className="border rounded-lg p-3 flex items-center justify-between">
+                      <div
+                        key={i}
+                        className="border rounded-lg p-3 flex items-center justify-between"
+                      >
                         <div>
                           <div className="font-medium">
                             {label} — {eur(amountForIdx(i))}
@@ -1684,7 +1970,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                               : overdue
                               ? "Comprovativo em falta (em atraso)"
                               : "Comprovativo em falta"}
-                            {due && <span className="ml-2">· Limite: {due}</span>}
+                            {due && (
+                              <span className="ml-2">· Limite: {due}</span>
+                            )}
                           </div>
 
                           {/* Nome do ficheiro (truncate) + link */}
@@ -1695,7 +1983,9 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
                                 href={meta.signedUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                title={inferFileName(meta) || `Ficheiro ${i + 1}`}
+                                title={
+                                  inferFileName(meta) || `Ficheiro ${i + 1}`
+                                }
                               >
                                 <LinkIcon className="h-3 w-3" />
                                 <FileName row={meta} fallbackIndex={i + 1} />
@@ -1706,16 +1996,23 @@ async function handleUpload(athlete: Atleta, idx: number, file: File) {
 
                         <div className="flex items-center gap-2 md:justify-end shrink-0">
                           <FilePickerButton
-                            variant={meta?.comprovativo_url ? "secondary" : "outline"}
+                            variant={
+                              meta?.comprovativo_url ? "secondary" : "outline"
+                            }
                             accept="image/*,application/pdf"
-                            onFiles={(files) => files?.[0] && handleUpload(a, i, files[0])}
+                            onFiles={(files) =>
+                              files?.[0] && handleUpload(a, i, files[0])
+                            }
                           >
                             <Upload className="h-4 w-4 mr-1" />
                             {meta?.comprovativo_url ? "Substituir" : "Carregar"}
                           </FilePickerButton>
 
                           {meta?.comprovativo_url && (
-                            <Button variant="destructive" onClick={() => handleDelete(a, i)}>
+                            <Button
+                              variant="destructive"
+                              onClick={() => handleDelete(a, i)}
+                            >
                               <Trash2 className="h-4 w-4 mr-1" />
                               Remover
                             </Button>
@@ -1805,7 +2102,12 @@ function AtletasSection({
       .channel("docs-atletas")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "documentos", filter: `user_id=eq.${userId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "documentos",
+          filter: `user_id=eq.${userId}`,
+        },
         () => {
           recomputeMissing(userId);
         }
@@ -1820,7 +2122,10 @@ function AtletasSection({
     if (!confirm("Remover o atleta?")) return;
     try {
       await removeAtleta(id);
-      const next: State = { ...state, atletas: state.atletas.filter((x) => x.id !== id) };
+      const next: State = {
+        ...state,
+        atletas: state.atletas.filter((x) => x.id !== id),
+      };
       delete next.docsAtleta[id];
       delete next.pagamentos[id];
       setState(next);
@@ -1833,38 +2138,48 @@ function AtletasSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="p-0 inline-flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5" /> Inscrição de Atletas
         </CardTitle>
       </CardHeader>
       <CardContent>
-      <Button onClick={() => onOpenForm(undefined)}>
+        <Button onClick={() => onOpenForm(undefined)}>
           <Plus className="h-4 w-4 mr-1" /> Novo atleta
         </Button>
         {state.atletas.length === 0 && (
-          <p className="text-sm text-gray-500">Sem atletas. Clique em "Novo atleta".</p>
+          <p className="text-sm text-gray-500">
+            Sem atletas. Clique em "Novo atleta".
+          </p>
         )}
         <div className="grid gap-3">
           {state.atletas.map((a) => {
             const missing = missingByAth[a.id] ?? DOCS_ATLETA.length;
             return (
-              <div key={a.id} className="border rounded-xl p-3 flex items-center justify-between">
+              <div
+                key={a.id}
+                className="border rounded-xl p-3 flex items-center justify-between"
+              >
                 <div>
                   <div className="font-medium flex items-center gap-2">
                     {a.nomeCompleto}
                     {missing > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
-                        <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
+                        <AlertCircle className="h-3 w-3" /> {missing} doc(s) em
+                        falta
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
-                        <CheckCircle2 className="h-3 w-3" /> Documentação completa
+                        <CheckCircle2 className="h-3 w-3" /> Documentação
+                        completa
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-gray-500">
-                    {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento:{" "}
-                    {isAnuidadeObrigatoria(a.escalao) ? "Sem quotas (apenas inscrição)" : a.planoPagamento}
+                    {a.genero} · Nasc.: {a.dataNascimento} · Escalão:{" "}
+                    {a.escalao} · Pagamento:{" "}
+                    {isAnuidadeObrigatoria(a.escalao)
+                      ? "Sem quotas (apenas inscrição)"
+                      : a.planoPagamento}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1883,7 +2198,6 @@ function AtletasSection({
     </Card>
   );
 }
-
 
 function ResetPasswordForm({ onDone }: { onDone: () => void }) {
   const [p1, setP1] = useState("");
@@ -1916,12 +2230,22 @@ function ResetPasswordForm({ onDone }: { onDone: () => void }) {
     <form className="space-y-3" onSubmit={submit}>
       <div className="space-y-1">
         <Label>Nova palavra-passe</Label>
-        <Input type="password" value={p1} onChange={(e) => setP1(e.target.value)} required />
+        <Input
+          type="password"
+          value={p1}
+          onChange={(e) => setP1(e.target.value)}
+          required
+        />
         <PasswordChecklist pass={p1} />
       </div>
       <div className="space-y-1">
         <Label>Repetir nova palavra-passe</Label>
-        <Input type="password" value={p2} onChange={(e) => setP2(e.target.value)} required />
+        <Input
+          type="password"
+          value={p2}
+          onChange={(e) => setP2(e.target.value)}
+          required
+        />
       </div>
       {err && <p className="text-sm text-red-600">{err}</p>}
       <div className="flex justify-end gap-2">
@@ -1937,23 +2261,22 @@ function ResetPasswordForm({ onDone }: { onDone: () => void }) {
 
 export default function App() {
   const [state, setState] = useState<State>(loadState());
-// Persist active tab across reloads or when returning from Android
-const LS_ACTIVE_TAB = "bb_active_tab_v1";
-const [resetOpen, setResetOpen] = useState(false);
-const [activeTab, setActiveTab] = useState<string>(() => {
-  try {
-    return localStorage.getItem(LS_ACTIVE_TAB) || "home";
-  } catch {
-    return "home";
-  }
-});
+  // Persist active tab across reloads or when returning from Android
+  const LS_ACTIVE_TAB = "bb_active_tab_v1";
+  const [resetOpen, setResetOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      return localStorage.getItem(LS_ACTIVE_TAB) || "home";
+    } catch {
+      return "home";
+    }
+  });
 
-
-useEffect(() => {
-  try {
-    localStorage.setItem(LS_ACTIVE_TAB, activeTab);
-  } catch {}
-}, [activeTab]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_ACTIVE_TAB, activeTab);
+    } catch {}
+  }, [activeTab]);
 
   const [postSavePrompt, setPostSavePrompt] = useState(false);
   const [syncing, setSyncing] = useState<boolean>(true);
@@ -1966,7 +2289,10 @@ useEffect(() => {
   const doSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const [perfilDb, atletasDb] = await Promise.all([getMyProfile(), listAtletas()]);
+      const [perfilDb, atletasDb] = await Promise.all([
+        getMyProfile(),
+        listAtletas(),
+      ]);
       setState((prev) => {
         const email = perfilDb?.email || prev.conta?.email || "";
         return {
@@ -1983,41 +2309,43 @@ useEffect(() => {
     }
   }, []);
 
-useEffect(() => {
-  const sub = supabase.auth.onAuthStateChange((event) => {
-    if (event === "PASSWORD_RECOVERY") setResetOpen(true);
-  });
-  // fallback: se a URL já traz o hash de recuperação
-  if (typeof window !== "undefined" && /type=recovery/.test(window.location.hash)) {
-    setResetOpen(true);
-  }
-  return () => {
-    sub.data.subscription.unsubscribe();
-  };
-}, []);
-
-// Abre o diálogo de reset quando voltamos do email de recuperação
-useEffect(() => {
-  // 1) Trocar ?code=... por sessão (passo obrigatório no v2)
-  (async () => {
-    const url = window.location.href;
-    if (/\?code=/.test(url) && /type=recovery/.test(url)) {
-      const { error } = await supabase.auth.exchangeCodeForSession(url);
-      if (error) {
-        console.error("[exchangeCodeForSession]", error);
-      }
+  useEffect(() => {
+    const sub = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setResetOpen(true);
+    });
+    // fallback: se a URL já traz o hash de recuperação
+    if (
+      typeof window !== "undefined" &&
+      /type=recovery/.test(window.location.hash)
+    ) {
+      setResetOpen(true);
     }
-  })();
+    return () => {
+      sub.data.subscription.unsubscribe();
+    };
+  }, []);
 
-  // 2) Quando a sessão de recovery ficar ativa, mostramos o diálogo
-  const sub = supabase.auth.onAuthStateChange((event) => {
-    if (event === "PASSWORD_RECOVERY") setResetOpen(true);
-  });
-  return () => {
-    sub.data.subscription.unsubscribe();
-  };
-}, []);
+  // Abre o diálogo de reset quando voltamos do email de recuperação
+  useEffect(() => {
+    // 1) Trocar ?code=... por sessão (passo obrigatório no v2)
+    (async () => {
+      const url = window.location.href;
+      if (/\?code=/.test(url) && /type=recovery/.test(url)) {
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
+        if (error) {
+          console.error("[exchangeCodeForSession]", error);
+        }
+      }
+    })();
 
+    // 2) Quando a sessão de recovery ficar ativa, mostramos o diálogo
+    const sub = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setResetOpen(true);
+    });
+    return () => {
+      sub.data.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -2065,7 +2393,9 @@ useEffect(() => {
       setState((prev) => ({ ...prev, atletas: nextAtletas }));
       saveState({ ...state, atletas: nextAtletas });
 
-      const force = !!wasEditingId && (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
+      const force =
+        !!wasEditingId &&
+        (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
       const isOnlyInscricao = isAnuidadeObrigatoria(saved.escalao); // Sub-23 / Masters
 
@@ -2086,78 +2416,113 @@ useEffect(() => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
-	    <MiniToastPortal />
+    <div className="lg:max-w-5xl mx-auto p-4 md:p-8 space-y-6">
+      <MiniToastPortal />
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <img className="h-24 object-contain" src="/imgs/AAC-white1.png" />
-          <h1 className="text-2xl font-bold">AAC - Secção de basquetebol</h1>
+          <h1 className="text-2xl font-bold">AAC - Secção de Basquetebol</h1>
         </div>
         <AuthButton />
       </header>
 
-      <AuthGate fallback={<ContaSection state={state} setState={setState} onLogged={() => setActiveTab("home")} />}>
+      <AuthGate
+        fallback={
+          <ContaSection
+            state={state}
+            setState={setState}
+            onLogged={() => setActiveTab("home")}
+          />
+        }
+      >
         {syncing ? (
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados da conta...
+          <div className="">
+            <RefreshCw className="h-4 w-4 animate-spin" /> A carregar os dados
+            da conta...
           </div>
         ) : (
           <>
             <Tabs key={activeTab} defaultValue={activeTab}>
-  <TabsList>
-  <div onClick={() => { setActiveTab("home"); localStorage.setItem(LS_ACTIVE_TAB, "home"); }}>
-    <TabsTrigger value="home">{mainTabLabel}</TabsTrigger>
-  </div>
-  {hasPerfil && (
-    <div onClick={() => { setActiveTab("atletas"); localStorage.setItem(LS_ACTIVE_TAB, "atletas"); }}>
-      <TabsTrigger value="atletas">Atletas</TabsTrigger>
-    </div>
-  )}
-  {hasPerfil && (
-    <div onClick={() => { setActiveTab("docs"); localStorage.setItem(LS_ACTIVE_TAB, "docs"); }}>
-      <TabsTrigger value="docs">Documentos</TabsTrigger>
-    </div>
-  )}
-  {hasPerfil && hasAtletas && (
-    <div onClick={() => { setActiveTab("tes"); localStorage.setItem(LS_ACTIVE_TAB, "tes"); }}>
-      <TabsTrigger value="tes">Situação de Tesouraria</TabsTrigger>
-    </div>
-  )}
-</TabsList>
+              <TabsList>
+                <div
+                  onClick={() => {
+                    setActiveTab("home");
+                    localStorage.setItem(LS_ACTIVE_TAB, "home");
+                  }}
+                  className="p-0 m-0"
+                >
+                  <TabsTrigger value="home"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-house-icon lucide-house"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> Home</TabsTrigger>
+                </div>
+                {hasPerfil && (
+                  <div
+                    onClick={() => {
+                      setActiveTab("atletas");
+                      localStorage.setItem(LS_ACTIVE_TAB, "atletas");
+                    }}
+                  >
+                    <TabsTrigger value="atletas">Atletas</TabsTrigger>
+                  </div>
+                )}
+                {hasPerfil && (
+                  <div
+                    onClick={() => {
+                      setActiveTab("docs");
+                      localStorage.setItem(LS_ACTIVE_TAB, "docs");
+                    }}
+                  >
+                    <TabsTrigger value="docs">Documentos</TabsTrigger>
+                  </div>
+                )}
+                {hasPerfil && hasAtletas && (
+                  <div
+                    onClick={() => {
+                      setActiveTab("tes");
+                      localStorage.setItem(LS_ACTIVE_TAB, "tes");
+                    }}
+                  >
+                    <TabsTrigger value="tes">
+                      Tesouraria
+                    </TabsTrigger>
+                  </div>
+                )}
+              </TabsList>
 
+              <TabsContent value="home">
+                <DadosPessoaisSection
+                  state={state}
+                  setState={setState}
+                  onAfterSave={afterSavePerfil}
+                  goTesouraria={() => setActiveTab("tes")}
+                />
+              </TabsContent>
 
-  <TabsContent value="home">
-    <DadosPessoaisSection
-      state={state}
-      setState={setState}
-      onAfterSave={afterSavePerfil}
-      goTesouraria={() => setActiveTab("tes")}
-    />
-  </TabsContent>
+              {hasPerfil && (
+                <TabsContent value="atletas">
+                  <AtletasSection
+                    state={state}
+                    setState={setState}
+                    onOpenForm={openAthForm}
+                  />
+                </TabsContent>
+              )}
 
-  {hasPerfil && (
-    <TabsContent value="atletas">
-      <AtletasSection state={state} setState={setState} onOpenForm={openAthForm} />
-    </TabsContent>
-  )}
+              {hasPerfil && (
+                <TabsContent value="docs">
+                  <TemplatesDownloadSection />
+                  <UploadDocsSection
+                    state={state}
+                    setState={(s: State) => setState(s)}
+                    hideSocioDoc={!wantsSocio(state.perfil?.tipoSocio)}
+                  />
+                </TabsContent>
+              )}
 
-  {hasPerfil && (
-    <TabsContent value="docs">
-      <TemplatesDownloadSection />
-      <UploadDocsSection
-        state={state}
-        setState={(s: State) => setState(s)}
-        hideSocioDoc={!wantsSocio(state.perfil?.tipoSocio)}
-      />
-    </TabsContent>
-  )}
-
-  {hasPerfil && hasAtletas && (
-    <TabsContent value="tes">
-      <PagamentosSection state={state} />
-    </TabsContent>
-  )}
-</Tabs>
+              {hasPerfil && hasAtletas && (
+                <TabsContent value="tes">
+                  <PagamentosSection state={state} />
+                </TabsContent>
+              )}
+            </Tabs>
           </>
         )}
       </AuthGate>
@@ -2166,7 +2531,9 @@ useEffect(() => {
       <Dialog open={athModalOpen} onOpenChange={setAthModalOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{athEditing ? "Editar atleta" : "Novo atleta"}</DialogTitle>
+            <DialogTitle>
+              {athEditing ? "Editar atleta" : "Novo atleta"}
+            </DialogTitle>
           </DialogHeader>
           <AtletaFormCompleto
             initial={athEditing}
@@ -2190,7 +2557,10 @@ useEffect(() => {
             <DialogTitle>Deseja inscrever um atleta agora?</DialogTitle>
           </DialogHeader>
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setPostSavePrompt(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => setPostSavePrompt(false)}
+            >
               Agora não
             </Button>
             <Button
@@ -2204,14 +2574,14 @@ useEffect(() => {
           </div>
         </DialogContent>
       </Dialog>
-<Dialog open={resetOpen} onOpenChange={setResetOpen}>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle>Definir nova palavra-passe</DialogTitle>
-    </DialogHeader>
-    <ResetPasswordForm onDone={() => setResetOpen(false)} />
-  </DialogContent>
-</Dialog>
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Definir nova palavra-passe</DialogTitle>
+          </DialogHeader>
+          <ResetPasswordForm onDone={() => setResetOpen(false)} />
+        </DialogContent>
+      </Dialog>
 
       <div className="flex items-center justify-center gap-4 pt-6">
         <a
@@ -2232,7 +2602,11 @@ useEffect(() => {
         >
           <Instagram className="h-6 w-6" />
         </a>
-        <a href="mailto:basquetebol@academica.pt" aria-label="Email AAC Basquetebol" className="opacity-80 hover:opacity-100">
+        <a
+          href="mailto:basquetebol@academica.pt"
+          aria-label="Email AAC Basquetebol"
+          className="opacity-80 hover:opacity-100"
+        >
           <Mail className="h-6 w-6" />
         </a>
       </div>
@@ -2270,7 +2644,13 @@ function AuthButton() {
 }
 
 /** Gate que só renderiza quando há sessão */
-function AuthGate({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
+function AuthGate({
+  children,
+  fallback,
+}: {
+  children: React.ReactNode;
+  fallback: React.ReactNode;
+}) {
   const [ready, setReady] = useState<"checking" | "in" | "out">("checking");
   useEffect(() => {
     let mounted = true;
@@ -2278,13 +2658,16 @@ function AuthGate({ children, fallback }: { children: React.ReactNode; fallback:
       if (!mounted) return;
       setReady(session ? "in" : "out");
     });
-    supabase.auth.getSession().then(({ data }) => setReady(data.session ? "in" : "out"));
+    supabase.auth
+      .getSession()
+      .then(({ data }) => setReady(data.session ? "in" : "out"));
     return () => {
       mounted = false;
       sub.data.subscription.unsubscribe();
     };
   }, []);
-  if (ready === "checking") return <div className="text-sm text-gray-500">A verificar sessão...</div>;
+  if (ready === "checking")
+    return <div className="text-sm text-gray-500">A verificar sessão...</div>;
   if (ready === "out") return <>{fallback}</>;
   return <>{children}</>;
 }
