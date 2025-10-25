@@ -1016,7 +1016,7 @@ function DadosPessoaisSection({
               Dados do sócio/encarregado de educação
             </span>
           </div>
-          <div className="flex">
+          <div className="flex flex-col lg:flex-row">
             <div className="flex-1 flex-col space-y-4 p-4">
               <div data-slot="card-content">
                 <div className="font-semibold">{basePerfil.nomeCompleto}</div>
@@ -1061,7 +1061,7 @@ function DadosPessoaisSection({
                 </div>
               </div>
             </div>
-            <div className="w-[20%] flex-col p-4">
+            <div className="lg:w-[20%] flex-col p-4">
               <div className="text-right">
                 <Button variant="outline" onClick={() => setEditMode(true)}>
                   <PencilLine className="h-4 w-4 mr-1" />
@@ -1084,7 +1084,7 @@ function DadosPessoaisSection({
             </span>
           </div>
           {showSocioArea && (
-            <div className="flex bg-stone-300">
+            <div className="flex flex-col lg:flex-row">
               <div className="flex-1 flex-col space-y-4 p-4">
                 <div data-slot="card-content">
                   <div className="text-sm font-medium">Sócio — Inscrição</div>
@@ -1100,11 +1100,12 @@ function DadosPessoaisSection({
                   </div>
                 </div>
               </div>
-              <div className="w-[30%] flex-col py-2 px-4 my-2.5">
-                <div className="text-right">
+              <div className="lg:w-[30%] flex-col py-2 px-4 my-2.5">
+                <div className="lg:text-right xs:gap-4">
                   <Button variant="stone" onClick={goTesouraria}>
-                    Ir para Situação de Tesouraria
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
                   </Button>
+                  <br />
                   <StatusBadge
                     s={socioInscrResumo?.status ?? "sem_lancamento"}
                   />
@@ -1129,7 +1130,7 @@ function DadosPessoaisSection({
                 return (
                   <div key={a.id}>
                     <div className="p-1 bg-white"></div>
-                    <div key={a.id} className="flex bg-stone-300">
+                    <div key={a.id} className="flex flex-col lg:flex-row bg-stone-300">
                       <div className="flex-1 flex-col space-y-4 p-4">
                         <div data-slot="card-content">
                           <div className="text-sm font-medium">
@@ -1166,11 +1167,12 @@ function DadosPessoaisSection({
                           )}
                         </div>
                       </div>
-                      <div className="w-[30%] flex-col py-2 px-4 my-2.5">
-                        <div className="text-right">
+                      <div className="lg:w-[30%] flex-col py-2 px-4 my-2.5">
+                        <div className="text-right xs:gap-4">
                           <Button variant="stone" onClick={goTesouraria}>
-                            Ir para Situação de Tesouraria
+                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
                           </Button>
+                          <br />
                           <StatusBadge
                             s={socioInscrResumo?.status ?? "sem_lancamento"}
                           />
