@@ -136,8 +136,8 @@ export default function AtletasTab({ state, setState, onOpenForm }: AtletasTabPr
           <Users className="h-5 w-5" /> Inscrição de Atletas
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="pb-4">
+      <CardContent className="p-0">
+        <div className="p-4">
           <Button variant='dark' onClick={() => onOpenForm(undefined)}>
             <Plus className="h-4 w-4 mr-1" /> Novo atleta
           </Button>
@@ -146,39 +146,52 @@ export default function AtletasTab({ state, setState, onOpenForm }: AtletasTabPr
         {state.atletas.length === 0 && (
           <p className="text-sm text-gray-500">Sem atletas. Clique em "Novo atleta".</p>
         )}
-        <div className="grid gap-3">
+        <div className="p-1 bg-white"></div>
+
+        <div>
           {state.atletas.map((a) => {
             const missing = missingByAth[a.id] ?? DOCS_ATLETA.length;
             return (
-              <div key={a.id} className="border rounded-xl p-3 flex items-center justify-between">
-                <div>
-                  <div className="font-medium flex items-center gap-2">
-                    {a.nomeCompleto}
-                    {missing > 0 ? (
-                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
-                        <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
-                        <CheckCircle2 className="h-3 w-3" /> Documentação completa
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento: {isAnuidadeObrigatoria(a.escalao)
-                      ? "Sem quotas (apenas inscrição)"
-                      : a.planoPagamento}
+              <div key={a.id}>
+                <div className="p-1 bg-white"></div>
+                  <div className="bg-stone-300 p-4">
+                    <div className="flex flex-row">
+                      <div className="flex-1 flex-col space-y-1 p-1">
+                        <div data-slot="card-content">
+                          <div className="font-medium flex items-center gap-2">
+                            {a.nomeCompleto}
+                            {missing > 0 ? (
+                              <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
+                                <AlertCircle className="h-3 w-3" /> {missing} doc(s) em falta
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 bg-green-100 text-green-700">
+                                <CheckCircle2 className="h-3 w-3" /> Documentação completa
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {a.genero} · Nasc.: {a.dataNascimento} · Escalão: {a.escalao} · Pagamento: {isAnuidadeObrigatoria(a.escalao)
+                              ? "Sem quotas (apenas inscrição)"
+                              : a.planoPagamento}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-none space-y-1 p-1">
+                        <div data-slot="card-content">
+                          <div className="text-xs inline-flex rounded-md shadow-xs" role="group">
+                            <Button variant="outline" onClick={() => onOpenForm(a)}>
+                              <PencilLine className="h-4 w-4 mr-1" /> Editar
+                            </Button>
+                            <Button variant="destructive" onClick={() => remove(a.id)}>
+                              <Trash2 className="h-4 w-4 mr-1" /> Remover
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => onOpenForm(a)}>
-                    <PencilLine className="h-4 w-4 mr-1" /> Editar
-                  </Button>
-                  <Button variant="destructive" onClick={() => remove(a.id)}>
-                    <Trash2 className="h-4 w-4 mr-1" /> Remover
-                  </Button>
-                </div>
-              </div>
             );
           })}
         </div>
