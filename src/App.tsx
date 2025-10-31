@@ -73,7 +73,7 @@ import { isValidPostalCode, isValidNIF } from "./utils/form-utils";
 import AtletaFormCompleto from "./components/AtletaFormCompleto";
 import UploadDocsSection from "./components/UploadDocsSection";
 import FilePickerButton from "./components/FilePickerButton";
-import HomeAtletas from "./components/HomeAtletas";
+import AtletasTab from "./components/AtletasTab";
 import HomeDadosPessoais from "./components/HomeDadosPessoais";
 import HomePagamentos from "./components/HomePagamentos";
 
@@ -550,7 +550,7 @@ function ContaSection({
 
 /* ---------------------------- PagamentosSection --------------------------- */
 
-/* ----------------------------- HomeAtletas ----------------------------- */
+/* ----------------------------- AtletasTab ----------------------------- */
 
 function ResetPasswordForm({ onDone }: { onDone: () => void }) {
   const [p1, setP1] = useState("");
@@ -851,7 +851,7 @@ export default function App() {
 
               {hasPerfil && (
                 <TabsContent value="atletas">
-                  <HomeAtletas
+                  <AtletasTab
                     state={state}
                     setState={setState}
                     onOpenForm={openAthForm}

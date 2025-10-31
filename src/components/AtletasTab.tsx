@@ -7,7 +7,7 @@ import { deleteAtleta as removeAtleta } from "../services/atletasService";
 import type { Atleta } from "../types/Atleta";
 import { AlertCircle, CheckCircle2, PencilLine, Plus, Trash2, Users } from "lucide-react";
 
-type HomeAtletasProps = {
+type AtletasTabProps = {
   state: {
     atletas: Atleta[];
     docsAtleta: Record<string, any>;
@@ -34,7 +34,7 @@ function isAnuidadeObrigatoria(escalao?: string | null) {
   return isMasters || isSub23;
 }
 
-export default function HomeAtletas({ state, setState, onOpenForm }: HomeAtletasProps) {
+export default function AtletasTab({ state, setState, onOpenForm }: AtletasTabProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
 
@@ -62,7 +62,7 @@ export default function HomeAtletas({ state, setState, onOpenForm }: HomeAtletas
       .eq("doc_nivel", "atleta");
 
     if (error) {
-      console.error("[HomeAtletas] SELECT documentos:", error.message);
+      console.error("[AtletasTab] SELECT documentos:", error.message);
       return;
     }
 

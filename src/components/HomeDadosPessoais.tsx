@@ -581,33 +581,49 @@ export default function HomeDadosPessoais({
               Resumo de Situação de Tesouraria
             </span>
           </div>
+
           {showSocioArea && (
-            <div className="flex flex-col lg:flex-row">
-              <div className="flex-1 flex-col space-y-4 p-4">
-                <div data-slot="card-content">
-                  <div className="text-sm font-medium">Sócio — Inscrição</div>
-                  <div className="text-xs">
-                    <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
-                      {socioInscrResumo?.valor != null && (
-                        <span>{eur(socioInscrResumo.valor)}</span>
-                      )}
-                      {socioInscrResumo?.due && (
-                        <span>· Limite: {socioInscrResumo.due}</span>
-                      )}
-                    </span>
+            <>
+              <div className="flex flex-row">
+                <div className="flex-1 flex-col space-y-1 p-1">
+                  <div data-slot="card-content">
+                    <div className="text-sm font-medium">Sócio — Inscrição</div>
                   </div>
                 </div>
               </div>
-              <div className="lg:w-[30%] flex-col py-2 px-4 my-2.5">
-                <div className="lg:text-right xs:gap-4">
-                  <Button variant="stone" onClick={goTesouraria}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
-                  </Button>
-                  <br />
-                  <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+
+              <div className="flex flex-row gap-1">
+                <div className="flex-1 space-y-1 p-1">
+                  <div data-slot="card-content">
+                    <div className="text-xs">
+                      <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                        {socioInscrResumo?.valor != null && (
+                          <span>{eur(socioInscrResumo.valor)}</span>
+                        )}
+                        {socioInscrResumo?.due && (
+                          <span>· Limite: {socioInscrResumo.due}</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-none space-y-1 p-1">
+                  <div className="lg:text-right">
+                    <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <div className="flex flex-row gap-1">
+                <div className="flex-1 space-y-1 p-1">
+                  <div className="lg:text-right">
+                  <Button variant="stone" onClick={goTesouraria}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
+                  </Button>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Atletas */}
@@ -626,38 +642,60 @@ export default function HomeDadosPessoais({
                 return (
                   <div key={a.id}>
                     <div className="p-1 bg-white"></div>
-                    <div key={a.id} className="flex flex-col lg:flex-row bg-stone-300">
-                      <div className="flex-1 flex-col space-y-4 p-4">
-                        <div data-slot="card-content">
-                          <div className="text-sm font-medium">Atleta — {a.nomeCompleto}</div>
-
-                          <div className="text-xs">
-                            <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
-                              <span className="text-gray-700">Inscrição</span>
-                              {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
-                              {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
-                            </span>
+                    <div className="bg-stone-300">
+                      <div className="flex flex-row">
+                        <div className="flex-1 flex-col space-y-1 p-1">
+                          <div data-slot="card-content">
+                            <div className="text-sm font-medium">Atleta — {a.nomeCompleto}</div>
                           </div>
-                          {!isAnuidadeObrigatoria(a.escalao) && (
-                            <div className="text-xs">
-                              <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
-                                <span className="text-gray-700">Quotas</span>
-                                {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
-                                {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
-                              </span>
-                            </div>
-                          )}
                         </div>
                       </div>
-                      <div className="lg:w-[30%] flex-col py-2 px-4 my-2.5">
-                        <div className="lg:text-right xs:gap-4">
-                          <Button variant="stone" onClick={goTesouraria}>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
-                          </Button>
-                          <br />
-                          <StatusBadge s={stIns} />
-                          <br />
+                      <div className="flex flex-row gap-1">
+                        <div className="flex-1 space-y-1 p-1">
+                          <div data-slot="card-content">
+                            <div className="text-xs">
+                              <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                                <span className="text-gray-700">Inscrição</span>
+                                {valIns != null && <span className="ml-2">{eur(valIns)}</span>}
+                                {dueIns && <span className="ml-2 text-gray-600">· Limite: {dueIns}</span>}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex-none space-y-1 p-1">
+                          <div className="text-right">
+                            <StatusBadge s={stIns} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-row gap-1">
+                        <div className="flex-1 space-y-1 p-1">
+                          <div data-slot="card-content">
+                            {!isAnuidadeObrigatoria(a.escalao) && (
+                              <div className="text-xs">
+                                <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                                  <span className="text-gray-700">Quotas</span>
+                                  {valQ != null && <span className="ml-2">{eur(valQ)}</span>}
+                                  {dueQ && <span className="ml-2 text-gray-600">· Limite: {dueQ}</span>}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex-none space-y-1 p-1">
+                          <div className="text-right">
                           <StatusBadge s={stQ} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-row gap-1">
+                        <div className="flex-1 space-y-1 p-1">
+                          <div className="lg:text-right">
+                          <Button variant="stone" onClick={goTesouraria}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
+                          </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
