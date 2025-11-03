@@ -855,6 +855,13 @@ export default function App() {
                     state={state}
                     setState={setState}
                     onOpenForm={openAthForm}
+                    dadosPessoais={{
+                      morada: state.perfil?.morada,
+                      codigoPostal: state.perfil?.codigoPostal,
+                      telefone: state.perfil?.telefone,
+                      email: state.perfil?.email,
+                    }}
+                    tipoSocio={state.perfil?.tipoSocio ?? "Não pretendo ser sócio"}
                   />
                 </TabsContent>
               )}

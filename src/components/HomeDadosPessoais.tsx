@@ -642,7 +642,7 @@ export default function HomeDadosPessoais({
                 return (
                   <div key={a.id}>
                     <div className="p-1 bg-white"></div>
-                    <div className="bg-stone-300">
+                    <div className="bg-stone-200">
                       <div className="flex flex-row">
                         <div className="flex-1 flex-col space-y-1 p-1">
                           <div data-slot="card-content">

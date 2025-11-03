@@ -6,6 +6,7 @@ import { supabase } from "../supabaseClient";
 import { deleteAtleta as removeAtleta } from "../services/atletasService";
 import type { Atleta } from "../types/Atleta";
 import { AlertCircle, CheckCircle2, PencilLine, Plus, Trash2, Users } from "lucide-react";
+import AtletaEdit from "./AtletaEdit";
 
 type AtletasTabProps = {
   state: {
@@ -15,6 +16,13 @@ type AtletasTabProps = {
   };
   setState: React.Dispatch<React.SetStateAction<any>>;
   onOpenForm: (a?: Atleta) => void;
+  dadosPessoais?: {
+    morada?: string;
+    codigoPostal?: string;
+    telefone?: string;
+    email?: string;
+  };
+  tipoSocio?: string | null;
 };
 
 const DOCS_ATLETA = [
@@ -34,9 +42,10 @@ function isAnuidadeObrigatoria(escalao?: string | null) {
   return isMasters || isSub23;
 }
 
-export default function AtletasTab({ state, setState, onOpenForm }: AtletasTabProps) {
+export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais, tipoSocio }: AtletasTabProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
+  const [editingAtleta, setEditingAtleta] = useState<Atleta | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -129,6 +138,33 @@ export default function AtletasTab({ state, setState, onOpenForm }: AtletasTabPr
     }
   }
 
+  function handleStartEdit(atleta: Atleta) {
+    setEditingAtleta(atleta);
+  }
+
+  function handleCancelEdit() {
+    setEditingAtleta(null);
+  }
+
+  async function handleSaveEdit(updatedAtleta: Atleta) {
+    await onOpenForm(updatedAtleta);
+    setEditingAtleta(null);
+  }
+
+  // Show edit form if editing
+  if (editingAtleta) {
+    return (
+      <AtletaEdit
+        atleta={editingAtleta}
+        onSave={handleSaveEdit}
+        onCancel={handleCancelEdit}
+        dadosPessoais={dadosPessoais}
+        tipoSocio={tipoSocio}
+        agregadoAtletas={state.atletas}
+      />
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -154,8 +190,8 @@ export default function AtletasTab({ state, setState, onOpenForm }: AtletasTabPr
             return (
               <div key={a.id}>
                 <div className="p-1 bg-white"></div>
-                  <div className="bg-stone-300 p-4">
-                    <div className="flex flex-row">
+                  <div className="bg-stone-200 p-4">
+                    <div className="flex flex-col sm:flex-row">
                       <div className="flex-1 flex-col space-y-1 p-1">
                         <div data-slot="card-content">
                           <div className="font-medium flex items-center gap-2">
@@ -178,15 +214,13 @@ export default function AtletasTab({ state, setState, onOpenForm }: AtletasTabPr
                         </div>
                       </div>
                       <div className="flex-none space-y-1 p-1">
-                        <div data-slot="card-content">
-                          <div className="text-xs inline-flex rounded-md shadow-xs" role="group">
-                            <Button variant="outline" onClick={() => onOpenForm(a)}>
-                              <PencilLine className="h-4 w-4 mr-1" /> Editar
-                            </Button>
-                            <Button variant="destructive" onClick={() => remove(a.id)}>
-                              <Trash2 className="h-4 w-4 mr-1" /> Remover
-                            </Button>
-                          </div>
+                      <div data-slot="card-content" className="flex items-center gap-1 justify-end sm:justify-between">
+                          <Button className="mr-4" variant="grey" onClick={() => handleStartEdit(a)}>
+                            <PencilLine className="h-4 w-4 mr-1" /> Editar
+                          </Button>
+                          <Button  variant="destructive" onClick={() => remove(a.id)}>
+                            <Trash2 className="h-4 w-4 mr-1" /> Remover
+                          </Button>
                         </div>
                       </div>
                     </div>
