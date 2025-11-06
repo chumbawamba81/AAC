@@ -70,7 +70,7 @@ export function MiniToastPortal() {
   if (!visible) return null;
   return (
     <div
-      className={`fixed bottom-4 right-4 z-50 rounded-lg px-3 py-2 text-sm shadow-md ${
+      className={`fixed top-4 right-4 z-50 rounded-lg px-3 py-2 text-sm shadow-md ${
         type === "ok" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
       }`}
       role="status"

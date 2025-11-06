@@ -147,7 +147,13 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
   }
 
   async function handleSaveEdit(updatedAtleta: Atleta) {
-    await onOpenForm(updatedAtleta);
+    // Update state with the saved atleta (already saved to DB by AtletaEdit)
+    const wasEditingId = editingAtleta?.id;
+    const nextAtletas = wasEditingId
+      ? state.atletas.map((x) => (x.id === wasEditingId ? updatedAtleta : x))
+      : [updatedAtleta, ...state.atletas];
+    
+    setState((prev: any) => ({ ...prev, atletas: nextAtletas }));
     setEditingAtleta(null);
   }
 

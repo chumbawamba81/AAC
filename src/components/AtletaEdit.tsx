@@ -8,6 +8,9 @@ import type { Atleta, Genero, Nacionalidade, TipoDocId, PlanoPagamento } from '.
 import { computeEscalao, isValidNIF, isValidPostalCode, yearsAtSeasonStart, areEmailsValid } from '../utils/form-utils';
 import { estimateCosts, type EstimateResult, eur } from '../utils/pricing';
 import { ArrowLeft } from 'lucide-react';
+import { upsertAtleta as saveAtleta } from '../services/atletasService';
+import { ensureOnlyInscricaoForAtleta, ensureInscricaoEQuotasForAtleta, isAnuidadeObrigatoria } from '../services/pagamentosService';
+import { showToast } from './MiniToast';
 
 type Props = {
   atleta: Atleta;
@@ -69,13 +72,6 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
 
   const [est, setEst] = useState<EstimateResult | null>(null);
   useEffect(() => {
-    function isAnuidadeObrigatoria(escalao?: string | null | undefined) {
-      const s = (escalao || "").toLowerCase();
-      const isMasters = s.includes("masters");
-      const isSub23 = /sub[-\s]?23/.test(s);
-      return isMasters || isSub23;
-    }
-
     const parseISO = (s?: string | null) => (s ? new Date(s + 'T00:00:00') : null);
     const isSocioPro = (t?: string | null) => !!t && /pro/i.test(t || '');
 
@@ -117,7 +113,7 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
     return d.slice(0, 4) + '-' + d.slice(4);
   }
 
-  function save(ev: React.FormEvent) {
+  async function save(ev: React.FormEvent) {
     ev.preventDefault();
     const errs: string[] = [];
     if (!a.nomeCompleto.trim()) errs.push('Nome do atleta é obrigatório');
@@ -135,10 +131,37 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
     if (a.encarregadoEducacao === 'Outro' && !a.parentescoOutro?.trim()) errs.push('Indicar parentesco (Outro)');
     if (eligibilityError) errs.push(eligibilityError);
     if (errs.length) {
-      alert(errs.join('\n'));
+      showToast(errs.join('; '), 'err');
       return;
     }
-    onSave(a);
+
+    const wasEditingId = atleta.id;
+    const planoAntes = atleta.planoPagamento;
+    const escalaoAntes = atleta.escalao;
+
+    try {
+      const saved = await saveAtleta(a);
+
+      const force =
+        !!wasEditingId &&
+        (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
+
+      const isOnlyInscricao = isAnuidadeObrigatoria(saved.escalao); // Sub-23 / Masters
+
+      if (isOnlyInscricao) {
+        await ensureOnlyInscricaoForAtleta(saved.id);
+      } else {
+        await ensureInscricaoEQuotasForAtleta(
+          { id: saved.id, planoPagamento: saved.planoPagamento },
+          { forceRebuild: !!force }
+        );
+      }
+
+      showToast('Atleta guardado com sucesso', 'ok');
+      onSave(saved);
+    } catch (e: any) {
+      showToast(e.message || 'Falha ao guardar o atleta', 'err');
+    }
   }
 
   const IMG_PRECOS_MENS = '/precos/pagamentos-2025.png';
@@ -379,61 +402,18 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
             <ArrowLeft className="h-4 w-4" /> Voltar
           </Button>
             {/*<button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>*/}
-            <button
+            <Button
+              variant="warning"
               id='save-atleta-button'
               type="submit"
-              className="btn primary"
               disabled={!!eligibilityError}
               title={eligibilityError || undefined}
             >
               Guardar alterações
-            </button>
+            </Button>
           </div>
-
-          {lightbox && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="lightbox-backdrop"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) setLightbox(null);
-              }}
-            >
-              <div className="lightbox-card">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium text-sm">{lightbox.alt}</div>
-                  <button className="btn secondary" onClick={() => setLightbox(null)}>Fechar</button>
-                </div>
-                <div className="lightbox-body">
-                  <img src={lightbox.src} alt={lightbox.alt} className="lightbox-img" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <style>{`
-        .input { width: 100%; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.9rem; }
-        .btn { border-radius: 0.75rem; padding: 0.5rem 0.9rem; font-weight: 600; }
-        .btn.primary { background:#2563eb; color:#fff; }
-        .btn.primary:hover { background:#1d4ed8; }
-        .btn.secondary { background:#f3f4f6; }
-
-        .lightbox-backdrop {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-          display:flex; align-items:center; justify-content:center; z-index:50; padding: 1rem;
-        }
-        .lightbox-card {
-          background:#fff; border-radius: 0.75rem; padding: 0.75rem; width: min(100%, 980px);
-          max-height: 90vh; display:flex; flex-direction:column;
-        }
-        .lightbox-body { overflow:auto; }
-        .lightbox-img { width:100%; height:auto; display:block; border-radius:0.5rem; }
-      `}</style>
         </form>
       </CardContent>
-
-
-      
     </Card>
   );
 }
