@@ -2,11 +2,14 @@ import React, { useEffect, useState } from "react";
 
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { supabase } from "../supabaseClient";
 import { deleteAtleta as removeAtleta } from "../services/atletasService";
 import type { Atleta } from "../types/Atleta";
 import { AlertCircle, CheckCircle2, PencilLine, Plus, Trash2, Users } from "lucide-react";
 import AtletaEdit from "./AtletaEdit";
+import AtletaAdd from "./AtletaAdd";
+import { showToast } from "./MiniToast";
 
 type AtletasTabProps = {
   state: {
@@ -46,6 +49,8 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
   const [userId, setUserId] = useState<string | null>(null);
   const [missingByAth, setMissingByAth] = useState<Record<string, number>>({});
   const [editingAtleta, setEditingAtleta] = useState<Atleta | null>(null);
+  const [addingAtleta, setAddingAtleta] = useState<boolean>(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -121,8 +126,14 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
     };
   }, [userId]);
 
-  async function remove(id: string) {
-    if (!confirm("Remover o atleta?")) return;
+  function handleRemoveClick(id: string) {
+    setConfirmRemoveId(id);
+  }
+
+  async function confirmRemove() {
+    if (!confirmRemoveId) return;
+    const id = confirmRemoveId;
+    setConfirmRemoveId(null);
     try {
       await removeAtleta(id);
       const next = {
@@ -132,9 +143,10 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
       delete (next as any).docsAtleta[id];
       delete (next as any).pagamentos[id];
       setState(next);
+      showToast("Atleta removido com sucesso", "ok");
       // Parent persists state to localStorage via effect
     } catch (e: any) {
-      alert(e.message || "Falha ao remover o atleta");
+      showToast(e.message || "Falha ao remover o atleta", "err");
     }
   }
 
@@ -155,6 +167,34 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
     
     setState((prev: any) => ({ ...prev, atletas: nextAtletas }));
     setEditingAtleta(null);
+  }
+
+  function handleStartAdd() {
+    setAddingAtleta(true);
+  }
+
+  function handleCancelAdd() {
+    setAddingAtleta(false);
+  }
+
+  async function handleSaveAdd(newAtleta: Atleta) {
+    // Update state with the new atleta (already saved to DB by AtletaAdd)
+    const nextAtletas = [newAtleta, ...state.atletas];
+    setState((prev: any) => ({ ...prev, atletas: nextAtletas }));
+    setAddingAtleta(false);
+  }
+
+  // Show add form if adding
+  if (addingAtleta) {
+    return (
+      <AtletaAdd
+        onSave={handleSaveAdd}
+        onCancel={handleCancelAdd}
+        dadosPessoais={dadosPessoais}
+        tipoSocio={tipoSocio}
+        agregadoAtletas={state.atletas}
+      />
+    );
   }
 
   // Show edit form if editing
@@ -180,7 +220,7 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
       </CardHeader>
       <CardContent className="p-0">
         <div className="p-4">
-          <Button variant='dark' onClick={() => onOpenForm(undefined)}>
+          <Button id='new-atleta-button' variant='dark' onClick={handleStartAdd}>
             <Plus className="h-4 w-4 mr-1" /> Novo atleta
           </Button>
         </div>
@@ -224,7 +264,7 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
                           <Button className="mr-4" variant="grey" onClick={() => handleStartEdit(a)}>
                             <PencilLine className="h-4 w-4 mr-1" /> Editar
                           </Button>
-                          <Button  variant="destructive" onClick={() => remove(a.id)}>
+                          <Button id='remove-atleta-button' variant="destructive" onClick={() => handleRemoveClick(a.id)}>
                             <Trash2 className="h-4 w-4 mr-1" /> Remover
                           </Button>
                         </div>
@@ -236,6 +276,25 @@ export default function AtletasTab({ state, setState, onOpenForm, dadosPessoais,
           })}
         </div>
       </CardContent>
+
+      <Dialog open={confirmRemoveId !== null} onOpenChange={(open) => !open && setConfirmRemoveId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar remoção</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>Tem a certeza que deseja remover este atleta?</p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="grey" onClick={() => setConfirmRemoveId(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={confirmRemove}>
+                Remover
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

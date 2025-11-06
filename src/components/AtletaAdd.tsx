@@ -12,8 +12,9 @@ import { upsertAtleta as saveAtleta } from '../services/atletasService';
 import { ensureOnlyInscricaoForAtleta, ensureInscricaoEQuotasForAtleta, isAnuidadeObrigatoria } from '../services/pagamentosService';
 import { showToast } from './MiniToast';
 
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+
 type Props = {
-  atleta: Atleta;
   onSave: (a: Atleta) => void;
   onCancel: () => void;
   dadosPessoais?: {
@@ -26,8 +27,35 @@ type Props = {
   agregadoAtletas?: Atleta[];
 };
 
-export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, tipoSocio, agregadoAtletas }: Props) {
-  const [a, setA] = useState<Atleta>(atleta);
+export default function AtletaAdd({ onSave, onCancel, dadosPessoais, tipoSocio, agregadoAtletas }: Props) {
+  const [a, setA] = useState<Atleta>({
+    id: uid(),
+    nomeCompleto: '',
+    dataNascimento: '',
+    genero: 'Feminino',
+    nacionalidade: 'Portuguesa',
+    nacionalidadeOutra: '',
+    tipoDoc: 'Cartão de cidadão',
+    numDoc: '',
+    validadeDoc: '',
+    nif: '',
+    nomePai: '',
+    nomeMae: '',
+    morada: '',
+    codigoPostal: '',
+    telefoneOpc: '',
+    emailOpc: '',
+    escola: '',
+    anoEscolaridade: '',
+    alergias: '',
+    encarregadoEducacao: undefined,
+    parentescoOutro: '',
+    contactosUrgencia: '',
+    emailsPreferenciais: '',
+    escalao: 'Fora de escalões' as Atleta['escalao'],
+    planoPagamento: 'Mensal',
+    observacoes: '',
+  });
 
   // Recompute escalão when date/gender changes
   useEffect(() => {
@@ -79,7 +107,7 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
 
     if (isSocioPro(tipoSocio) && !isAnuidadeObrigatoria(a.escalao)) {
       const elegiveis = (agregadoAtletas || []).filter(
-        (x) => x.id !== atleta.id && !isAnuidadeObrigatoria(x.escalao)
+        (x) => !isAnuidadeObrigatoria(x.escalao)
       );
 
       if (elegiveis.length >= 1) {
@@ -105,7 +133,7 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
     });
 
     setEst(result);
-  }, [a.escalao, a.dataNascimento, tipoSocio, agregadoAtletas, atleta.id]);
+  }, [a.escalao, a.dataNascimento, tipoSocio, agregadoAtletas]);
 
   function formatPostal(v: string) {
     const d = v.replace(/\D/g, '').slice(0, 7);
@@ -135,16 +163,8 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
       return;
     }
 
-    const wasEditingId = atleta.id;
-    const planoAntes = atleta.planoPagamento;
-    const escalaoAntes = atleta.escalao;
-
     try {
       const saved = await saveAtleta(a);
-
-      const force =
-        !!wasEditingId &&
-        (planoAntes !== saved.planoPagamento || escalaoAntes !== saved.escalao);
 
       const isOnlyInscricao = isAnuidadeObrigatoria(saved.escalao); // Sub-23 / Masters
 
@@ -153,14 +173,14 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
       } else {
         await ensureInscricaoEQuotasForAtleta(
           { id: saved.id, planoPagamento: saved.planoPagamento },
-          { forceRebuild: !!force }
+          { forceRebuild: false }
         );
       }
 
-      showToast('Atleta guardado com sucesso', 'ok');
+      showToast('Atleta adicionado com sucesso', 'ok');
       onSave(saved);
     } catch (e: any) {
-      showToast(e.message || 'Falha ao guardar o atleta', 'err');
+      showToast(e.message || 'Falha ao adicionar o atleta', 'err');
     }
   }
 
@@ -184,7 +204,7 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
           <Button variant="grey" onClick={onCancel} className="ml-2 flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" /> Voltar
           </Button>
-          <CardTitle>Editar Atleta</CardTitle>
+          <CardTitle>Adicionar Atleta</CardTitle>
         </div>
       </CardHeader>
       <CardContent className='p-2 sm:p-4'>
@@ -401,15 +421,14 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
           <Button variant="grey" onClick={onCancel} className="ml-2 flex items-center gap-2 w-full sm:w-auto">
             <ArrowLeft className="h-4 w-4" /> Voltar
           </Button>
-            {/*<button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>*/}
             <Button
               variant="warning"
-              id='save-atleta-button'
+              id='add-atleta-button'
               type="submit"
               disabled={!!eligibilityError}
               title={eligibilityError || undefined}
             >
-              Guardar alterações
+              Adicionar
             </Button>
           </div>
 
