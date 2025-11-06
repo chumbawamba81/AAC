@@ -574,8 +574,7 @@ export default function HomeDadosPessoais({
 
         {/* Resumo de Situação de Tesouraria */}
 
-        <div className="relative flex flex-col my-6 bg-white border 
-   border-slate-200 rounded-lg">
+        <div className="relative flex flex-col my-6 bg-white border border-slate-200 rounded-lg">
           <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
             <span className="p-4 text-xs xs:text-sm sm:text-base md:text-lg font-medium uppercase">
               Resumo de Situação de Tesouraria

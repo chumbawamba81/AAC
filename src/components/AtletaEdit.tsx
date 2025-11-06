@@ -158,30 +158,31 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
     <Card>
       <CardHeader>
         <div className="flex items-center gap-3">
-          <Button variant="grey" onClick={onCancel} className="flex items-center gap-2">
+          <Button variant="grey" onClick={onCancel} className="ml-2 flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" /> Voltar
           </Button>
           <CardTitle>Editar Atleta</CardTitle>
         </div>
       </CardHeader>
-      <CardContent className='p-2'>
+      <CardContent className='p-2 sm:p-4'>
         <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
           <Field className="md:col-span-2" label="Nome Completo *">
-            <input className="input" value={a.nomeCompleto} onChange={e => setA({ ...a, nomeCompleto: e.target.value })} required />
+            <input className="input w-full" value={a.nomeCompleto} onChange={e => setA({ ...a, nomeCompleto: e.target.value })} required />
           </Field>
+          
           <Field label="Data de Nascimento *">
-            <input type="date" className="input" value={a.dataNascimento} onChange={e => setA({ ...a, dataNascimento: e.target.value })} required />
+            <input type="date" className="input w-full" value={a.dataNascimento} onChange={e => setA({ ...a, dataNascimento: e.target.value })} required />
           </Field>
 
           <Field label="Género *">
-            <select className="input" value={a.genero} onChange={e => setA({ ...a, genero: e.target.value as Genero })}>
+            <select className="input w-full" value={a.genero} onChange={e => setA({ ...a, genero: e.target.value as Genero })}>
               <option>Feminino</option>
               <option>Masculino</option>
             </select>
           </Field>
 
           <Field label="Escalão (sugestão automática)">
-            <input className="input bg-gray-100" value={a.escalao} readOnly />
+            <input className="input w-full bg-gray-100" value={a.escalao} readOnly />
             {eligibilityError && (
               <div className="mt-1 text-sm text-red-600">{eligibilityError}</div>
             )}
@@ -189,7 +190,7 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
 
           <Field label="Opção de Pagamentos *">
             <select
-              className="input"
+              className="input w-full"
               value={a.planoPagamento}
               onChange={e => setA({ ...a, planoPagamento: e.target.value as PlanoPagamento })}
               disabled={isMastersOrSub23}
@@ -202,42 +203,42 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
           </Field>
 
           <div className="md:col-span-2 rounded-xl border p-3 bg-gray-50">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-medium">Estimativa de custos</div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setLightbox({ src: IMG_PRECOS_MENS, alt: 'Tabela de preços (mensalidades)' })}>
-                  Ver tabela: Mensalidades
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+              <div className="text-lg font-medium">Estimativa de custos</div>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setLightbox({ src: IMG_PRECOS_MENS, alt: 'Tabela de preços (mensalidades)' })}>
+                Ver tabela: Mensalidades
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setLightbox({ src: IMG_PRECOS_SOCIOS, alt: 'Tabela de quotas de sócio' })}>
-                  Ver tabela: Sócios
+                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setLightbox({ src: IMG_PRECOS_SOCIOS, alt: 'Tabela de quotas de sócio' })}>
+                Ver tabela: Sócios
                 </Button>
               </div>
             </div>
 
             {est ? (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
-                  <div className="rounded-lg bg-white border p-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div className="rounded-lg bg-yellow-50 border p-2">
                     <div className="text-xs text-gray-500">Taxa de inscrição</div>
                     <div className="font-semibold">{eur(est.taxaInscricao)}</div>
                   </div>
 
                   {est.onlyAnnual ? (
-                    <div className="rounded-lg bg-white border p-2">
+                    <div className="rounded-lg bg-yellow-50 border p-2">
                       <div className="text-xs text-gray-500">Anuidade (1x)</div>
                       <div className="font-semibold">{eur(est.anual1)}</div>
                     </div>
                   ) : (
                     <>
-                      <div className="rounded-lg bg-white border p-2">
+                      <div className="rounded-lg bg-yellow-50 border p-2">
                         <div className="text-xs text-gray-500">Mensal (10x)</div>
                         <div className="font-semibold">{eur(est.mensal10)}</div>
                       </div>
-                      <div className="rounded-lg bg-white border p-2">
+                      <div className="rounded-lg bg-yellow-50 border p-2">
                         <div className="text-xs text-gray-500">Trimestral (3x)</div>
                         <div className="font-semibold">{eur(est.trimestre3)}</div>
                       </div>
-                      <div className="rounded-lg bg-white border p-2">
+                      <div className="rounded-lg bg-yellow-50 border p-2">
                         <div className="text-xs text-gray-500">Anual (1x)</div>
                         <div className="font-semibold">{eur(est.anual1)}</div>
                       </div>
@@ -254,52 +255,52 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
           </div>
 
           <Field label="Nacionalidade *">
-            <select className="input" value={a.nacionalidade} onChange={e => setA({ ...a, nacionalidade: e.target.value as Nacionalidade })}>
+            <select className="input w-full" value={a.nacionalidade} onChange={e => setA({ ...a, nacionalidade: e.target.value as Nacionalidade })}>
               <option>Portuguesa</option>
               <option>Outra</option>
             </select>
           </Field>
           {a.nacionalidade === 'Outra' && (
             <Field className="md:col-span-2" label="Indique a nacionalidade">
-              <input className="input" value={a.nacionalidadeOutra || ''} onChange={e => setA({ ...a, nacionalidadeOutra: e.target.value })} />
+              <input className="input w-full" value={a.nacionalidadeOutra || ''} onChange={e => setA({ ...a, nacionalidadeOutra: e.target.value })} />
             </Field>
           )}
 
           <Field label="Tipo de documento *">
-            <select className="input" value={a.tipoDoc} onChange={e => setA({ ...a, tipoDoc: e.target.value as TipoDocId })}>
+            <select className="input w-full" value={a.tipoDoc} onChange={e => setA({ ...a, tipoDoc: e.target.value as TipoDocId })}>
               <option>Cartão de cidadão</option>
               <option>Passaporte</option>
               <option>Título de Residência</option>
             </select>
           </Field>
           <Field label="Nº documento *">
-            <input className="input" value={a.numDoc} onChange={e => setA({ ...a, numDoc: e.target.value })} required />
+            <input className="input w-full" value={a.numDoc} onChange={e => setA({ ...a, numDoc: e.target.value })} required />
           </Field>
           <Field label="Validade do documento *">
-            <input type="date" className="input" value={a.validadeDoc} onChange={e => setA({ ...a, validadeDoc: e.target.value })} required />
+            <input type="date" className="input w-full" value={a.validadeDoc} onChange={e => setA({ ...a, validadeDoc: e.target.value })} required />
           </Field>
           <Field label="NIF *">
-            <input className="input" value={a.nif} onChange={e => setA({ ...a, nif: e.target.value })} required />
+            <input className="input w-full" value={a.nif} onChange={e => setA({ ...a, nif: e.target.value })} required />
           </Field>
 
           {isMinor && (
             <>
               <div className="md:col-span-2" />
               <Field label="Nome do pai *">
-                <input className="input" value={a.nomePai} onChange={e => setA({ ...a, nomePai: e.target.value })} required />
+                <input className="input w-full" value={a.nomePai} onChange={e => setA({ ...a, nomePai: e.target.value })} required />
               </Field>
               <Field label="Nome da mãe *">
-                <input className="input" value={a.nomeMae} onChange={e => setA({ ...a, nomeMae: e.target.value })} required />
+                <input className="input w-full" value={a.nomeMae} onChange={e => setA({ ...a, nomeMae: e.target.value })} required />
               </Field>
             </>
           )}
 
           <Field className="md:col-span-2" label="Morada *">
-            <input className="input" value={a.morada} onChange={e => setA({ ...a, morada: e.target.value })} required />
+            <input className="input w-full" value={a.morada} onChange={e => setA({ ...a, morada: e.target.value })} required />
           </Field>
           <div className="md:col-span-2 grid grid-cols-[1fr_auto] gap-2">
             <Field label="Código Postal *">
-              <input className="input" value={a.codigoPostal} onChange={e => setA({ ...a, codigoPostal: formatPostal(e.target.value) })} required />
+              <input className="input w-full" value={a.codigoPostal} onChange={e => setA({ ...a, codigoPostal: formatPostal(e.target.value) })} required />
             </Field>
             <div className="flex items-end pb-1">
               <button
@@ -322,31 +323,31 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
           </div>
 
           <Field label="Email (opcional)">
-            <input type="email" className="input" value={a.emailOpc || ''} onChange={e => setA({ ...a, emailOpc: e.target.value })} />
+            <input type="email" className="input w-full" value={a.emailOpc || ''} onChange={e => setA({ ...a, emailOpc: e.target.value })} />
           </Field>
           <Field label="Telefone (opcional)">
-            <input className="input" value={a.telefoneOpc || ''} onChange={e => setA({ ...a, telefoneOpc: e.target.value })} />
+            <input className="input w-full" value={a.telefoneOpc || ''} onChange={e => setA({ ...a, telefoneOpc: e.target.value })} />
           </Field>
 
           {!isMastersOrSub23 && (
             <>
               <Field className="md:col-span-2" label="Escola (2025/26) *">
-                <input className="input" value={a.escola} onChange={e => setA({ ...a, escola: e.target.value })} required />
+                <input className="input w-full" value={a.escola} onChange={e => setA({ ...a, escola: e.target.value })} required />
               </Field>
               <Field label="Ano de escolaridade (2025/26) *">
-                <input className="input" value={a.anoEscolaridade} onChange={e => setA({ ...a, anoEscolaridade: e.target.value })} required />
+                <input className="input w-full" value={a.anoEscolaridade} onChange={e => setA({ ...a, anoEscolaridade: e.target.value })} required />
               </Field>
             </>
           )}
 
           <Field className="md:col-span-2" label="Alergias / problemas de saúde *">
-            <textarea className="input min-h-[100px]" value={a.alergias} onChange={e => setA({ ...a, alergias: e.target.value })} required />
+            <textarea className="input min-h-[100px] w-full" value={a.alergias} onChange={e => setA({ ...a, alergias: e.target.value })} required />
           </Field>
 
           {isMinor && (
             <>
               <Field label="Encarregado de Educação *">
-                <select className="input" value={a.encarregadoEducacao || ''} onChange={e => setA({ ...a, encarregadoEducacao: e.target.value as any })}>
+                <select className="input w-full" value={a.encarregadoEducacao || ''} onChange={e => setA({ ...a, encarregadoEducacao: e.target.value as any })}>
                   <option value="">—</option>
                   <option>Pai</option>
                   <option>Mãe</option>
@@ -355,27 +356,31 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
               </Field>
               {a.encarregadoEducacao === 'Outro' && (
                 <Field label="Parentesco">
-                  <input className="input" value={a.parentescoOutro || ''} onChange={e => setA({ ...a, parentescoOutro: e.target.value })} />
+                  <input className="input w-full" value={a.parentescoOutro || ''} onChange={e => setA({ ...a, parentescoOutro: e.target.value })} />
                 </Field>
               )}
             </>
           )}
 
           <Field className="md:col-span-2" label="Contactos telefónicos de urgência *">
-            <input className="input" placeholder="912...; 913..." value={a.contactosUrgencia} onChange={e => setA({ ...a, contactosUrgencia: e.target.value })} required />
+            <input className="input w-full" placeholder="912...; 913..." value={a.contactosUrgencia} onChange={e => setA({ ...a, contactosUrgencia: e.target.value })} required />
           </Field>
           <Field className="md:col-span-2" label="Email(s) preferenciais *">
-            <input className="input" placeholder="a@x.pt; b@y.pt" value={a.emailsPreferenciais} onChange={e => setA({ ...a, emailsPreferenciais: e.target.value })} required />
+            <input className="input w-full" placeholder="a@x.pt; b@y.pt" value={a.emailsPreferenciais} onChange={e => setA({ ...a, emailsPreferenciais: e.target.value })} required />
             <small className="text-gray-500">Se mais do que um, separar por ponto e vírgula (;)</small>
           </Field>
 
           <Field className="md:col-span-2" label="Observações">
-            <Textarea className="input min-h-[80px]" value={(a as any).observacoes || ''} onChange={e => setA({ ...a, ...({ observacoes: e.target.value } as any) })} />
+            <Textarea className="input min-h-[80px] w-full" value={(a as any).observacoes || ''} onChange={e => setA({ ...a, ...({ observacoes: e.target.value } as any) })} />
           </Field>
 
           <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-            <button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>
+          <Button variant="grey" onClick={onCancel} className="ml-2 flex items-center gap-2 w-full sm:w-auto">
+            <ArrowLeft className="h-4 w-4" /> Voltar
+          </Button>
+            {/*<button type="button" className="btn secondary" onClick={onCancel}>Cancelar</button>*/}
             <button
+              id='save-atleta-button'
               type="submit"
               className="btn primary"
               disabled={!!eligibilityError}
@@ -426,6 +431,9 @@ export default function AtletaEdit({ atleta, onSave, onCancel, dadosPessoais, ti
       `}</style>
         </form>
       </CardContent>
+
+
+      
     </Card>
   );
 }

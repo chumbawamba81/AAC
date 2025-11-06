@@ -415,7 +415,7 @@ function ContaSection({
           {mode === "register" ? "Criar conta" : "Entrar"}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4">
         {state.verificationPendingEmail && (
           <div className="mb-3 rounded-lg bg-blue-50 text-blue-900 text-sm p-2">
             Registo efetuado para{" "}

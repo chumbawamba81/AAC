@@ -193,7 +193,7 @@ useEffect(() => {
 
   return (
     <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={save}>
-      <Field className="md:col-span-2" label="Nome Completo *"><input className="input" value={a.nomeCompleto} onChange={e=>setA({...a, nomeCompleto:e.target.value})} required/></Field>
+      <Field className="md:col-span-2" label="Nome Completo * gdfgsdf"><input className="input" value={a.nomeCompleto} onChange={e=>setA({...a, nomeCompleto:e.target.value})} required/></Field>
       <Field label="Data de Nascimento *"><input type="date" className="input" value={a.dataNascimento} onChange={e=>setA({...a, dataNascimento:e.target.value})} required/></Field>
 
       <Field label="Género *">
