@@ -34,14 +34,14 @@ export default function TemplatesDownloadSection() {
           Documentos para descarregar e preencher
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid md:grid-cols-2 gap-3">
+      <CardContent className='p-2 sm:p-4'>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {TEMPLATES.map((t) => {
             const href = `${BASE}/${t.file}`;
             return (
               <div
                 key={t.file}
-                className="border rounded-lg p-3 flex items-center justify-between"
+                className="border bg-yellow-50 rounded-lg p-3 flex items-center justify-between"
               >
                 <div>
                   <div className="font-medium">{t.title}</div>

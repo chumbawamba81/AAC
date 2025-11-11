@@ -22,6 +22,7 @@ export interface AdminPagamento {
 
   titularUserId: string;
   titularName: string;
+  titularTipoSocio: string | null;
 
   atletaId: string | null;
   atletaNome: string | null;
@@ -124,14 +125,17 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
 
   // titulares
   const userIds = Array.from(new Set(filtered.map((r) => r.user_id).filter(Boolean)));
-  const titularByUser: Record<string, string> = {};
+  const titularByUser: Record<string, { nome: string; tipoSocio: string | null }> = {};
   if (userIds.length) {
     const { data: titulares } = await supabase
       .from("dados_pessoais")
-      .select("user_id, nome_completo")
+      .select("user_id, nome_completo, tipo_socio")
       .in("user_id", userIds);
     for (const t of (titulares ?? [])) {
-      titularByUser[(t as any).user_id] = (t as any).nome_completo ?? "—";
+      titularByUser[(t as any).user_id] = {
+        nome: (t as any).nome_completo ?? "—",
+        tipoSocio: (t as any).tipo_socio ?? null,
+      };
     }
   }
 
@@ -173,7 +177,8 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
         status,
         validado: !!r.validado,
         titularUserId: r.user_id,
-        titularName: titularByUser[r.user_id] ?? "—",
+      titularName: titularByUser[r.user_id]?.nome ?? "—",
+      titularTipoSocio: titularByUser[r.user_id]?.tipoSocio ?? null,
         atletaId: r.atleta_id ?? null,
         atletaNome: r.atleta_id ? (at?.nome ?? "—") : null,
         atletaEscalao: at?.escalao ?? null,
@@ -243,6 +248,7 @@ export async function marcarPagamentoValidado(pagamentoId: string, next: boolean
     validado: !!data.validado,
     titularUserId: data.user_id,
     titularName: "—",
+    titularTipoSocio: null,
     atletaId: data.atleta_id ?? null,
     atletaNome: data.atleta_id ? "—" : null,
     atletaEscalao: null,

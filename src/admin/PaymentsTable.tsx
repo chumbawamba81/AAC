@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { AdminPagamento } from "./services/adminPagamentosService";
 import { marcarPagamentoValidado } from "./services/adminPagamentosService";
 
@@ -93,6 +93,7 @@ function TableView({
           <tr>
             <th className="text-left px-3 py-2">Submissão</th>
             <th className="text-left px-3 py-2">Titular/EE</th>
+            <th className="text-left px-3 py-2">Tipo de sócio</th>
             <th className="text-left px-3 py-2">Atleta</th>
             <th className="text-left px-3 py-2">Escalão</th>
             <th className="text-left px-3 py-2">Plano de Pagamento</th>
@@ -109,6 +110,7 @@ function TableView({
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
                 <td className="px-3 py-2">{r.titularName || "—"}</td>
+                <td className="px-3 py-2">{r.titularTipoSocio || "—"}</td>
                 <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
                 <td className="px-3 py-2">{r.atletaEscalao || "—"}</td>
                 <td className={`px-3 py-2 ${planoInativo ? "text-gray-400 italic" : ""}`}>
@@ -162,38 +164,67 @@ export default function PaymentsTable({
   inscricoesCount,
   mensalidadesCount,
 }: Props) {
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setQ(search.trim().toLowerCase()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const filteredRows = useMemo(() => {
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const titular = (r.titularName || "").toLowerCase();
+      const atleta = (r.atletaNome || "").toLowerCase();
+      return titular.includes(q) || atleta.includes(q);
+    });
+  }, [rows, q]);
+
   // fallback para contagens se não vierem do parent (divide localmente o subset)
   const { inscricoes, mensalidades } = useMemo(() => {
     const insc: AdminPagamento[] = [];
     const mens: AdminPagamento[] = [];
-    for (const r of rows ?? []) {
+    for (const r of filteredRows ?? []) {
       (isInscricao(r) ? insc : mens).push(r);
     }
     return { inscricoes: insc, mensalidades: mens };
-  }, [rows]);
+  }, [filteredRows]);
 
   const countInsc = typeof inscricoesCount === "number" ? inscricoesCount : inscricoes.length;
   const countMens = typeof mensalidadesCount === "number" ? mensalidadesCount : mensalidades.length;
 
   return (
     <div className="space-y-3">
-      {/* Tabs controladas pelo parent com contagens globais (pós-filtro/pesquisa) */}
-      <div className="inline-flex rounded-xl border overflow-hidden">
-        <button
-          onClick={() => onTabChange("inscricao")}
-          className={`px-4 py-2 text-sm ${tab === "inscricao" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
-        >
-          Inscrições ({countInsc})
-        </button>
-        <button
-          onClick={() => onTabChange("mensalidades")}
-          className={`px-4 py-2 text-sm ${tab === "mensalidades" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
-        >
-          Mensalidades ({countMens})
-        </button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="sm:max-w-xs">
+          <label className="block text-sm font-medium mb-1">Pesquisar</label>
+          <input
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+            placeholder="Titular ou atleta…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* Tabs controladas pelo parent com contagens globais (pós-filtro/pesquisa) */}
+        <div className="inline-flex rounded-xl border overflow-hidden">
+          <button
+            onClick={() => onTabChange("inscricao")}
+            className={`px-4 py-2 text-sm ${tab === "inscricao" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
+          >
+            Inscrições ({countInsc})
+          </button>
+          <button
+            onClick={() => onTabChange("mensalidades")}
+            className={`px-4 py-2 text-sm ${tab === "mensalidades" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-100"}`}
+          >
+            Mensalidades ({countMens})
+          </button>
+        </div>
       </div>
 
-      <TableView rows={rows} onChanged={onChanged} />
+      <TableView rows={filteredRows} onChanged={onChanged} />
     </div>
   );
 }
