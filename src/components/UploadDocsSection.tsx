@@ -282,7 +282,7 @@ async function handleDelete(row: DocumentoRow) {
 return (
 <Card>
   <CardHeader>
-    <CardTitle className="flex items-center gap-2">
+    <CardTitle className="flex items-center gap-3">
       <FileUp className="h-5 w-5" />
       Upload de Documentos {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
     </CardTitle>
@@ -290,15 +290,18 @@ return (
 
   <CardContent className="space-y-8">
     {/* ---- Aviso: comprovativos migrados ---- */}
-    <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
-      <p className="text-sm text-gray-700">
-        Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
-        para upload na secção <strong>Situação de Tesouraria</strong>.
-      </p>
+    <div className="p-2 m-0">
+      <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
+        <p className="text-sm text-gray-700">
+          Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
+          para upload na secção <strong>Situação de Tesouraria</strong>.
+        </p>
+      </div>
     </div>
+    
 
     {/* ---- SOCIO ---- */}
-    <section>
+    <section  className="bg-stone-200 p-2">
       <div className="mb-2 flex items-center justify-between">
         <div className="font-medium">
           Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
