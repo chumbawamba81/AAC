@@ -51,18 +51,18 @@ export default function TemplatesDownloadSection() {
                 </div>
                   <div className="flex items-center gap-2">
                     <div className="inline-flex rounded-md shadow-xs" role="group">
-                    <a
-                      className="inline-flex items-center px-4 py-2 text-xs font-medium rounded-s-lg bg-sky-600 text-white hover:bg-sky-800"
-                      href={href}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <ExternalLink className="h-4 w-4" /> Abrir
-                    </a>
-                    <a href={href} download className="inline-flex items-center px-4 py-2 text-xs font-medium rounded-e-lg focus:z-10 focus:ring-2 text-white bg-gray-700 hover:bg-gray-900">
-                      <Download className="h-4 w-4 mr-1" />
-                      Descarregar
-                    </a>
+                      <a
+                        className="inline-flex items-center px-4 py-2 text-xs font-medium rounded-s-lg bg-sky-600 text-white hover:bg-sky-800"
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink className="h-4 w-4" /> Abrir
+                      </a>
+                      <a href={href} download className="inline-flex items-center px-4 py-2 text-xs font-medium rounded-e-lg focus:z-10 focus:ring-2 text-white bg-gray-700 hover:bg-gray-900">
+                        <Download className="h-4 w-4 mr-1" />
+                        Descarregar
+                      </a>
                   </div>
                 </div>
               </div>

@@ -591,7 +591,7 @@ export default function HomeDadosPessoais({
                 </div>
               </div>
 
-              <div className="flex flex-row gap-1">
+              <div className="mb-2 flex-1 flex-col space-y-4 p-4">
                 <div className="flex-1 space-y-1 p-1">
                   <div data-slot="card-content">
                     <div className="text-xs">
