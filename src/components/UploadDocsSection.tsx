@@ -477,9 +477,8 @@ return (
                                 const arr = await Promise.all(Array.from(fs).map(withSafeName));
                                 const dt = new DataTransfer();
                                 arr.forEach((f) => {
-    dt.items.add(f);
-  });
-
+                                  dt.items.add(f);
+                                });
                                 await handleUploadAtletaMany(a.id, tipo, dt.files);
                               } else {
                                 await handleUploadAtletaMany(a.id, tipo, fs);

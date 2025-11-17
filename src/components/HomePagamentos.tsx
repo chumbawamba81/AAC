@@ -6,7 +6,7 @@ import FilePickerButton from "./FilePickerButton";
 import { Input } from "./ui/input"; // kept for parity if needed later
 import { Label } from "./ui/label"; // kept for parity if needed later
 
-import { RefreshCw, Upload, Trash2, Link as LinkIcon } from "lucide-react";
+import { RefreshCw, Upload, Trash2, Link as LinkIcon, EuroIcon } from "lucide-react";
 
 import { supabase } from "../supabaseClient";
 
@@ -382,91 +382,107 @@ export default function HomePagamentos({ state }: { state: State }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
+          <EuroIcon className="h-5 w-5 mr-2" />
           Situação de Tesouraria
           {busy && <RefreshCw className="h-4 w-4 animate-spin" />}
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-6">
-        <div className="rounded-xl border bg-slate-50 p-3 text-sm text-gray-800">
-          Os pagamentos devem ser realizados até à data limite indicada, para o
-          seguinte IBAN:
-          <strong className="ml-1">PT50 0036 0414 99106005021 95</strong>
-          <span className="ml-1">(Banco Montepio)</span>.
+        <div className="p-2 pb-0 m-0">
+          <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
+            <p className="text-sm text-blue-900">
+              Os pagamentos devem ser realizados até à data limite indicada, para o
+              seguinte IBAN:
+              <strong className="ml-1">PT50 0036 0414 99106005021 95</strong>
+              <span className="ml-1">(Banco Montepio)</span>.
+            </p>
+          </div>
         </div>
 
-        {isSocio(state.perfil?.tipoSocio) && (
-          <div className="border rounded-xl p-3">
-            {(() => {
-              const row = socioRows[0] || null;
-              const overdue = isOverdue(row);
-              const val = socioInscricaoAmount(state.perfil?.tipoSocio);
-              const due = row?.devido_em || sep8OfCurrentYear();
-              const name = inferFileName(row);
-              return (
-                <div className="border rounded-lg p-3 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">
-                      Inscrição de Sócio — {eur(val)}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {row?.comprovativo_url
-                        ? row.validado
-                          ? "Comprovativo validado"
-                          : overdue
-                          ? "Comprovativo pendente (em atraso)"
-                          : "Comprovativo pendente"
-                        : overdue
-                        ? "Comprovativo em falta (em atraso)"
-                        : "Comprovativo em falta"}
-                      {due && <span className="ml-2">· Limite: {due}</span>}
-                    </div>
+        <div className="p-2 text-sm m-0">
+          {isSocio(state.perfil?.tipoSocio) && (
+            <div>
+              {(() => {
+                const row = socioRows[0] || null;
+                const overdue = isOverdue(row);
+                const val = socioInscricaoAmount(state.perfil?.tipoSocio);
+                const due = row?.devido_em || sep8OfCurrentYear();
+                const name = inferFileName(row);
+                return (
+                  <div className="border bg-neutral-50 rounded-lg p-3 space-y-2">
+                    <div className="flex flex-col sm:flex-row">
+                      <div className="flex-1 flex-col space-y-1 p-1">
+                        <div className="font-medium">
+                          Inscrição de Sócio — {eur(val)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {row?.comprovativo_url
+                            ? row.validado
+                              ? "Comprovativo validado"
+                              : overdue
+                              ? "Comprovativo pendente (em atraso)"
+                              : "Comprovativo pendente"
+                            : overdue
+                            ? "Comprovativo em falta (em atraso)"
+                            : "Comprovativo em falta"}
+                          {due && <span className="ml-2">· Limite: {due}</span>}
+                        </div>
 
-                    {row?.signedUrl && (
-                      <div className="text-xs mt-1">
-                        <a
-                          className="underline inline-flex items-center gap-1"
-                          href={row.signedUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={name || "Abrir comprovativo"}
-                        >
-                          <LinkIcon className="h-3 w-3" />
-                          <span className="inline-block max-w-[240px] truncate">
-                            {name || "Ficheiro 1"}
-                          </span>
-                        </a>
+                        {row?.signedUrl && (
+                          <div className="text-xs mt-1">
+                            <a
+                              className="underline inline-flex items-center gap-1"
+                              href={row.signedUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={name || "Abrir comprovativo"}
+                            >
+                              <LinkIcon className="h-3 w-3" />
+                              <span className="inline-block max-w-[240px] truncate">
+                                {name || "Ficheiro 1"}
+                              </span>
+                            </a>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-2 md:justify-end shrink-0">
-                    <FilePickerButton
-                      variant={row?.comprovativo_url ? "secondary" : "outline"}
-                      accept="image/*,application/pdf"
-                      onFiles={(files) =>
-                        files?.[0] && handleUploadSocio(files[0])
-                      }
-                    >
-                      <Upload className="h-4 w-4 mr-1" />
-                      {row?.comprovativo_url ? "Substituir" : "Carregar"}
-                    </FilePickerButton>
+                      <div className="flex-none space-y-1 p-1">
+                        <div className="inline-flex rounded-md shadow-xs" role="group">
+                          <FilePickerButton
+                            variant={row?.comprovativo_url ? "default_left_group" : "outline"}
+                            accept="image/*,application/pdf"
+                            onFiles={(files) =>
+                              files?.[0] && handleUploadSocio(files[0])
+                            }
+                          >
+                            <Upload className="h-4 w-4 mr-1" />
+                            {row?.comprovativo_url ? "Substituir" : "Carregar"}
+                          </FilePickerButton>
 
-                    {row?.comprovativo_url && (
-                      <Button
-                        variant="destructive"
-                        onClick={() => handleRemoveSocioInscricao(row)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Remover
-                      </Button>
-                    )}
+                          {row?.comprovativo_url && (
+                            <Button
+                              variant="destructive_right_group"
+                              onClick={() => handleRemoveSocioInscricao(row)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Remover
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  
                   </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
+                );
+              })()}
+            </div>
+          )}
+        </div>
+
+
+
+
 
         {state.atletas.map((a) => {
           const planoEfetivo = isAnuidadeObrigatoria(a.escalao)
@@ -492,17 +508,24 @@ export default function HomePagamentos({ state }: { state: State }) {
           };
 
           return (
-            <div key={a.id} className="border rounded-xl p-3">
-              <div className="mb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                <div className="font-medium">Atleta — {a.nomeCompleto}</div>
-                <div className="text-xs text-gray-500 sm:text-right">
-                  Plano: {onlyInscricao ? "Sem quotas (apenas inscrição)" : planoEfetivo}
-                  {isAnuidadeObrigatoria(a.escalao)
-                    ? " (obrigatório pelo escalão)"
-                    : ""}
-                  {!onlyInscricao && <> · {slots} comprovativo(s)</>}
+            <div key={a.id} className="p-2">
+              <div className="flex flex-col sm:flex-row">
+                <div className="flex-1 flex-col space-y-1 p-1">
+                  <div className="font-medium">Atleta — {a.nomeCompleto}</div>
+                </div>
+                <div className="flex-none flex-col space-y-1 p-1 align-middle">
+                  <span className="inline-block rounded-md px-2 py-0.5 text-xs font-medium bg-green-700 text-white">
+                      Plano: {onlyInscricao ? "Sem quotas (apenas inscrição)" : planoEfetivo}
+                      {isAnuidadeObrigatoria(a.escalao)
+                        ? " (obrigatório pelo escalão)"
+                        : ""}
+                      {!onlyInscricao && <> · {slots} comprovativo(s)</>}
+                  </span>
                 </div>
               </div>
+
+
+              
 
               {(() => {
                 const row = athleteInscricao[a.id] || null;
@@ -511,64 +534,68 @@ export default function HomePagamentos({ state }: { state: State }) {
                   : false;
                 const name = inferFileName(row);
                 return (
-                  <div className="border rounded-lg p-3 mb-3 flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">
-                        Inscrição de Atleta — {eur(est.taxaInscricao)}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {row?.comprovativo_url
-                          ? row.validado
-                            ? "Comprovativo validado"
-                            : overdue
-                            ? "Comprovativo pendente (em atraso)"
-                            : "Comprovativo pendente"
-                          : overdue
-                          ? "Comprovativo em falta (em atraso)"
-                          : "Comprovativo em falta"}
-                        {row?.devido_em && (
-                          <span className="ml-2">· Limite: {row.devido_em}</span>
-                        )}
-                      </div>
-
-                      {row?.signedUrl && (
-                        <div className="text-xs mt-1">
-                          <a
-                            className="underline inline-flex items-center gap-1"
-                            href={row.signedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={name || "Abrir comprovativo"}
-                          >
-                            <LinkIcon className="h-3 w-3" />
-                            <span className="inline-block max-w-[240px] truncate">
-                              {name || "Ficheiro 1"}
-                            </span>
-                          </a>
+                  <div className="border bg-neutral-50 rounded-lg p-3 space-y-2 mb-2">
+                    <div className="flex flex-col sm:flex-row">
+                      <div className="flex-1 flex-col space-y-1 p-1">
+                        <div className="font-medium">
+                          Inscrição de Atleta — {eur(est.taxaInscricao)}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 md:justify-end shrink-0">
-                      <FilePickerButton
-                        variant={row?.comprovativo_url ? "secondary" : "outline"}
-                        accept="image/*,application/pdf"
-                        onFiles={(files) =>
-                          files?.[0] && handleUploadInscricao(a, files[0])
-                        }
-                      >
-                        <Upload className="h-4 w-4 mr-1" />
-                        {row?.comprovativo_url ? "Substituir" : "Carregar"}
-                      </FilePickerButton>
-
-                      {row?.comprovativo_url && (
-                        <Button
-                          variant="destructive"
-                          onClick={() => handleRemoveAtletaInscricao(row)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Remover
-                        </Button>
-                      )}
+                        <div className="text-xs text-gray-500">
+                          {row?.comprovativo_url
+                            ? row.validado
+                              ? "Comprovativo validado"
+                              : overdue
+                              ? "Comprovativo pendente (em atraso)"
+                              : "Comprovativo pendente"
+                            : overdue
+                            ? "Comprovativo em falta (em atraso)"
+                            : "Comprovativo em falta"}
+                          {row?.devido_em && (
+                            <span className="ml-2">· Limite: {row.devido_em}</span>
+                          )}
+                        </div>
+                        <div>
+                          {row?.signedUrl && (
+                            <div className="text-xs mt-1">
+                              <a
+                                className="underline inline-flex items-center gap-1"
+                                href={row.signedUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={name || "Abrir comprovativo"}
+                              >
+                                <LinkIcon className="h-3 w-3" />
+                                <span className="inline-block max-w-[240px] truncate">
+                                  {name || "Ficheiro 1"}
+                                </span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-none space-y-1 p-1">
+                        <div className="inline-flex rounded-md shadow-xs" role="group">
+                          <FilePickerButton
+                            variant={row?.comprovativo_url ? "default_left_group" : "outline"}
+                            accept="image/*,application/pdf"
+                            onFiles={(files) =>
+                              files?.[0] && handleUploadInscricao(a, files[0])
+                            }
+                          >
+                            <Upload className="h-4 w-4 mr-1" />
+                            {row?.comprovativo_url ? "Substituir" : "Carregar"}
+                          </FilePickerButton>
+                          {row?.comprovativo_url && (
+                            <Button
+                              variant="destructive_right_group"
+                              onClick={() => handleRemoveAtletaInscricao(row)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Remover
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
