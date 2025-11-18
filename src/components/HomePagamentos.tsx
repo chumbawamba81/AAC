@@ -448,8 +448,8 @@ export default function HomePagamentos({ state }: { state: State }) {
                       </div>
 
                       <div className="flex-none space-y-1 p-1">
-                        <div className="inline-flex rounded-md shadow-xs" role="group">
-                          <FilePickerButton
+                        <div className="inline-flex rounded-md shadow-xs text-xs" role="group">
+                          <FilePickerButton size="sm"
                             variant={row?.comprovativo_url ? "default_left_group" : "outline"}
                             accept="image/*,application/pdf"
                             onFiles={(files) =>
@@ -461,7 +461,7 @@ export default function HomePagamentos({ state }: { state: State }) {
                           </FilePickerButton>
 
                           {row?.comprovativo_url && (
-                            <Button
+                            <Button size="sm"
                               variant="destructive_right_group"
                               onClick={() => handleRemoveSocioInscricao(row)}
                             >
@@ -575,7 +575,7 @@ export default function HomePagamentos({ state }: { state: State }) {
                       </div>
                       <div className="flex-none space-y-1 p-1">
                         <div className="inline-flex rounded-md shadow-xs" role="group">
-                          <FilePickerButton
+                          <FilePickerButton size="sm"
                             variant={row?.comprovativo_url ? "default_left_group" : "outline"}
                             accept="image/*,application/pdf"
                             onFiles={(files) =>
@@ -586,7 +586,7 @@ export default function HomePagamentos({ state }: { state: State }) {
                             {row?.comprovativo_url ? "Substituir" : "Carregar"}
                           </FilePickerButton>
                           {row?.comprovativo_url && (
-                            <Button
+                            <Button size="sm"
                               variant="destructive_right_group"
                               onClick={() => handleRemoveAtletaInscricao(row)}
                             >
@@ -601,6 +601,8 @@ export default function HomePagamentos({ state }: { state: State }) {
                 );
               })()}
 
+
+
               {!isAnuidadeObrigatoria(a.escalao) && (
                 <div className="grid md:grid-cols-2 gap-3">
                   {Array.from({ length: slots }).map((_, i) => {
@@ -610,68 +612,70 @@ export default function HomePagamentos({ state }: { state: State }) {
                     const due = meta?.devido_em || undefined;
 
                     return (
-                      <div
-                        key={i}
-                        className="border rounded-lg p-3 flex items-center justify-between"
-                      >
-                        <div>
-                          <div className="font-medium">
-                            {label} — {eur(amountForIdx(i))}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {meta?.comprovativo_url
-                              ? meta.validado
-                                ? "Comprovativo validado"
+                      <div key={i}
+                        className="border bg-neutral-50 rounded-lg p-3 space-y-2">
+                        <div className="flex flex-col sm:flex-row">
+                          <div className="flex-1 flex-col space-y-1 p-1">
+                            <div className="font-medium">
+                              {label} — {eur(amountForIdx(i))}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {meta?.comprovativo_url
+                                ? meta.validado
+                                  ? "Comprovativo validado"
+                                  : overdue
+                                  ? "Comprovativo pendente (em atraso)"
+                                  : "Comprovativo pendente"
                                 : overdue
-                                ? "Comprovativo pendente (em atraso)"
-                                : "Comprovativo pendente"
-                              : overdue
-                              ? "Comprovativo em falta (em atraso)"
-                              : "Comprovativo em falta"}
-                            {due && (
-                              <span className="ml-2">· Limite: {due}</span>
+                                ? "Comprovativo em falta (em atraso)"
+                                : "Comprovativo em falta"}
+                              {due && (
+                                <span className="ml-2">· Limite: {due}</span>
+                              )}
+                            </div>
+
+                            {meta?.signedUrl && (
+                              <div className="text-xs mt-1">
+                                <a
+                                  className="underline inline-flex items-center gap-1"
+                                  href={meta.signedUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={
+                                    inferFileName(meta) || `Ficheiro ${i + 1}`
+                                  }
+                                >
+                                  <LinkIcon className="h-3 w-3" />
+                                  <FileName row={meta} fallbackIndex={i + 1} />
+                                </a>
+                              </div>
                             )}
                           </div>
-
-                          {meta?.signedUrl && (
-                            <div className="text-xs mt-1">
-                              <a
-                                className="underline inline-flex items-center gap-1"
-                                href={meta.signedUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={
-                                  inferFileName(meta) || `Ficheiro ${i + 1}`
+                          <div className="flex-none space-y-1 p-1">
+                            <div className="inline-flex rounded-md shadow-xs" role="group">
+                              <FilePickerButton size="sm"
+                                variant={meta?.comprovativo_url ? "default_left_group" : "outline"}
+                                accept="image/*,application/pdf"
+                                onFiles={(files) =>
+                                  files?.[0] && handleUpload(a, i, files[0])
                                 }
                               >
-                                <LinkIcon className="h-3 w-3" />
-                                <FileName row={meta} fallbackIndex={i + 1} />
-                              </a>
+                                <Upload className="h-4 w-4 mr-1" />
+                                {meta?.comprovativo_url ? "Substituir" : "Carregar"}
+                              </FilePickerButton>
+
+                              {meta?.comprovativo_url && (
+                                <Button size="sm"
+                                  variant="destructive_right_group"
+                                  onClick={() => handleDelete(a, i)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-1" />
+                                  Remover
+                                </Button>
+                              )}
+
                             </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 md:justify-end shrink-0">
-                          <FilePickerButton
-                            variant={meta?.comprovativo_url ? "secondary" : "outline"}
-                            accept="image/*,application/pdf"
-                            onFiles={(files) =>
-                              files?.[0] && handleUpload(a, i, files[0])
-                            }
-                          >
-                            <Upload className="h-4 w-4 mr-1" />
-                            {meta?.comprovativo_url ? "Substituir" : "Carregar"}
-                          </FilePickerButton>
-
-                          {meta?.comprovativo_url && (
-                            <Button
-                              variant="destructive"
-                              onClick={() => handleDelete(a, i)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Remover
-                            </Button>
-                          )}
+                          </div>
                         </div>
                       </div>
                     );

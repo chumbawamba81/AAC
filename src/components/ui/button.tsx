@@ -1,6 +1,12 @@
 import React from 'react'
-export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'outline'|'secondary'|'destructive'|'stone'|'dark'|'success'|'grey'|'warning'|'default_left_group'|'destructive_right_group' }) {
-  const base = 'inline-flex items-center justify-center h-8 gap-1.5 px-3 py-2 text-sm font-medium transition active:scale-[.98] cursor-pointer'
+export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'outline'|'secondary'|'destructive'|'stone'|'dark'|'success'|'grey'|'warning'|'default_left_group'|'destructive_right_group', size?: string }) {
+  const sizes = {
+    sm: "text-xs h-7 px-2",
+    md: "text-sm h-8 px-3",
+    lg: "text-base h-10 px-4"
+  }
+  const base = 'inline-flex items-center justify-center gap-1.5 transition active:scale-[.98] cursor-pointer'
+  // px-3 py-2 font-medium h-8 
   const variants: Record<string,string> = {
     default: 'rounded-md bg-sky-600 text-white hover:bg-sky-800',
     outline: 'rounded-md border border-gray-300 bg-white hover:bg-gray-50',
@@ -14,7 +20,8 @@ export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { 
     default_left_group: 'rounded-s-lg bg-sky-600 text-white hover:bg-sky-800',
     destructive_right_group: 'rounded-e-lg bg-red-600 text-white hover:bg-red-700',
   }
-  const cls = [base, variants[props.variant||'default'], props.className].filter(Boolean).join(' ')
-  const { variant, ...rest } = props
+  const sizeClass = sizes[props.size || "md"]
+  const cls = [base, sizeClass, variants[props.variant||'default'], props.className].filter(Boolean).join(' ')
+  const { variant, size, ...rest } = props
   return <button {...rest} className={cls} />
 }
