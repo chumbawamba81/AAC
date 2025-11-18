@@ -17,7 +17,7 @@ export default function FilePickerButton({
   accept?: string;
   multiple?: boolean;
   children: React.ReactNode;
-  variant?: "outline" | "secondary" | "destructive" | "default";
+  variant?: 'outline'|'secondary'|'destructive'|'stone'|'dark'|'success'|'grey'|'warning'|'default_left_group'|'destructive_right_group';
   size?: "sm" | "md" | "lg";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
