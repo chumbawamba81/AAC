@@ -1,6 +1,7 @@
 // src/admin/AdminGate.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type GateState =
   | { status: "checking" }
@@ -95,47 +96,55 @@ function AdminLogin({
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">
-      <div className="w-full max-w-sm rounded-2xl border p-5 shadow-sm bg-white">
-        <h1 className="text-lg font-semibold mb-1">Admin · AAC-SB</h1>
-        {reasonMsg && <p className="text-sm text-gray-600 mb-3">{reasonMsg}</p>}
-        <form className="space-y-3" onSubmit={submit}>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Email</label>
-            <input
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Palavra-passe</label>
-            <input
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <div className="flex items-center justify-between">
-            <button
-              type="submit"
-              className="rounded-xl px-3 py-2 text-sm font-semibold bg-black text-white disabled:opacity-60"
-              disabled={busy}
-            >
-              {busy ? "A entrar…" : "Entrar"}
-            </button>
-            <a href="/" className="text-sm underline">
-              Ir para a página pública
-            </a>
-          </div>
-        </form>
-      </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">Admin · AAC-SB
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            {reasonMsg && <p className="text-sm text-gray-600 mb-3">{reasonMsg}</p>}
+            <form className="space-y-3" onSubmit={submit}>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Email</label>
+                <input
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Palavra-passe</label>
+                <input
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <div className="flex items-center justify-between">
+                <button
+                  type="submit"
+                  className="rounded-xl px-3 py-2 text-sm font-semibold bg-black text-white disabled:opacity-60"
+                  disabled={busy}
+                >
+                  {busy ? "A entrar…" : "Entrar"}
+                </button>
+                <a href="/" className="text-sm underline">
+                  Ir para a página pública
+                </a>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+
+      
     </div>
   );
 }
