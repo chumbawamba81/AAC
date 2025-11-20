@@ -306,7 +306,7 @@ export default function SociosTable({
   return (
     <Container>
       <Header>
-        <div className="text-sm/7 text-gray-600 font-semibold">
+        <div className="text-xs/6 text-gray-600 font-semibold">
           {loading ? "A carregar…" : `${filteredCount} registo(s)`}
         </div>
         <div className="flex items-center gap-2">
@@ -321,7 +321,7 @@ export default function SociosTable({
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           </Button>
-          <div className="text-sm/7 text-gray-600 font-semibold">Página {page}</div>
+          <div className="text-xs/6 text-gray-600 font-semibold">Página {page}</div>
           <Button
             variant="outline"
             disabled={page >= totalPages}
@@ -335,7 +335,7 @@ export default function SociosTable({
       <TableWrap>
         <table className="min-w-[1120px] w-full text-sm">
           <thead>
-            <tr className="bg-neutral-700 text-white text-lg uppercase">
+            <tr className="bg-neutral-700 text-white uppercase">
               <th className="text-left px-3 py-2 font-medium">Nome</th>
               <th className="text-left px-3 py-2 font-medium">Email</th>
               <th className="text-left px-3 py-2 font-medium">Telefone</th>
@@ -368,29 +368,29 @@ export default function SociosTable({
               return (
                 <tr
                   key={r.id}
-                  className={`border-t  ${
-                    index % 2 === 0 ? "bg-neutral-100 hover:bg-neutral-secondary-medium" : "bg-neutral-300"
-                  }`}
+                  className={`border-t ${
+                    index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                  } hover:bg-amber-400`}
                 >
                   <td className="px-3 py-2">{r.nome_completo}</td>
                   <td className="px-3 py-2">{r.email}</td>
                   <td className="px-3 py-2">{r.telefone || "—"}</td>
-                  <td className="px-3 py-2">{r.tipo_socio || "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 text-[0.7rem]">{r.tipo_socio || "—"}</td>
+                  <td className="px-3 py-2 text-[0.7rem]">
                     {isSocio ? (
                       insc ? <InscBadge status={insc.status as InscStatus} /> : <span className="text-gray-500">—</span>
                     ) : (
                       <span className="text-gray-500">N/A</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">{dueLabel}</td>
-                  <td className="px-3 py-2">{docsLabel}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-[0.7rem]">{dueLabel}</td>
+                  <td className="px-3 py-2 text-[0.7rem]">{docsLabel}</td>
+                  <td className="px-3 py-2 text-right text-[0.7rem]">
                     <Button
                       variant="outline"
                       onClick={() => setOpenId(r.user_id)}
                       aria-label="Ver detalhes"
-                      className="inline-flex h-9 w-9 items-center justify-center p-0"
+                      className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
                     >
                       <Eye className="h-4 w-4" />
                     </Button>

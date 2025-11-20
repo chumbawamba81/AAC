@@ -9,6 +9,7 @@ import {
 } from "../services/adminAtletasService";
 import AthleteDetailsDialog from "./AthleteDetailsDialog";
 import { supabase } from "../../supabaseClient";
+import { Button } from "@/components/ui/button";
 
 type RowVM = { atleta: AtletaRow; titular?: TitularMinimal; missing?: number; };
 
@@ -50,8 +51,8 @@ function quotasNaoAplicaveis(escalao?: string | null) {
   const e = (escalao || "").toLowerCase();
   return e.includes("master") || e.includes("sub 23") || e.includes("sub-23");
 }
-function Th({ children }: { children: React.ReactNode }) { return <th className="px-3 py-2 font-medium">{children}</th>; }
-function Td({ children }: { children: React.ReactNode }) { return <td className="px-3 py-2 align-top">{children}</td>; }
+function Th({ children }: { children: React.ReactNode }) { return <th className="text-left px-3 py-2 font-medium">{children}</th>; }
+function Td({ children }: { children: React.ReactNode }) { return <td className="px-3 py-2 align-top text-[0.7rem]">{children}</td>; }
 function StatusBadge({ status }: { status: InscStatus }) {
   const map: Record<InscStatus, string> = {
     "Regularizado":"bg-green-100 text-green-800","Pendente de validação":"bg-yellow-100 text-yellow-800",
@@ -224,33 +225,41 @@ export default function AthletesTable() {
       {/* barra topo da tabela */}
       <div className="rounded-xl border bg-white">
         <div className="p-3 border-b flex items-center justify-between">
-          <div className="text-sm text-gray-600">{loading ? "A carregar…" : `${filteredCount} registo(s)`}</div>
+          <div className="text-xs/6 text-gray-600 font-semibold">{loading ? "A carregar…" : `${filteredCount} registo(s)`}</div>
           <div className="flex items-center gap-2">
-            <button onClick={exportCSV} className="px-3 py-2 rounded border hover:bg-gray-50 text-sm inline-flex items-center gap-2">
+            <Button
+              variant="default"
+              onClick={exportCSV}
+              aria-label="Exportar CSV"
+            >
               <Download className="h-4 w-4" /> Exportar CSV
-            </button>
-            <button onClick={reload} className="px-3 py-2 rounded border hover:bg-gray-50 text-sm inline-flex items-center gap-2">
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={reload}
+              aria-label="Página seguinte"
+            >
               <RefreshCw className="h-4 w-4" /> Atualizar
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* tabela */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[980px]">
-            <thead className="bg-gray-50 text-left">
-              <tr>
+          <table className="min-w-[1120px] w-full text-sm">
+            <thead>
+              <tr className="bg-neutral-700 text-white uppercase">
                 <Th>Nome</Th>
                 <Th>Escalão</Th>
                 <Th>Opção pagamento</Th>
                 <Th>Inscrição</Th>
                 <Th>Quotas</Th>
-                <Th>Docs (falta/total)</Th>
+                <Th>Docs <span className="text-xs">(falta/total)</span></Th>
                 <Th>Ações</Th>
               </tr>
             </thead>
             <tbody>
-              {effectiveRows.map((r) => {
+              {effectiveRows.map((r, index) => {
                 const a = r.atleta;
                 const insc = maps.insc[a.id];
                 const quotas = maps.quotas[a.id];
@@ -270,7 +279,12 @@ export default function AthletesTable() {
                 }
 
                 return (
-                  <tr key={a.id} className="border-t">
+                  <tr
+                    key={a.id}
+                    className={`border-t  ${
+                      index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                    } hover:bg-amber-400`}
+                  >
                     <Td>{a.nome}</Td>
                     <Td>{a.escalao || "—"}</Td>
                     <Td>{a.opcao_pagamento || "—"}</Td>

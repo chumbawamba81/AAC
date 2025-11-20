@@ -1,5 +1,5 @@
 import React from 'react'
-export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'outline'|'secondary'|'destructive'|'stone'|'dark'|'success'|'grey'|'warning'|'default_left_group'|'destructive_right_group', size?: string }) {
+export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default'|'outline'|'secondary'|'destructive'|'stone'|'dark'|'success'|'grey'|'warning'|'default_left_group'|'destructive_right_group', size?: string }) {
   const sizes = {
     sm: "text-xs h-7 px-2",
     md: "text-sm h-8 px-3",
