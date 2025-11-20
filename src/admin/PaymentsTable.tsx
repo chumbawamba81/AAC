@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { AdminPagamento } from "./services/adminPagamentosService";
 import { marcarPagamentoValidado } from "./services/adminPagamentosService";
+import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type Tab = "inscricao" | "mensalidades";
 
@@ -13,17 +15,18 @@ type Props = {
   // NOVO: contagens para mostrar nas tabs (aplicam pesquisa + filtro de estado)
   inscricoesCount?: number;
   mensalidadesCount?: number;
+  limit?: number;
 };
 
 function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
   const map: Record<AdminPagamento["status"], string> = {
-    "Regularizado": "bg-green-100 text-green-800",
-    "Pendente de validação": "bg-yellow-100 text-yellow-800",
-    "Por regularizar": "bg-gray-100 text-gray-800",
-    "Em atraso": "bg-red-100 text-red-800",
+    "Regularizado": "bg-green-50 text-green-700 inset-ring-green-600/20",
+    "Pendente de validação": "bg-yellow-50 text-yellow-800 inset-ring-yellow-600/20",
+    "Por regularizar": "bg-gray-50 text-gray-600 inset-ring-gray-500/10",
+    "Em atraso": "bg-red-50 text-red-700 inset-ring-red-600/10",
   };
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
+    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium inset-ring ${map[status]}`}>
       {status}
     </span>
   );
@@ -87,55 +90,58 @@ function TableView({
   }
 
   return (
-    <div className="overflow-x-auto border rounded-xl">
-      <table className="min-w-full text-sm">
-        <thead className="bg-gray-50 text-gray-700">
-          <tr>
-            <th className="text-left px-3 py-2">Submissão</th>
-            <th className="text-left px-3 py-2">Titular/EE</th>
-            <th className="text-left px-3 py-2">Tipo de sócio</th>
-            <th className="text-left px-3 py-2">Atleta</th>
-            <th className="text-left px-3 py-2">Escalão</th>
-            <th className="text-left px-3 py-2">Plano de Pagamento</th>
-            <th className="text-left px-3 py-2">Descrição</th>
-            <th className="text-left px-3 py-2">Estado</th>
-            <th className="text-right px-3 py-2">Ação</th>
+    <div className="overflow-x-auto border">
+      <table className="min-w-[1120px] w-full text-sm">
+          <thead>
+            <tr className="bg-neutral-700 text-white uppercase">
+              <th className="text-left px-3 py-2 font-medium">Data</th>
+              <th className="text-left px-3 py-2 font-medium">Titular/EE</th>
+              <th className="text-left px-3 py-2 font-medium">Tipo de sócio</th>
+              <th className="text-left px-3 py-2 font-medium">Atleta</th>
+              <th className="text-left px-3 py-2 font-medium">Escalão</th>
+              <th className="text-left px-3 py-2 font-medium">Plano de Pagamento</th>
+              <th className="text-left px-3 py-2 font-medium">Descrição</th>
+              <th className="text-left px-3 py-2 font-medium">Estado</th>
+              <th className="text-left px-3 py-2 font-medium">Ação</th>
           </tr>
         </thead>
         <tbody className="divide-y">
-          {rows.map((r) => {
+          {rows.map((r, index) => {
             const planoInativo = isPlanoInativo(r.nivel, r.atletaEscalao);
             const planoLabel = r.atletaPlano || "—";
             return (
-              <tr key={r.id} className="hover:bg-gray-50">
-                <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+              <tr key={r.id} className={`border-t ${
+                index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+              } hover:bg-amber-400`}>
+                <td className="px-3 py-2 whitespace-nowrap text-[0.7rem]">
+                  {fmtDate(r.createdAt).split(", ").map((part, i) => (
+                    <div key={i}>{part}</div>
+                  ))}
+                </td>
                 <td className="px-3 py-2">{r.titularName || "—"}</td>
-                <td className="px-3 py-2">{r.titularTipoSocio || "—"}</td>
+                <td className="px-3 py-2 text-[0.7rem]">{r.titularTipoSocio || "—"}</td>
                 <td className="px-3 py-2">{r.atletaNome ?? "—"}</td>
-                <td className="px-3 py-2">{r.atletaEscalao || "—"}</td>
-                <td className={`px-3 py-2 ${planoInativo ? "text-gray-400 italic" : ""}`}>
+                <td className="px-3 py-2 text-[0.7rem]">{r.atletaEscalao || "—"}</td>
+                <td className={`px-3 py-2 text-[0.8rem] ${planoInativo ? "text-gray-400 italic" : ""}`}>
                   {planoInativo ? "—" : planoLabel}
                 </td>
-                <td className="px-3 py-2">{r.descricao}</td>
+                <td className="px-3 py-2 text-[0.7rem]">{r.descricao}</td>
                 <td className="px-3 py-2">
                   <StatusBadge status={r.status} />
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2 justify-end">
                     {r.signedUrl ? (
-                      <a
-                        className="px-2 py-1 rounded-lg border hover:bg-gray-100"
-                        href={r.signedUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Abrir comprovativo
-                      </a>
+                      <Button variant="stone" onClick={() => {
+                        window.open(r.signedUrl, "_blank");
+                      }}>
+                        <Download className="h-4 w-4 mr-1" />
+                      </Button>
                     ) : null}
 
                     <button
                       disabled={busyId === r.id}
-                      className={`px-2 py-1 rounded-lg text-xs ${
+                      className={`inline-flex items-center justify-center gap-1.5 transition active:scale-[.98] cursor-pointer text-sm h-8 px-3 rounded-md ${
                         r.validado
                           ? "bg-red-600 text-white hover:bg-red-700"
                           : "bg-green-600 text-white hover:bg-green-700"
@@ -163,14 +169,21 @@ export default function PaymentsTable({
   onChanged,
   inscricoesCount,
   mensalidadesCount,
+  limit = 20,
 }: Props) {
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim().toLowerCase()), 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Reset page when search or tab changes
+  useEffect(() => {
+    setPage(1);
+  }, [q, tab]);
 
   const filteredRows = useMemo(() => {
     if (!q) return rows;
@@ -193,6 +206,12 @@ export default function PaymentsTable({
 
   const countInsc = typeof inscricoesCount === "number" ? inscricoesCount : inscricoes.length;
   const countMens = typeof mensalidadesCount === "number" ? mensalidadesCount : mensalidades.length;
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / limit));
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedRows = filteredRows.slice(startIndex, endIndex);
 
   return (
     <div className="space-y-3">
@@ -224,7 +243,33 @@ export default function PaymentsTable({
         </div>
       </div>
 
-      <TableView rows={filteredRows} onChanged={onChanged} />
+      {/* Pagination controls */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs/6 text-gray-600 font-semibold">
+          {filteredRows.length} registo(s)
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            aria-label="Página anterior"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          </Button>
+          <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
+          <Button
+            variant="outline"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            aria-label="Página seguinte"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </Button>
+        </div>
+      </div>
+
+      <TableView rows={paginatedRows} onChanged={onChanged} />
     </div>
   );
 }

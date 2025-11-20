@@ -44,7 +44,7 @@ function FieldIf({
   if (isBlank(value)) return null;
   return (
     <div className={["space-y-1", className].join(" ")}>
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-left text-xs font-semibold text-heading underline decoration-success decoration-dotted">{label}</div>
       <div className="text-sm">{fmt ? fmt(value) : value}</div>
     </div>
   );
@@ -94,11 +94,11 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-xl w-[95vw] max-w-4xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-white shadow-xl w-[95vw] max-w-4xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 py-3 border-b flex items-center justify-between flex-none">
+        <div className="px-4 py-3 border-b flex items-center justify-between flex-none bg-amber-500 text-white">
           <div className="font-semibold">Atleta · {atleta.nome}</div>
           <button onClick={onClose} className="p-1 rounded hover:bg-gray-100" aria-label="Fechar">
             <X className="h-5 w-5" />
