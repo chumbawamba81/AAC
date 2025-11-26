@@ -282,50 +282,56 @@ async function handleDelete(row: DocumentoRow) {
 return (
 <Card>
   <CardHeader>
-    <CardTitle className="flex items-center gap-2">
+    <CardTitle className="flex items-center gap-3">
       <FileUp className="h-5 w-5" />
       Upload de Documentos {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
     </CardTitle>
   </CardHeader>
 
-  <CardContent className="space-y-8">
+  <CardContent className="space-y-4">
     {/* ---- Aviso: comprovativos migrados ---- */}
-    <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
-      <p className="text-sm text-gray-700">
-        Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
-        para upload na secção <strong>Situação de Tesouraria</strong>.
-      </p>
+    <div className="p-2 m-0">
+      <div className="border rounded-lg p-3 bg-blue-50 text-blue-900">
+        <p className="text-sm text-gray-700">
+          Os comprovativos de pagamento (inscrição do sócio e inscrição do atleta) encontram-se disponíveis
+          para upload na secção <strong>Situação de Tesouraria</strong>.
+        </p>
+      </div>
     </div>
+    
 
     {/* ---- SOCIO ---- */}
-    <section>
-      <div className="mb-2 flex items-center justify-between">
-        <div className="font-medium">
-          Documentos do Sócio ({state.perfil?.nomeCompleto || state.conta?.email || "Conta"})
+    <section className="bg-stone-200 p-2">
+      <div className="mb-2 flex flex-col sm:flex-row">
+        <div className="font-medium flex-1 flex-col space-y-1 p-1">
+          Documentos do Sócio:<br /> {state.perfil?.nomeCompleto || state.conta?.email || "Conta"}
         </div>
-        {socioMissingCount > 0 ? (
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700">
-            <AlertCircle className="h-3 w-3" /> {socioMissingCount} doc(s) em falta
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-700">
-            <CheckCircle2 className="h-3 w-3" /> Sem documentos
-          </span>
-        )}
+        <div className="flex-none space-y-1 p-1">
+          {socioMissingCount > 0 ? (
+            <span className=" lg:text-right inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-red-100 text-red-700">
+              <AlertCircle className="h-3 w-3" /> {socioMissingCount} doc(s) em falta
+            </span>
+          ) : (
+            <span className=" lg:text-right inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs bg-green-100 text-green-700">
+              <CheckCircle2 className="h-3 w-3" /> Sem documentos
+            </span>
+          )}
+        </div>
       </div>
 
       {hideSocioDoc ? null : (
-        <div className="grid md:grid-cols-2 gap-3">
+        <>
           {DOCS_SOCIO_UI.map((tipo) => {
             const files = socioDocs.get(tipo) || [];
             return (
-              <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="font-medium">
+              <div key={tipo}>
+                {/* linha 1 */}
+                <div className="mb-2 flex flex-col sm:flex-row border-b-1 border-stone-400">
+                  <div className="flex-1 flex-col space-y-1 p-1 font-medium">
                     {tipo}
                     {state.perfil?.tipoSocio && tipo === "Ficha de Sócio" ? ` (${state.perfil.tipoSocio})` : ""}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex-none space-y-1 p-1">
                     <input
                       ref={(el) => (socioPickersRef.current[tipo] = el)}
                       type="file"
@@ -339,8 +345,8 @@ return (
                           const arr = await Promise.all(Array.from(fs).map(withSafeName));
                           const dt = new DataTransfer();
                           arr.forEach((f) => {
-  dt.items.add(f);
-});
+                          dt.items.add(f);
+                        });
                           await handleUploadSocioMany(tipo, dt.files);
                         } else {
                           await handleUploadSocioMany(tipo, fs);
@@ -348,19 +354,26 @@ return (
                         e.currentTarget.value = "";
                       }}
                     />
-                    <Button variant="outline" onClick={() => socioPickersRef.current[tipo]?.click()}>
+                    <Button variant="grey" onClick={() => socioPickersRef.current[tipo]?.click()}>
                       <Plus className="h-4 w-4 mr-1" /> Adicionar
                     </Button>
                   </div>
                 </div>
 
+                {/* linha 2 */}
                 {files.length === 0 ? (
-                  <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
+                  <div className="flex flex-row">
+                    <div className="flex-1 flex-col space-y-1 p-1"></div>
+                    <div className="flex-none space-y-1 p-1">
+                      <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
+                    </div>
+                  </div>
                 ) : (
-                  <ul className="space-y-2">
+                  <>
                     {files.map((row, idx) => (
-                      <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
-                        <div className="text-sm flex items-center gap-2 min-w-0">
+
+                      <div key={row.id} className="flex flex-row gap-1">
+                        <div className="text-sm items-center gap-2 min-w-0 flex-1 space-y-1 p-1">
                           <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
                             Ficheiro {idx + 1}
                           </span>
@@ -376,7 +389,8 @@ return (
                             </span>
                           </a>
                         </div>
-                        <div className="flex items-center gap-2">
+
+                        <div className="flex-none space-y-1 p-1 text-right">
                           <input
                             ref={(el) => (replacePickersRef.current[row.id] = el)}
                             type="file"
@@ -391,36 +405,39 @@ return (
                               e.currentTarget.value = "";
                             }}
                           />
-                          <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
-                            <RefreshCw className="h-4 w-4 mr-1" /> Substituir
-                          </Button>
-                          <Button variant="destructive" onClick={() => handleDelete(row)}>
-                            <Trash2 className="h-4 w-4 mr-1" /> Apagar
-                          </Button>
+                          <div className="inline-flex rounded-md shadow-xs" role="group">
+                            <Button variant="default_left_group" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                              <RefreshCw className="h-4 w-4 mr-1" /> Substituir
+                            </Button>
+                            <Button variant="destructive_right_group" onClick={() => handleDelete(row)}>
+                              <Trash2 className="h-4 w-4 mr-1" /> Apagar
+                            </Button>
+                          </div>
                         </div>
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </>
                 )}
               </div>
             );
           })}
-        </div>
+        </>
       )}
     </section>
 
     {/* ---- ATLETAS ---- */}
     <section className="space-y-3">
-      <div className="font-medium">Documentos por Atleta</div>
+      <div className="font-medium p-2">Documentos por Atleta</div>
       {state.atletas.length === 0 && <p className="text-sm text-gray-500">Sem atletas criados.</p>}
       {state.atletas.map((a) => {
         const mapa = athDocs[a.id] || new Map<string, DocumentoRow[]>();
         const missing = DOCS_ATLETA_UI.filter((t) => !(mapa.get(t) || []).length).length;
 
         return (
-          <div key={a.id} className="border rounded-xl p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="font-medium flex items-center gap-2">
+          <div key={a.id} className="space-y-3 border-t-1 border-stone-400">
+            {/* bg-stone-200 p-2 */}
+            <div className="flex flex-row">
+              <div className="font-medium flex-1 space-y-1 p-2">
                 {a.nomeCompleto}{" "}
                 {missing > 0 ? (
                   <span className="inline-flex items gap-1 text-xs rounded-full px-2 py-0.5 bg-red-100 text-red-700">
@@ -432,98 +449,106 @@ return (
                   </span>
                 )}
               </div>
-              <div className="text-xs text-gray-500">Escalão: {a.escalao}</div>
+              <div className="flex-none space-y-1 p-2">
+                <div className="text-xs text-gray-500">Escalão: {a.escalao}</div>
+              </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-3">
-              {DOCS_ATLETA_UI.map((tipo) => {
-                if (!atletaPickersRef.current[a.id]) atletaPickersRef.current[a.id] = {};
-                const files = mapa.get(tipo) || [];
-                return (
-                  <div key={tipo} className="border rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">{tipo}</div>
-                      <div className="flex gap-2">
-                        <input
-                          ref={(el) => (atletaPickersRef.current[a.id][tipo] = el)}
-                          type="file"
-                          accept="image/*,application/pdf"
-                          multiple
-                          className="hidden"
-                          onChange={async (e) => {
-                            const fs = e.target.files;
-                            if (fs && fs.length) {
-                              const arr = await Promise.all(Array.from(fs).map(withSafeName));
-                              const dt = new DataTransfer();
-                              arr.forEach((f) => {
-  dt.items.add(f);
-});
 
-                              await handleUploadAtletaMany(a.id, tipo, dt.files);
-                            } else {
-                              await handleUploadAtletaMany(a.id, tipo, fs);
-                            }
-                            e.currentTarget.value = "";
-                          }}
-                        />
-                        <Button variant="outline" onClick={() => atletaPickersRef.current[a.id][tipo]?.click()}>
-                          <Plus className="h-4 w-4 mr-1" /> Adicionar
-                        </Button>
+            <div className="sm:p-2 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {DOCS_ATLETA_UI.map((tipo) => {
+                  if (!atletaPickersRef.current[a.id]) atletaPickersRef.current[a.id] = {};
+                  const files = mapa.get(tipo) || [];
+                  return (
+                    <div key={tipo} className="border bg-yellow-50 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">{tipo}</div>
+                        <div className="flex gap-2">
+                          <input
+                            ref={(el) => (atletaPickersRef.current[a.id][tipo] = el)}
+                            type="file"
+                            accept="image/*,application/pdf"
+                            multiple
+                            className="hidden"
+                            onChange={async (e) => {
+                              const fs = e.target.files;
+                              if (fs && fs.length) {
+                                const arr = await Promise.all(Array.from(fs).map(withSafeName));
+                                const dt = new DataTransfer();
+                                arr.forEach((f) => {
+                                  dt.items.add(f);
+                                });
+                                await handleUploadAtletaMany(a.id, tipo, dt.files);
+                              } else {
+                                await handleUploadAtletaMany(a.id, tipo, fs);
+                              }
+                              e.currentTarget.value = "";
+                            }}
+                          />
+                          <Button variant="outline" onClick={() => atletaPickersRef.current[a.id][tipo]?.click()}>
+                            <Plus className="h-4 w-4 mr-1" /> Adicionar
+                          </Button>
+                        </div>
                       </div>
-                    </div>
 
-                    {files.length === 0 ? (
-                      <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
-                    ) : (
-                      <ul className="space-y-2">
-                        {files.map((row, idx) => (
-                          <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
-                            <div className="text-sm flex items-center gap-2 min-w-0">
-                              <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
-                                Ficheiro {idx + 1}
-                              </span>
-                              <a
-                                href={row.signedUrl || undefined}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline inline-flex items-center gap-1 min-w-0"
-                              >
-                                <LinkIcon className="h-4 w-4 flex-shrink-0" />
-                                <span className="inline-block max-w-[240px] truncate">
-                                  {row.nome || "ficheiro"}
+                      {files.length === 0 ? (
+                        <div className="text-xs text-gray-500">Nenhum ficheiro carregado.</div>
+                      ) : (
+                        <ul className="space-y-2">
+                          {files.map((row, idx) => (
+                            <li key={row.id} className="flex items-center justify-between border rounded-md p-2">
+                              <div className="text-sm flex items-center gap-2 min-w-0">
+                                <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5">
+                                  Ficheiro {idx + 1}
                                 </span>
-                              </a>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                ref={(el) => (replacePickersRef.current[row.id] = el)}
-                                type="file"
-                                accept="image/*,application/pdf"
-                                className="hidden"
-                                onChange={async (e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) {
-                                    const safe = await withSafeName(f);
-                                    await handleReplace(row, safe);
-                                  }
-                                  e.currentTarget.value = "";
-                                }}
-                              />
-                              <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
-                                <RefreshCw className="h-4 w-4 mr-1" /> Substituir
-                              </Button>
-                              <Button variant="destructive" onClick={() => handleDelete(row)}>
-                                <Trash2 className="h-4 w-4 mr-1" /> Apagar
-                              </Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                );
-              })}
+                                <a
+                                  href={row.signedUrl || undefined}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline inline-flex items-center gap-1 min-w-0"
+                                >
+                                  <LinkIcon className="h-4 w-4 flex-shrink-0" />
+                                  <span className="inline-block max-w-[240px] truncate">
+                                    {row.nome || "ficheiro"}
+                                  </span>
+                                </a>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  ref={(el) => (replacePickersRef.current[row.id] = el)}
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) {
+                                      const safe = await withSafeName(f);
+                                      await handleReplace(row, safe);
+                                    }
+                                    e.currentTarget.value = "";
+                                  }}
+                                />
+                                <Button variant="outline" onClick={() => replacePickersRef.current[row.id]?.click()}>
+                                  <RefreshCw className="h-4 w-4 mr-1" /> Substituir
+                                </Button>
+                                <Button variant="destructive" onClick={() => handleDelete(row)}>
+                                  <Trash2 className="h-4 w-4 mr-1" /> Apagar
+                                </Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+            
+
+
+
           </div>
         );
       })}

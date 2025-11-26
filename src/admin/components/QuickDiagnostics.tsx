@@ -42,10 +42,10 @@ export default function QuickDiagnostics() {
       <CardHeader className="flex items-center justify-between">
         <CardTitle>Diagnóstico rápido</CardTitle>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={testStorage} disabled={busy !== "none"}>
+          <Button variant="dark" onClick={testStorage} disabled={busy !== "none"}>
             Testar Storage
           </Button>
-          <Button variant="outline" onClick={testTable} disabled={busy !== "none"}>
+          <Button variant="dark" onClick={testTable} disabled={busy !== "none"}>
             Testar Tabela
           </Button>
         </div>

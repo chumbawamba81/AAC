@@ -11,12 +11,14 @@ export default function FilePickerButton({
   multiple = false,
   children,
   variant = "outline",
+  size,
 }: {
   onFiles: (files: FileList) => void;
   accept?: string;
   multiple?: boolean;
   children: React.ReactNode;
-  variant?: "outline" | "secondary" | "destructive" | "default";
+  variant?: 'outline'|'secondary'|'destructive'|'stone'|'dark'|'success'|'grey'|'warning'|'default_left_group'|'destructive_right_group';
+  size?: "sm" | "md" | "lg";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +65,7 @@ export default function FilePickerButton({
           e.currentTarget.value = ""; // permite selecionar o mesmo ficheiro novamente
         }}
       />
-      <Button type="button" variant={variant as any} onClick={handleClick}>
+      <Button type="button" variant={variant as any} size={size} onClick={handleClick}>
         {children}
       </Button>
     </>

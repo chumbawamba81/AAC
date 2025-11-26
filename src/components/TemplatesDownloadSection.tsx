@@ -34,14 +34,14 @@ export default function TemplatesDownloadSection() {
           Documentos para descarregar e preencher
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid md:grid-cols-2 gap-3">
+      <CardContent className='p-2 sm:p-4 text-sm'>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {TEMPLATES.map((t) => {
             const href = `${BASE}/${t.file}`;
             return (
               <div
                 key={t.file}
-                className="border rounded-lg p-3 flex items-center justify-between"
+                className="border bg-yellow-50 rounded-lg p-3 flex items-center justify-between"
               >
                 <div>
                   <div className="font-medium">{t.title}</div>
@@ -49,28 +49,28 @@ export default function TemplatesDownloadSection() {
                     <div className="text-xs text-gray-500">{t.note}</div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    className="underline inline-flex items-center gap-1"
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <ExternalLink className="h-4 w-4" /> Abrir
-                  </a>
-                  <a href={href} download>
-                    <Button className="ml-1" variant="outline">
-                      <Download className="h-4 w-4 mr-1" />
-                      Descarregar
-                    </Button>
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex rounded-md shadow-xs" role="group">
+                      <a
+                        className="inline-flex items-center px-4 py-2 text-xs font-medium rounded-s-lg bg-sky-600 text-white hover:bg-sky-800"
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink className="h-4 w-4" /> Abrir
+                      </a>
+                      <a href={href} download className="inline-flex items-center px-4 py-2 text-xs font-medium rounded-e-lg focus:z-10 focus:ring-2 text-white bg-gray-700 hover:bg-gray-900">
+                        <Download className="h-4 w-4 mr-1" />
+                        Descarregar
+                      </a>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
 
-        <div className="text-xs text-gray-500 mt-3">
+        <div className="text-xs text-emerald-900 mt-3">
           Dica: quando possível, preencha digitalmente para garantir legibilidade.
         </div>
       </CardContent>

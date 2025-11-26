@@ -112,19 +112,31 @@ export async function listAtletasAdmin(opts?: {
   escalao?: string | "";
   tipoSocio?: string | "";
   sort?: "nome_asc" | "nome_desc" | "created_desc" | "created_asc";
-}): Promise<
-  Array<{
+  page?: number;
+  limit?: number;
+}): Promise<{
+  data: Array<{
     atleta: AtletaRow;
     titular?: TitularMinimal;
-  }>
-> {
+  }>;
+  count: number;
+}> {
+  const page = opts?.page ?? 1;
+  const limit = opts?.limit ?? 20;
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
   let q = supabase
     .from("atletas")
     .select(
       "id,user_id,nome,data_nascimento,genero,escalao,opcao_pagamento,alergias," +
         "morada,codigo_postal,contactos_urgencia,emails_preferenciais,created_at," +
         "nacionalidade,nacionalidade_outra,tipo_doc,num_doc,validade_doc,nif," +
-        "nome_pai,nome_mae,telefone_opc,email_opc,escola,ano_escolaridade,encarregado_educacao,parentesco_outro,observacoes"
+        "nome_pai,nome_mae,telefone_opc,email_opc,escola,ano_escolaridade,encarregado_educacao,parentesco_outro,observacoes",
+      {
+        count: "exact",
+        head: false,
+      }
     );
 
   if (opts?.search?.trim()) q = q.ilike("nome", `%${opts.search.trim()}%`);
@@ -138,7 +150,9 @@ export async function listAtletasAdmin(opts?: {
     default: q = q.order("nome", { ascending: true });
   }
 
-  const { data, error } = await q;
+  q = q.range(from, to);
+
+  const { data, error, count } = await q;
   if (error) throw error;
 
   const atletas = asType<AtletaRow[]>(data ?? []);
@@ -162,7 +176,26 @@ export async function listAtletasAdmin(opts?: {
     ? atletas.filter(a => (a.user_id && (byUser.get(a.user_id)?.tipo_socio || "") === opts.tipoSocio))
     : atletas;
 
-  return filtered.map(a => ({ atleta: a, titular: a.user_id ? byUser.get(a.user_id) : undefined }));
+  return {
+    data: filtered.map(a => ({ atleta: a, titular: a.user_id ? byUser.get(a.user_id) : undefined })),
+    count: count ?? 0,
+  };
+}
+
+/** Lista todos os escalões únicos */
+export async function listEscaloes(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("atletas")
+    .select("escalao")
+    .not("escalao", "is", null);
+  if (error) throw error;
+  const unique = new Set<string>();
+  for (const row of (data || [])) {
+    if (row.escalao && typeof row.escalao === "string") {
+      unique.add(row.escalao);
+    }
+  }
+  return Array.from(unique).sort();
 }
 
 /** Missing por atleta, em lote */

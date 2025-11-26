@@ -3,12 +3,14 @@ import { Download, RefreshCw, Search, Users, Eye } from "lucide-react";
 import {
   listAtletasAdmin,
   getMissingCountsForAtletas,
+  listEscaloes,
   AtletaRow,
   TitularMinimal,
   DOCS_ATLETA,              // ← total de docs esperados
 } from "../services/adminAtletasService";
 import AthleteDetailsDialog from "./AthleteDetailsDialog";
 import { supabase } from "../../supabaseClient";
+import { Button } from "@/components/ui/button";
 
 type RowVM = { atleta: AtletaRow; titular?: TitularMinimal; missing?: number; };
 
@@ -50,19 +52,24 @@ function quotasNaoAplicaveis(escalao?: string | null) {
   const e = (escalao || "").toLowerCase();
   return e.includes("master") || e.includes("sub 23") || e.includes("sub-23");
 }
-function Th({ children }: { children: React.ReactNode }) { return <th className="px-3 py-2 font-medium">{children}</th>; }
+function Th({ children }: { children: React.ReactNode }) { return <th className="text-left px-3 py-2 font-medium">{children}</th>; }
 function Td({ children }: { children: React.ReactNode }) { return <td className="px-3 py-2 align-top">{children}</td>; }
 function StatusBadge({ status }: { status: InscStatus }) {
   const map: Record<InscStatus, string> = {
-    "Regularizado":"bg-green-100 text-green-800","Pendente de validação":"bg-yellow-100 text-yellow-800",
-    "Por regularizar":"bg-gray-100 text-gray-800","Em atraso":"bg-red-100 text-red-800",
+    "Regularizado":"bg-green-50 text-green-700 inset-ring-green-600/20",
+    "Pendente de validação": "bg-yellow-50 text-yellow-800 inset-ring-yellow-600/20",
+    "Por regularizar": "bg-gray-50 text-gray-600 inset-ring-gray-500/10",
+    "Em atraso": "bg-red-50 text-red-700 inset-ring-red-600/10",
   };
-  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>{status}</span>;
+  return <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium inset-ring ${map[status]}`}>{status}</span>;
 }
 
 export default function AthletesTable() {
   const [rows, setRows] = useState<RowVM[]>([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 20;
 
   const [search, setSearch] = useState("");
   const [escalao, setEscalao] = useState<string>("");
@@ -74,11 +81,15 @@ export default function AthletesTable() {
   const [focus, setFocus] = useState<RowVM | null>(null);
 
   const [maps, setMaps] = useState<StatusMaps>({ insc: {}, quotas: {} });
+  const [escaloes, setEscaloes] = useState<string[]>([]);
+
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
   async function reload() {
     setLoading(true);
     try {
-      const base = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort });
+      const { data: base, count } = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort, page, limit });
+      setTotal(count);
       const vm: RowVM[] = base.map((x) => ({ atleta: x.atleta, titular: x.titular }));
       setRows(vm);
 
@@ -120,12 +131,23 @@ export default function AthletesTable() {
     }
   }
 
-  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort]);
+  useEffect(() => {
+    setPage(1); // Reset to first page when filters change
+  }, [search, escalao, sort]);
 
-  const escaloes = useMemo(() => {
-    const s = new Set<string>(); rows.forEach((r) => r.atleta.escalao && s.add(r.atleta.escalao));
-    return Array.from(s).sort();
-  }, [rows]);
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort, page]);
+
+  useEffect(() => {
+    async function loadEscaloes() {
+      try {
+        const allEscaloes = await listEscaloes();
+        setEscaloes(allEscaloes);
+      } catch (err) {
+        console.error("Erro ao carregar escalões:", err);
+      }
+    }
+    loadEscaloes();
+  }, []);
 
   // CSV (UTF-16LE para acentos ok)
   const csvEscape = (v: any) => { const s = (v ?? "").toString(); return /[;\r\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -222,35 +244,60 @@ export default function AthletesTable() {
       </div>
 
       {/* barra topo da tabela */}
-      <div className="rounded-xl border bg-white">
+      <div className="border bg-white">
         <div className="p-3 border-b flex items-center justify-between">
-          <div className="text-sm text-gray-600">{loading ? "A carregar…" : `${filteredCount} registo(s)`}</div>
+          <div className="text-xs/6 text-gray-600 font-semibold">{loading ? "A carregar…" : `${filteredCount} registo(s)`}</div>
           <div className="flex items-center gap-2">
-            <button onClick={exportCSV} className="px-3 py-2 rounded border hover:bg-gray-50 text-sm inline-flex items-center gap-2">
+            <Button
+              variant="default"
+              onClick={exportCSV}
+              aria-label="Exportar CSV"
+            >
               <Download className="h-4 w-4" /> Exportar CSV
-            </button>
-            <button onClick={reload} className="px-3 py-2 rounded border hover:bg-gray-50 text-sm inline-flex items-center gap-2">
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={reload}
+              aria-label="Atualizar"
+            >
               <RefreshCw className="h-4 w-4" /> Atualizar
-            </button>
+            </Button>
+            <Button
+              variant="outline"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              aria-label="Página anterior"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+            </Button>
+            <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
+            <Button
+              variant="outline"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              aria-label="Página seguinte"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </Button>
           </div>
         </div>
 
         {/* tabela */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[980px]">
-            <thead className="bg-gray-50 text-left">
-              <tr>
+          <table className="min-w-[1120px] w-full text-sm">
+            <thead>
+              <tr className="bg-neutral-700 text-white uppercase">
                 <Th>Nome</Th>
                 <Th>Escalão</Th>
                 <Th>Opção pagamento</Th>
                 <Th>Inscrição</Th>
                 <Th>Quotas</Th>
-                <Th>Docs (falta/total)</Th>
+                <Th>Docs <span className="text-xs">(falta/total)</span></Th>
                 <Th>Ações</Th>
               </tr>
             </thead>
             <tbody>
-              {effectiveRows.map((r) => {
+              {effectiveRows.map((r, index) => {
                 const a = r.atleta;
                 const insc = maps.insc[a.id];
                 const quotas = maps.quotas[a.id];
@@ -270,7 +317,12 @@ export default function AthletesTable() {
                 }
 
                 return (
-                  <tr key={a.id} className="border-t">
+                  <tr
+                    key={a.id}
+                    className={`border-t  ${
+                      index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                    } hover:bg-amber-400`}
+                  >
                     <Td>{a.nome}</Td>
                     <Td>{a.escalao || "—"}</Td>
                     <Td>{a.opcao_pagamento || "—"}</Td>
@@ -287,10 +339,14 @@ export default function AthletesTable() {
                     <Td>{quotasNode}</Td>
                     <Td>{`${r.missing ?? 0}/${DOCS_ATLETA.length}`}</Td>
                     <Td>
-                      <button className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center gap-1"
-                              onClick={() => { setFocus(r); setOpen(true); }}>
-                        <Eye className="h-4 w-4" /> Detalhes
-                      </button>
+                      <Button
+                        variant="stone"
+                        onClick={() => { setFocus(r); setOpen(true); }}
+                        aria-label="Ver detalhes"
+                        className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
+                      >
+                      <Eye className="h-4 w-4" />
+                      </Button>
                     </Td>
                   </tr>
                 );

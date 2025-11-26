@@ -18,7 +18,7 @@ const SOCIO_REQUIRED_TYPES: string[] = ["Ficha de Sócio"];
 
 /* ================= UI helpers ================= */
 function Container({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-xl border bg-white">{children}</div>;
+  return <div className="border bg-white">{children}</div>;
 }
 function Header({ children }: { children: React.ReactNode }) {
   return <div className="p-3 border-b flex items-center justify-between">{children}</div>;
@@ -28,13 +28,13 @@ function TableWrap({ children }: { children: React.ReactNode }) {
 }
 function InscBadge({ status }: { status: InscStatus }) {
   const map = {
-    Regularizado: "bg-green-100 text-green-800",
-    "Pendente de validação": "bg-yellow-100 text-yellow-800",
-    "Por regularizar": "bg-gray-100 text-gray-800",
-    "Em atraso": "bg-red-100 text-red-800",
+    Regularizado: "bg-green-50 text-green-700 inset-ring-green-600/20",
+    "Pendente de validação": "bg-yellow-50 text-yellow-800 inset-ring-yellow-600/20",
+    "Por regularizar": "bg-gray-50 text-gray-600 inset-ring-gray-500/10",
+    "Em atraso": "bg-red-50 text-red-700 inset-ring-red-600/10",
   } as const;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
+    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium inset-ring ${map[status]}`}>
       {status}
     </span>
   );
@@ -306,11 +306,11 @@ export default function SociosTable({
   return (
     <Container>
       <Header>
-        <div className="text-sm text-gray-600">
+        <div className="text-xs/6 text-gray-600 font-semibold">
           {loading ? "A carregar…" : `${filteredCount} registo(s)`}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={exportCsv} className="text-sm">
+          <Button variant="dark" onClick={exportCsv} className="text-sm">
             Exportar CSV
           </Button>
           <Button
@@ -319,36 +319,35 @@ export default function SociosTable({
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             aria-label="Página anterior"
           >
-            ◀
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           </Button>
-          <div className="text-sm">Página {page}</div>
+          <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
           <Button
             variant="outline"
             disabled={page >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             aria-label="Página seguinte"
           >
-            ▶
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </Button>
         </div>
       </Header>
-
       <TableWrap>
         <table className="min-w-[1120px] w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 text-gray-700">
+            <tr className="bg-neutral-700 text-white uppercase">
               <th className="text-left px-3 py-2 font-medium">Nome</th>
               <th className="text-left px-3 py-2 font-medium">Email</th>
               <th className="text-left px-3 py-2 font-medium">Telefone</th>
               <th className="text-left px-3 py-2 font-medium">Tipo de sócio</th>
               <th className="text-left px-3 py-2 font-medium">Situação</th>
               <th className="text-left px-3 py-2 font-medium">Data limite</th>
-              <th className="text-left px-3 py-2 font-medium">Docs (falta/total)</th>
+              <th className="text-left px-3 py-2 font-medium">Docs <span className="text-xs">(falta/total)</span> </th>
               <th className="text-right px-3 py-2 font-medium">Ações</th>
             </tr>
           </thead>
           <tbody>
-            {effectiveRows.map((r) => {
+            {effectiveRows.map((r, index) => {
               const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
               const insc = inscMap[r.user_id] ?? null;
 
@@ -366,28 +365,32 @@ export default function SociosTable({
               } else if (dInfo && dInfo !== "N/A") {
                 docsLabel = <span>{dInfo.missing}/{dInfo.total}</span>;
               }
-
               return (
-                <tr key={r.id} className="border-t">
+                <tr
+                  key={r.id}
+                  className={`border-t ${
+                    index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                  } hover:bg-amber-400`}
+                >
                   <td className="px-3 py-2">{r.nome_completo}</td>
                   <td className="px-3 py-2">{r.email}</td>
                   <td className="px-3 py-2">{r.telefone || "—"}</td>
-                  <td className="px-3 py-2">{r.tipo_socio || "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 text-[0.7rem]">{r.tipo_socio || "—"}</td>
+                  <td className="px-3 py-2 text-[0.7rem]">
                     {isSocio ? (
                       insc ? <InscBadge status={insc.status as InscStatus} /> : <span className="text-gray-500">—</span>
                     ) : (
                       <span className="text-gray-500">N/A</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">{dueLabel}</td>
-                  <td className="px-3 py-2">{docsLabel}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-[0.7rem]">{dueLabel}</td>
+                  <td className="px-3 py-2 text-[0.7rem]">{docsLabel}</td>
+                  <td className="px-3 py-2 text-right text-[0.7rem]">
                     <Button
                       variant="outline"
                       onClick={() => setOpenId(r.user_id)}
                       aria-label="Ver detalhes"
-                      className="inline-flex h-9 w-9 items-center justify-center p-0"
+                      className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
                     >
                       <Eye className="h-4 w-4" />
                     </Button>

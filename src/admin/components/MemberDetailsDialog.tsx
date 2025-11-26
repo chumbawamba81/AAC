@@ -90,7 +90,7 @@ function pickByDue<T extends { devido_em: string | null; created_at: string }>(l
 }
 
 const Label = ({ children }: { children: React.ReactNode }) => (
-  <div className="text-left text-xs text-gray-500">{children}</div>
+  <div className="text-left text-xs font-semibold text-heading underline decoration-success decoration-dotted">{children}</div>
 );
 const Value = ({ children }: { children: React.ReactNode }) => (
   <div className="mb-4 text-left">{children}</div>
@@ -284,7 +284,7 @@ export default function MemberDetailsDialog({
         <DialogHeader className="text-left items-start">
           <DialogTitle className="text-left">
             Detalhes do Titular
-            <span className="block text-xs text-gray-500 text-left">
+            <span className="block text-[0.7rem] text-neutral-800 text-left">
               {(perfil?.nome_completo || member.nome_completo || "—")} ·{" "}
               {(perfil?.email || member.email || "—")} · Tipo de sócio:{" "}
               {(perfil?.tipo_socio || member.tipo_socio || "—")}
@@ -307,7 +307,7 @@ export default function MemberDetailsDialog({
                 <CardHeader>
                   <CardTitle className="text-left">Dados do titular</CardTitle>
                 </CardHeader>
-                <CardContent className="grid md:grid-cols-2 gap-6 text-sm text-left">
+                <CardContent className="grid md:grid-cols-2 gap-6 text-sm text-left p-2">
                   <Field label="Nome" value={perfil?.nome_completo} />
                   <Field label="Email" value={perfil?.email} />
                   <Field label="Telefone" value={perfil?.telefone} />
@@ -359,7 +359,7 @@ export default function MemberDetailsDialog({
                 <CardHeader className="flex items-center justify-between">
                   <CardTitle className="text-left">Atletas do titular</CardTitle>
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     onClick={() => fetchAthletes().then(() => fetchDocsByAthlete(athletes))}
                     disabled={loadingAth}
                   >
@@ -419,7 +419,7 @@ export default function MemberDetailsDialog({
                 <Card>
                   <CardHeader className="flex items-center justify-between">
                     <CardTitle className="text-left">Documentos do Sócio</CardTitle>
-                    <Button variant="outline" onClick={fetchSocioDocs} disabled={loadingSocio}>
+                    <Button variant="destructive" onClick={fetchSocioDocs} disabled={loadingSocio}>
                       {loadingSocio ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Atualizar"}
                     </Button>
                   </CardHeader>
