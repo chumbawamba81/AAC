@@ -3,6 +3,7 @@ import { Download, RefreshCw, Search, Users, Eye } from "lucide-react";
 import {
   listAtletasAdmin,
   getMissingCountsForAtletas,
+  listEscaloes,
   AtletaRow,
   TitularMinimal,
   DOCS_ATLETA,              // ← total de docs esperados
@@ -80,6 +81,7 @@ export default function AthletesTable() {
   const [focus, setFocus] = useState<RowVM | null>(null);
 
   const [maps, setMaps] = useState<StatusMaps>({ insc: {}, quotas: {} });
+  const [escaloes, setEscaloes] = useState<string[]>([]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
@@ -135,10 +137,17 @@ export default function AthletesTable() {
 
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort, page]);
 
-  const escaloes = useMemo(() => {
-    const s = new Set<string>(); rows.forEach((r) => r.atleta.escalao && s.add(r.atleta.escalao));
-    return Array.from(s).sort();
-  }, [rows]);
+  useEffect(() => {
+    async function loadEscaloes() {
+      try {
+        const allEscaloes = await listEscaloes();
+        setEscaloes(allEscaloes);
+      } catch (err) {
+        console.error("Erro ao carregar escalões:", err);
+      }
+    }
+    loadEscaloes();
+  }, []);
 
   // CSV (UTF-16LE para acentos ok)
   const csvEscape = (v: any) => { const s = (v ?? "").toString(); return /[;\r\n"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };

@@ -182,6 +182,22 @@ export async function listAtletasAdmin(opts?: {
   };
 }
 
+/** Lista todos os escalões únicos */
+export async function listEscaloes(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("atletas")
+    .select("escalao")
+    .not("escalao", "is", null);
+  if (error) throw error;
+  const unique = new Set<string>();
+  for (const row of (data || [])) {
+    if (row.escalao && typeof row.escalao === "string") {
+      unique.add(row.escalao);
+    }
+  }
+  return Array.from(unique).sort();
+}
+
 /** Missing por atleta, em lote */
 export async function getMissingCountsForAtletas(atletaIds: string[]): Promise<Record<string, number>> {
   if (!atletaIds.length) return {};
