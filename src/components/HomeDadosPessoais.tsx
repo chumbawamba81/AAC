@@ -22,7 +22,7 @@ import type { PessoaDados } from "../types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "../types/Atleta";
 import type { State } from "../App";
 
-import { AlertCircle, CheckCircle2, FileUp, PencilLine, Shield } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileUp, PencilLine, Shield, Users } from "lucide-react";
 
 // Local copies of constants used for document counters
 const DOCS_ATLETA = [
@@ -573,58 +573,69 @@ export default function HomeDadosPessoais({
         </div>
 
         {/* Resumo de Situação de Tesouraria */}
-
-        <div className="relative flex flex-col my-6 bg-white border border-slate-200 rounded-lg">
-          <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
-            <span className="p-4 text-xs xs:text-sm sm:text-base md:text-lg font-medium uppercase">
-              <FileUp className="h-5 w-5 mr-2" />
-              Resumo de Situação de Tesouraria
-            </span>
-          </div>
-
-          {showSocioArea && (
-            <>
-              <div className="flex flex-row">
-                <div className="flex-1 flex-col space-y-1 p-1">
-                  <div data-slot="card-content">
-                    <div className="text-sm font-medium">Sócio — Inscrição</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-2 flex-1 flex-col space-y-4 p-4">
-                <div className="flex-1 space-y-1 p-1">
-                  <div data-slot="card-content">
-                    <div className="text-xs">
-                      <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
-                        {socioInscrResumo?.valor != null && (
-                          <span>{eur(socioInscrResumo.valor)}</span>
-                        )}
-                        {socioInscrResumo?.due && (
-                          <span>· Limite: {socioInscrResumo.due}</span>
-                        )}
-                      </span>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+            <FileUp className="h-5 w-5 mr-2" /> Resumo de Situação de Tesouraria
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="p-4">
+              {showSocioArea && (
+                <>
+                  <div className="flex flex-row">
+                    <div className="flex-1 flex-col space-y-1 p-1">
+                      <div data-slot="card-content">
+                        <div className="text-sm font-medium">Sócio — Inscrição</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex-none space-y-1 p-1">
-                  <div className="lg:text-right">
-                    <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+                  <div className="flex flex-row gap-1">
+                    <div className="flex-1 space-y-1 p-1">
+                      <div data-slot="card-content">
+                        <div className="text-xs">
+                          <span className="inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-stone-800 inset-ring inset-ring-stone-600/20">
+                            {socioInscrResumo?.valor != null && (
+                              <span>{eur(socioInscrResumo.valor)}</span>
+                            )}
+                            {socioInscrResumo?.due && (
+                              <span>· Limite: {socioInscrResumo.due}</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex-none space-y-1 p-1">
+                      <div className="text-right">
+                        <StatusBadge s={socioInscrResumo?.status ?? "sem_lancamento"} />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="flex flex-row gap-1">
-                <div className="flex-1 space-y-1 p-1">
-                  <div className="lg:text-right">
-                  <Button variant="stone" onClick={goTesouraria}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
-                  </Button>
+                  <div className="flex flex-row">
+                    <div className="flex-1 flex-col space-y-1 p-1">
+                      <div data-slot="card-content">
+                        <div className="lg:text-right">
+                          <Button variant="stone" onClick={goTesouraria}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-euro-icon lucide-euro"><path d="M4 10h12"/><path d="M4 14h9"/><path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></svg> Consultar tesouraria
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </>
-          )}
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <div className="relative flex flex-col my-6 bg-white border 
+   border-slate-200 rounded-lg">
+          <div className="mb-0 border-b bg-amber-500 text-white p-2 px-1">
+            <span className="p-4 text-xs xs:text-sm sm:text-base md:text-lg font-medium uppercase">
+            
+            
+            </span>
+          </div>
 
           {/* Atletas */}
 
