@@ -22,7 +22,7 @@ import type { PessoaDados } from "../types/PessoaDados";
 import type { Atleta, PlanoPagamento } from "../types/Atleta";
 import type { State } from "../App";
 
-import { AlertCircle, CheckCircle2, FileUp, PencilLine, Shield, Users } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, FileUp, PencilLine, Shield, Users } from "lucide-react";
 
 // Local copies of constants used for document counters
 const DOCS_ATLETA = [
@@ -740,9 +740,14 @@ export default function HomeDadosPessoais({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dados Pessoais do Sócio/Encarregado de Educação</CardTitle>
+        <div className="flex items-center gap-3">
+          <Button variant="grey" onClick={() => setEditMode(false)} className="ml-2 flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" /> Voltar
+          </Button>
+          <CardTitle>Dados Pessoais do Sócio/Encarregado de Educação</CardTitle>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className='p-2 sm:p-4'>
         <div className="mb-4 rounded-xl border bg-yellow-50 text-yellow-900 p-3 text-sm">
           <strong>Nota:</strong> Estes dados referem-se ao <em>sócio/encarregado de educação</em>. A inscrição do atleta é realizada no separador <span className="font-medium">Atletas</span>.
         </div>
@@ -886,6 +891,9 @@ export default function HomeDadosPessoais({
           </div>
 
           <div className="md:col-span-2 flex justify-end gap-2">
+            <Button variant="grey" onClick={() => setEditMode(false)} className="flex items-center gap-2">
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </Button>
             <Button type="submit">
               <Shield className="h-4 w-4 mr-1" /> Guardar
             </Button>

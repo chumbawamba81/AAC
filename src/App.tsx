@@ -76,6 +76,7 @@ import FilePickerButton from "./components/FilePickerButton";
 import AtletasTab from "./components/AtletasTab";
 import HomeDadosPessoais from "./components/HomeDadosPessoais";
 import HomePagamentos from "./components/HomePagamentos";
+import FAQ from "./components/FAQ";
 
 // Supabase
 import { supabase } from "./supabaseClient";
@@ -838,6 +839,14 @@ export default function App() {
                     </TabsTrigger>
                   </div>
                 )}
+                <div
+                  onClick={() => {
+                    setActiveTab("faq");
+                    localStorage.setItem(LS_ACTIVE_TAB, "faq");
+                  }}
+                >
+                  <TabsTrigger value="faq">FAQ - ajuda</TabsTrigger>
+                </div>
               </TabsList>
 
               <TabsContent value="home">
@@ -882,6 +891,10 @@ export default function App() {
                   <HomePagamentos state={state} />
                 </TabsContent>
               )}
+
+              <TabsContent value="faq">
+                <FAQ />
+              </TabsContent>
             </Tabs>
           </>
         )}
