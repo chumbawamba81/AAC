@@ -60,6 +60,7 @@ import {
   Mail,
   RefreshCw,
   Link as LinkIcon,
+  HelpCircle,
 } from "lucide-react";
 
 // Tipos
@@ -306,6 +307,7 @@ function ContaSection({
   const [info, setInfo] = useState<string | undefined>();
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
+  const [faqOpen, setFaqOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -494,16 +496,27 @@ function ContaSection({
                 ? "Registar"
                 : "Entrar"}
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setMode((m) => (m === "register" ? "login" : "register"));
-                setConfirmPassword("");
-              }}
-            >
-              {mode === "register" ? "Já tenho conta" : "Criar conta"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setMode((m) => (m === "register" ? "login" : "register"));
+                  setConfirmPassword("");
+                }}
+              >
+                {mode === "register" ? "Já tenho conta" : "Criar conta"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setFaqOpen(true)}
+                className="flex items-center gap-1"
+              >
+                <HelpCircle className="h-4 w-4" />
+                FAQ
+              </Button>
+            </div>
           </div>
           <div className="mt-2 text-xs text-gray-500 flex items-start gap-2">
             <Shield className="h-4 w-4 mt-[2px]" />
@@ -540,6 +553,17 @@ function ContaSection({
                 <Button type="submit">Enviar link</Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={faqOpen} onOpenChange={setFaqOpen}>
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Perguntas Frequentes</DialogTitle>
+            </DialogHeader>
+            <div className="mt-4">
+              <FAQ />
+            </div>
           </DialogContent>
         </Dialog>
       </CardContent>

@@ -106,11 +106,16 @@ export default function FAQ({ items = [], allowMultiple = false }) {
       title: "Qual o valor de inscrição dos atletas?",
       content: () => (
         <div>
-          Dependendo do perfil de associado do Encarregado de Educação (EE), o valor de inscrição é diferente.
+          O perfil de associado do Encarregado de Educação (EE) tem um papel importante no valor de inscrição.
           <br />
-          EE sócio PRO tem desconto na taxa de inscrição e nas mensalidades.
+          <ul className="list-disc list-inside ml-4">
+            <li>EE sócio PRO - o atleta tem desconto na taxa de inscrição e nas mensalidades.</li>
+            <li>Existem valores diferentes para os atletas de diferentes idades.</li>
+            <li>Os pagamentos podem ser feitos de forma anual, trimestral ou mensal, dependendo do plano escolhido.</li>
+            <li>A imagem abaixo mostra os preços de 2025.</li>
+          </ul>
           <br />
-          Os pagamentos podem ser feitos de forma anual, trimestral ou mensal, dependendo do plano escolhido.
+          
           <img
             src="/precos/pagamentos-2025.png"
             alt="Precos de 2025"
