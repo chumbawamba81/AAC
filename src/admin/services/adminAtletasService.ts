@@ -33,6 +33,9 @@ export type AtletaRow = {
   encarregado_educacao?: string | null;
   parentesco_outro?: string | null;
   observacoes?: string | null;
+  epoca?: number | null;
+  social?: boolean;
+  desistiu?: boolean;
 };
 
 export type TitularMinimal = {
@@ -132,7 +135,7 @@ export async function listAtletasAdmin(opts?: {
       "id,user_id,nome,data_nascimento,genero,escalao,opcao_pagamento,alergias," +
         "morada,codigo_postal,contactos_urgencia,emails_preferenciais,created_at," +
         "nacionalidade,nacionalidade_outra,tipo_doc,num_doc,validade_doc,nif," +
-        "nome_pai,nome_mae,telefone_opc,email_opc,escola,ano_escolaridade,encarregado_educacao,parentesco_outro,observacoes",
+        "nome_pai,nome_mae,telefone_opc,email_opc,escola,ano_escolaridade,encarregado_educacao,parentesco_outro,observacoes,epoca,social,desistiu",
       {
         count: "exact",
         head: false,

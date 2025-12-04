@@ -111,6 +111,10 @@ export default function AthletesTable() {
 
         for (const r of vm) {
           const a = r.atleta;
+          // Fields epoca, social, and desistiu are available in a but not displayed in the table
+          const _epoca = a.epoca;
+          const _social = a.social;
+          const _desistiu = a.desistiu;
           const list = byAth[a.id] || [];
           const relInsc = pickByDue(list.filter((p) => isInscricaoLike(p.tipo, p.descricao)));
           insc[a.id] = { status: deriveStatus(relInsc), due: relInsc?.devido_em ?? null };
@@ -320,7 +324,7 @@ export default function AthletesTable() {
                   <tr
                     key={a.id}
                     className={`border-t  ${
-                      index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                      a.desistiu ? "bg-red-200" : index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
                     } hover:bg-amber-400`}
                   >
                     <Td>{a.nome}</Td>

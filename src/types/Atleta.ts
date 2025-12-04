@@ -59,4 +59,7 @@ export interface Atleta {
 
   // NOVO
   observacoes?: string;
+  epoca?: number;
+  social?: boolean;
+  desistiu?: boolean;
 }
