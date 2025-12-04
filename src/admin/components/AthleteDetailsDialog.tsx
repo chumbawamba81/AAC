@@ -1,6 +1,6 @@
 // src/admin/components/AthleteDetailsDialog.tsx
 import React, { useEffect, useState } from "react";
-import { X, Link as LinkIcon, FileText, FileCheck2, CreditCard } from "lucide-react";
+import { X, Link as LinkIcon, FileText, FileCheck2, CreditCard, Edit } from "lucide-react";
 import {
   listDocsByAtleta,
   listPagamentosByAtleta,
@@ -11,12 +11,14 @@ import {
   TitularMinimal,
   AtletaRow,
 } from "../services/adminAtletasService";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   atleta: AtletaRow;
   titular?: TitularMinimal;
+  onEdit?: () => void;
 };
 
 type Tab = "dados" | "docs" | "pag";
@@ -51,7 +53,7 @@ function FieldIf({
 }
 
 /* --------------------- componente --------------------- */
-export default function AthleteDetailsDialog({ open, onClose, atleta, titular }: Props) {
+export default function AthleteDetailsDialog({ open, onClose, atleta, titular, onEdit }: Props) {
   const [tab, setTab] = useState<Tab>("dados");
   const [docs, setDocs] = useState<DocumentoRow[]>([]);
   const [pags, setPags] = useState<PagamentoRow[]>([]);
@@ -100,9 +102,22 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular }:
         {/* Header */}
         <div className="px-4 py-3 border-b flex items-center justify-between flex-none bg-amber-500 text-white">
           <div className="font-semibold">Atleta · {atleta.nome}</div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100" aria-label="Fechar">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onEdit && (
+              <Button
+                id="edit-atleta-button"
+                variant="destructive"
+                onClick={onEdit}
+                aria-label="Editar"
+              >
+                <Edit className="h-4 w-4" />
+                Editar
+              </Button>
+            )}
+            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100" aria-label="Fechar">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
