@@ -33,6 +33,9 @@ export type AtletaRow = {
   encarregado_educacao?: string | null;
   parentesco_outro?: string | null;
   observacoes?: string | null;
+  epoca?: number | null;
+  social?: boolean;
+  desistiu?: boolean;
 };
 
 export type TitularMinimal = {
@@ -132,7 +135,7 @@ export async function listAtletasAdmin(opts?: {
       "id,user_id,nome,data_nascimento,genero,escalao,opcao_pagamento,alergias," +
         "morada,codigo_postal,contactos_urgencia,emails_preferenciais,created_at," +
         "nacionalidade,nacionalidade_outra,tipo_doc,num_doc,validade_doc,nif," +
-        "nome_pai,nome_mae,telefone_opc,email_opc,escola,ano_escolaridade,encarregado_educacao,parentesco_outro,observacoes",
+        "nome_pai,nome_mae,telefone_opc,email_opc,escola,ano_escolaridade,encarregado_educacao,parentesco_outro,observacoes,epoca,social,desistiu",
       {
         count: "exact",
         head: false,
@@ -257,4 +260,84 @@ export async function listPagamentosByAtleta(atletaId: string) {
   if (error) throw error;
   const rows = asType<PagamentoRow[]>(data ?? []);
   return attachSignedUrls<PagamentoRow>("pagamentos", rows, "comprovativo_url");
+}
+
+/** Update atleta (admin) - converts Atleta to DB format and updates */
+export async function updateAtletaAdmin(atleta: {
+  id: string;
+  nomeCompleto: string;
+  dataNascimento: string;
+  genero: string;
+  escalao: string;
+  planoPagamento: string;
+  nacionalidade: string;
+  nacionalidadeOutra?: string;
+  tipoDoc: string;
+  numDoc: string;
+  validadeDoc: string;
+  nif: string;
+  nomePai: string;
+  nomeMae: string;
+  morada: string;
+  codigoPostal: string;
+  telefoneOpc?: string;
+  emailOpc?: string;
+  escola: string;
+  anoEscolaridade: string;
+  alergias: string;
+  encarregadoEducacao?: string;
+  parentescoOutro?: string;
+  contactosUrgencia: string;
+  emailsPreferenciais: string;
+  observacoes?: string;
+  epoca?: number;
+  social?: boolean;
+  desistiu?: boolean;
+}): Promise<void> {
+  // Get current user_id to preserve it
+  const { data: current } = await supabase
+    .from("atletas")
+    .select("user_id")
+    .eq("id", atleta.id)
+    .maybeSingle();
+  
+  if (!current) throw new Error("Atleta não encontrado");
+
+  const row = {
+    nome: atleta.nomeCompleto ?? "",
+    data_nascimento: atleta.dataNascimento ?? "",
+    genero: atleta.genero ?? null,
+    escalao: atleta.escalao ?? null,
+    opcao_pagamento: atleta.planoPagamento ?? null,
+    nacionalidade: atleta.nacionalidade ?? null,
+    nacionalidade_outra: atleta.nacionalidadeOutra ?? null,
+    tipo_doc: atleta.tipoDoc ?? null,
+    num_doc: atleta.numDoc ?? null,
+    validade_doc: atleta.validadeDoc ?? null,
+    nif: atleta.nif ?? null,
+    nome_pai: atleta.nomePai ?? null,
+    nome_mae: atleta.nomeMae ?? null,
+    morada: atleta.morada ?? null,
+    codigo_postal: atleta.codigoPostal ?? null,
+    telefone_opc: atleta.telefoneOpc ?? null,
+    email_opc: atleta.emailOpc ?? null,
+    escola: atleta.escola ?? null,
+    ano_escolaridade: atleta.anoEscolaridade ?? null,
+    alergias: atleta.alergias ?? null,
+    encarregado_educacao: atleta.encarregadoEducacao ?? null,
+    parentesco_outro: atleta.parentescoOutro ?? null,
+    contactos_urgencia: atleta.contactosUrgencia ?? null,
+    emails_preferenciais: atleta.emailsPreferenciais ?? null,
+    observacoes: atleta.observacoes ?? null,
+    epoca: atleta.epoca ?? null,
+    social: atleta.social ?? false,
+    desistiu: atleta.desistiu ?? false,
+  };
+
+  const { error } = await supabase
+    .from("atletas")
+    .update(row)
+    .eq("id", atleta.id);
+
+  if (error) throw error;
 }

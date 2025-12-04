@@ -9,8 +9,10 @@ import {
   DOCS_ATLETA,              // ← total de docs esperados
 } from "../services/adminAtletasService";
 import AthleteDetailsDialog from "./AthleteDetailsDialog";
+import AdminAtletaEdit from "./AdminAtletaEdit";
 import { supabase } from "../../supabaseClient";
 import { Button } from "@/components/ui/button";
+import { showToast } from "@/components/MiniToast";
 
 type RowVM = { atleta: AtletaRow; titular?: TitularMinimal; missing?: number; };
 
@@ -79,6 +81,7 @@ export default function AthletesTable() {
 
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState<RowVM | null>(null);
+  const [editing, setEditing] = useState<RowVM | null>(null);
 
   const [maps, setMaps] = useState<StatusMaps>({ insc: {}, quotas: {} });
   const [escaloes, setEscaloes] = useState<string[]>([]);
@@ -111,6 +114,10 @@ export default function AthletesTable() {
 
         for (const r of vm) {
           const a = r.atleta;
+          // Fields epoca, social, and desistiu are available in a but not displayed in the table
+          const _epoca = a.epoca;
+          const _social = a.social;
+          const _desistiu = a.desistiu;
           const list = byAth[a.id] || [];
           const relInsc = pickByDue(list.filter((p) => isInscricaoLike(p.tipo, p.descricao)));
           insc[a.id] = { status: deriveStatus(relInsc), due: relInsc?.devido_em ?? null };
@@ -197,6 +204,25 @@ export default function AthletesTable() {
   }, [rows, maps, filtroInsc, filtroQuotas]);
 
   const filteredCount = effectiveRows.length;
+
+  // If editing, show only the edit form
+  if (editing) {
+    return (
+      <div className="space-y-3">
+        <AdminAtletaEdit
+          atletaRow={editing.atleta}
+          onSave={() => {
+            setEditing(null);
+            reload();
+          }}
+          onCancel={() => {
+            setEditing(null);
+            showToast('Edição cancelada', 'ok');
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -320,7 +346,7 @@ export default function AthletesTable() {
                   <tr
                     key={a.id}
                     className={`border-t  ${
-                      index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                      a.desistiu ? "bg-red-200" : index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
                     } hover:bg-amber-400`}
                   >
                     <Td>{a.nome}</Td>
@@ -362,8 +388,18 @@ export default function AthletesTable() {
         </div>
       </div>
 
-      {focus && (
-        <AthleteDetailsDialog open={open} onClose={() => setOpen(false)} atleta={focus.atleta} titular={focus.titular} />
+      {focus && !editing && (
+        <AthleteDetailsDialog
+          open={open}
+          onClose={() => setOpen(false)}
+          atleta={focus.atleta}
+          titular={focus.titular}
+          onEdit={() => {
+            setEditing(focus);
+            setOpen(false);
+            showToast('A editar atleta', 'ok');
+          }}
+        />
       )}
     </div>
   );

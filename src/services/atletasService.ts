@@ -39,6 +39,9 @@ function rowToAtleta(r: any): Atleta {
     contactosUrgencia: r.contactos_urgencia ?? "",
     emailsPreferenciais: r.emails_preferenciais ?? "",
     observacoes: r.observacoes ?? undefined,
+    epoca: r.epoca ?? undefined,
+    social: r.social ?? false,
+    desistiu: r.desistiu ?? false,
   };
 }
 
@@ -76,6 +79,9 @@ function atletaToRow(a: Atleta, userId: string) {
     contactos_urgencia: a.contactosUrgencia ?? null,
     emails_preferenciais: a.emailsPreferenciais ?? null,
     observacoes: a.observacoes ?? null,
+    epoca: a.epoca ?? null,
+    social: a.social ?? false,
+    desistiu: a.desistiu ?? false,
   };
 }
 
