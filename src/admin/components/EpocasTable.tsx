@@ -32,6 +32,7 @@ export default function EpocasTable() {
   const [editing, setEditing] = useState<Epoca | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formName, setFormName] = useState("");
+  const [formActiva, setFormActiva] = useState(false);
 
   async function reload() {
     setLoading(true);
@@ -54,12 +55,14 @@ export default function EpocasTable() {
   function handleNew() {
     setEditing(null);
     setFormName("");
+    setFormActiva(false);
     setIsDialogOpen(true);
   }
 
   function handleEdit(epoca: Epoca) {
     setEditing(epoca);
     setFormName(epoca.name);
+    setFormActiva(epoca.activa ?? false);
     setIsDialogOpen(true);
   }
 
@@ -71,10 +74,10 @@ export default function EpocasTable() {
 
     try {
       if (editing) {
-        await updateEpoca({ ...editing, name: formName.trim() });
+        await updateEpoca({ ...editing, name: formName.trim(), activa: formActiva });
         showToast("Época atualizada com sucesso", "ok");
       } else {
-        await createEpoca({ name: formName.trim() });
+        await createEpoca({ name: formName.trim(), activa: formActiva });
         showToast("Época criada com sucesso", "ok");
       }
       setIsDialogOpen(false);
@@ -240,6 +243,17 @@ export default function EpocasTable() {
                   }
                 }}
               />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formActiva}
+                  onChange={(e) => setFormActiva(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer"
+                />
+                <span className="text-sm font-medium">Ativa</span>
+              </label>
             </div>
             <div className="flex justify-end gap-2">
               <Button

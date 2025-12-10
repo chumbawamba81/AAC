@@ -27,7 +27,7 @@ export async function listEpocas(): Promise<Epoca[]> {
   const { data, error } = await supabase
     .from("epoca")
     .select("*")
-    .order("id", { ascending: false });
+    .order("id", { ascending: true });
 
   if (error) {
     console.error("Error fetching épocas:", error);
@@ -55,6 +55,20 @@ export async function getEpocaById(id: number): Promise<Epoca | null> {
     .from("epoca")
     .select("*")
     .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? rowToEpoca(data) : null;
+}
+
+/**
+ * Get the active época (where activa = true)
+ */
+export async function getActiveEpoca(): Promise<Epoca | null> {
+  const { data, error } = await supabase
+    .from("epoca")
+    .select("*")
+    .eq("activa", true)
     .maybeSingle();
 
   if (error) throw error;

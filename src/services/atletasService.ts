@@ -1,6 +1,7 @@
 // src/services/atletasService.ts
 import { supabase } from "../supabaseClient";
 import type { Atleta, PlanoPagamento } from "../types/Atleta";
+import { getActiveEpoca } from "./epocaService";
 
 function isUUID(s: string | undefined | null) {
   return !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
@@ -151,6 +152,14 @@ export async function upsertAtleta(a: Atleta): Promise<Atleta> {
     // INSERT (deixa o DB gerar id)
     const insertRow = { ...row };
     delete (insertRow as any).id;
+
+    // Set epoca to active época ID if not already set
+    if (!insertRow.epoca) {
+      const activeEpoca = await getActiveEpoca();
+      if (activeEpoca) {
+        insertRow.epoca = activeEpoca.id;
+      }
+    }
 
     const { data, error } = await supabase
       .from("atletas")
