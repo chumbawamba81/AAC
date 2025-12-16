@@ -109,7 +109,7 @@ export default function AthletesTable() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [limit, setLimit] = useState<25 | 50 | 100 | "all">(25);
+  const [recordsPerPage, setRecordsPerPage] = useState<string>("25");
 
   const [search, setSearch] = useState("");
   const [escalao, setEscalao] = useState<string>("");
@@ -124,8 +124,11 @@ export default function AthletesTable() {
   const [maps, setMaps] = useState<StatusMaps>({ insc: {}, quotas: {} });
   const [escaloes, setEscaloes] = useState<string[]>([]);
 
-  const effectiveLimit = limit === "all" ? 999999 : limit;
-  const totalPages = limit === "all" ? 1 : Math.max(1, Math.ceil(total / effectiveLimit));
+  const effectiveLimit = useMemo(() => {
+    if (recordsPerPage === "all") return 10000;
+    return parseInt(recordsPerPage, 10);
+  }, [recordsPerPage]);
+  const totalPages = recordsPerPage === "all" ? 1 : Math.max(1, Math.ceil(total / effectiveLimit));
 
   async function reload() {
     setLoading(true);
@@ -136,7 +139,7 @@ export default function AthletesTable() {
                           sort === "docs_asc" || sort === "docs_desc")
         ? "nome_asc" // Default server-side sort for client-side sorted columns
         : sort as "nome_asc" | "nome_desc" | "created_desc" | "created_asc" | "escalao_asc" | "escalao_desc" | "opcao_pagamento_asc" | "opcao_pagamento_desc";
-      const { data: base, count } = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort: serverSort, page: limit === "all" ? 1 : page, limit: effectiveLimit });
+      const { data: base, count } = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort: serverSort, page: recordsPerPage === "all" ? 1 : page, limit: effectiveLimit });
       setTotal(count);
       const vm: RowVM[] = base.map((x) => ({ atleta: x.atleta, titular: x.titular }));
       setRows(vm);
@@ -185,9 +188,9 @@ export default function AthletesTable() {
 
   useEffect(() => {
     setPage(1); // Reset to first page when filters change
-  }, [search, escalao, sort, limit]);
+  }, [search, escalao, sort, recordsPerPage]);
 
-  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort, page, limit]);
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort, page, recordsPerPage]);
 
   useEffect(() => {
     async function loadEscaloes() {
@@ -396,7 +399,20 @@ export default function AthletesTable() {
       {/* barra topo da tabela */}
       <div className="border bg-white">
         <div className="p-3 border-b flex items-center justify-between">
-          <div className="text-xs/6 text-gray-600 font-semibold">{loading ? "A carregar…" : `${filteredCount} registo(s)`}</div>
+          <div className="text-xs/6 text-gray-600 font-semibold">
+            <select 
+              className="rounded-xl border px-3 py-2 text-sm" 
+              value={recordsPerPage} 
+              onChange={(e) => setRecordsPerPage(e.target.value)}
+              aria-label="Registos por página"
+            >
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">Todos</option>
+            </select>
+          </div>
+          
           <div className="flex items-center gap-2">
             <Button
               variant="default"
@@ -412,18 +428,7 @@ export default function AthletesTable() {
             >
               <RefreshCw className="h-4 w-4" /> Atualizar
             </Button>
-            <select 
-              className="rounded-xl border px-3 py-2 text-sm" 
-              value={limit} 
-              onChange={(e) => setLimit(e.target.value as 25 | 50 | 100 | "all")}
-              aria-label="Registos por página"
-            >
-              <option value={25}>25 por página</option>
-              <option value={50}>50 por página</option>
-              <option value={100}>100 por página</option>
-              <option value="all">Todos</option>
-            </select>
-            {limit !== "all" && (
+            {recordsPerPage !== "all" && (
               <>
                 <Button
                   variant="outline"
