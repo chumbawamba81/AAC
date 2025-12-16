@@ -233,10 +233,11 @@ export default function AthletesTable() {
   }
 
   const handleSort = (column: SortableColumn) => {
+    type SortValue = typeof sort;
     if (column === "nome" || column === "escalao" || column === "opcao_pagamento") {
       // Server-side sorting
-      const currentAsc = `${column}_asc`;
-      const currentDesc = `${column}_desc`;
+      const currentAsc = `${column}_asc` as SortValue;
+      const currentDesc = `${column}_desc` as SortValue;
       if (sort === currentAsc) {
         setSort(currentDesc);
       } else {
@@ -245,8 +246,8 @@ export default function AthletesTable() {
     } else {
       // Client-side sorting for derived columns
       // This will be handled in effectiveRows
-      const currentAsc = `${column}_asc`;
-      const currentDesc = `${column}_desc`;
+      const currentAsc = `${column}_asc` as SortValue;
+      const currentDesc = `${column}_desc` as SortValue;
       if (sort === currentAsc) {
         setSort(currentDesc);
       } else if (sort === currentDesc) {
@@ -300,8 +301,8 @@ export default function AthletesTable() {
         }
       };
       filtered = [...filtered].sort((a, b) => {
-        const aQuotas = maps.quotas[a.atleta.id] || "Por regularizar";
-        const bQuotas = maps.quotas[b.atleta.id] || "Por regularizar";
+        const aQuotas: QuotasInfo = maps.quotas[a.atleta.id] || { status: "Por regularizar" };
+        const bQuotas: QuotasInfo = maps.quotas[b.atleta.id] || { status: "Por regularizar" };
         const diff = statusRank(aQuotas) - statusRank(bQuotas);
         return sort === "quotas_asc" ? diff : -diff;
       });
