@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { AdminPagamento } from "../services/adminPagamentosService";
 import { marcarPagamentoValidado } from "../services/adminPagamentosService";
-import { Download } from "lucide-react";
+import { Download, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Tab = "inscricao" | "mensalidades";
@@ -64,12 +64,21 @@ function isPlanoInativo(nivel: AdminPagamento["nivel"], escalao?: string | null)
   );
 }
 
+type SortColumn = "atleta" | "escalao" | "estado" | null;
+type SortDirection = "asc" | "desc";
+
 function TableView({
   rows,
   onChanged,
+  sortColumn,
+  sortDirection,
+  onSort,
 }: {
   rows: AdminPagamento[];
   onChanged?: () => void;
+  sortColumn: SortColumn;
+  sortDirection: SortDirection;
+  onSort: (column: SortColumn) => void;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -89,6 +98,34 @@ function TableView({
     return <div className="text-sm text-gray-500">Sem pagamentos nesta categoria.</div>;
   }
 
+  const SortableHeader = ({ 
+    column, 
+    label 
+  }: { 
+    column: SortColumn; 
+    label: string;
+  }) => {
+    const isActive = sortColumn === column;
+    const isAsc = isActive && sortDirection === "asc";
+    const isDesc = isActive && sortDirection === "desc";
+    
+    const getSortIcon = () => {
+      if (isAsc) return <ArrowUp className="h-3 w-3 ml-1 inline" />;
+      if (isDesc) return <ArrowDown className="h-3 w-3 ml-1 inline" />;
+      return <ArrowUpDown className="h-3 w-3 ml-1 inline text-gray-400" />;
+    };
+    
+    return (
+      <th 
+        className="text-left px-3 py-2 font-medium cursor-pointer hover:bg-neutral-600 select-none"
+        onClick={() => onSort(column)}
+      >
+        {label}
+        {getSortIcon()}
+      </th>
+    );
+  };
+
   return (
     <div className="overflow-x-auto border">
       <table className="min-w-[1120px] w-full text-sm">
@@ -97,11 +134,11 @@ function TableView({
               <th className="text-left px-3 py-2 font-medium">Data</th>
               <th className="text-left px-3 py-2 font-medium">Titular/EE</th>
               <th className="text-left px-3 py-2 font-medium">Tipo de sócio</th>
-              <th className="text-left px-3 py-2 font-medium">Atleta</th>
-              <th className="text-left px-3 py-2 font-medium">Escalão</th>
+              <SortableHeader column="atleta" label="Atleta" />
+              <SortableHeader column="escalao" label="Escalão" />
               <th className="text-left px-3 py-2 font-medium">Plano de Pagamento</th>
               <th className="text-left px-3 py-2 font-medium">Descrição</th>
-              <th className="text-left px-3 py-2 font-medium">Estado</th>
+              <SortableHeader column="estado" label="Estado" />
               <th className="text-left px-3 py-2 font-medium">Ação</th>
           </tr>
         </thead>
@@ -174,17 +211,31 @@ export default function PaymentsTable({
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<string>(limit.toString());
+  const [recordsPerPage, setRecordsPerPage] = useState<string>(limit.toString());
+  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim().toLowerCase()), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Reset page when search, tab, or page size changes
+  // Reset page when search, tab, records per page, or sort changes
   useEffect(() => {
     setPage(1);
-  }, [q, tab, pageSize]);
+  }, [q, tab, recordsPerPage, sortColumn, sortDirection]);
+
+  // Handle sorting
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Toggle direction if clicking the same column
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column with ascending direction
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
 
   const filteredRows = useMemo(() => {
     if (!q) return rows;
@@ -195,25 +246,61 @@ export default function PaymentsTable({
     });
   }, [rows, q]);
 
+  // Apply sorting to filtered rows
+  const sortedRows = useMemo(() => {
+    if (!sortColumn) return filteredRows;
+    
+    const sorted = [...filteredRows].sort((a, b) => {
+      let aVal: string;
+      let bVal: string;
+      
+      switch (sortColumn) {
+        case "atleta":
+          aVal = (a.atletaNome || "").toLowerCase();
+          bVal = (b.atletaNome || "").toLowerCase();
+          break;
+        case "escalao":
+          aVal = (a.atletaEscalao || "").toLowerCase();
+          bVal = (b.atletaEscalao || "").toLowerCase();
+          break;
+        case "estado":
+          aVal = a.status;
+          bVal = b.status;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+    
+    return sorted;
+  }, [filteredRows, sortColumn, sortDirection]);
+
   // fallback para contagens se não vierem do parent (divide localmente o subset)
   const { inscricoes, mensalidades } = useMemo(() => {
     const insc: AdminPagamento[] = [];
     const mens: AdminPagamento[] = [];
-    for (const r of filteredRows ?? []) {
+    for (const r of sortedRows ?? []) {
       (isInscricao(r) ? insc : mens).push(r);
     }
     return { inscricoes: insc, mensalidades: mens };
-  }, [filteredRows]);
+  }, [sortedRows]);
 
   const countInsc = typeof inscricoesCount === "number" ? inscricoesCount : inscricoes.length;
   const countMens = typeof mensalidadesCount === "number" ? mensalidadesCount : mensalidades.length;
 
   // Pagination
-  const actualLimit = pageSize === "all" ? filteredRows.length : parseInt(pageSize, 10);
-  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(filteredRows.length / actualLimit));
-  const startIndex = pageSize === "all" ? 0 : (page - 1) * actualLimit;
-  const endIndex = pageSize === "all" ? filteredRows.length : startIndex + actualLimit;
-  const paginatedRows = filteredRows.slice(startIndex, endIndex);
+  const effectiveLimit = useMemo(() => {
+    if (recordsPerPage === "all") return 10000;
+    return parseInt(recordsPerPage, 10);
+  }, [recordsPerPage]);
+  const totalPages = recordsPerPage === "all" ? 1 : Math.max(1, Math.ceil(sortedRows.length / effectiveLimit));
+  const startIndex = recordsPerPage === "all" ? 0 : (page - 1) * effectiveLimit;
+  const endIndex = recordsPerPage === "all" ? sortedRows.length : startIndex + effectiveLimit;
+  const paginatedRows = sortedRows.slice(startIndex, endIndex);
 
   return (
     <div className="space-y-3">
@@ -248,15 +335,15 @@ export default function PaymentsTable({
       {/* Pagination controls */}
       <div className="flex items-center justify-between">
         <div className="text-xs/6 text-gray-600 font-semibold">
-          {filteredRows.length} registo(s)
+          {sortedRows.length} registo(s)
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-600">Registos por página:</label>
             <select
               className="rounded-xl border px-3 py-2 text-sm"
-              value={pageSize}
-              onChange={(e) => setPageSize(e.target.value)}
+              value={recordsPerPage}
+              onChange={(e) => setRecordsPerPage(e.target.value)}
             >
               <option value="25">25</option>
               <option value="50">50</option>
@@ -267,7 +354,7 @@ export default function PaymentsTable({
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              disabled={page <= 1 || pageSize === "all"}
+              disabled={page <= 1 || recordsPerPage === "all"}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               aria-label="Página anterior"
             >
@@ -276,7 +363,7 @@ export default function PaymentsTable({
             <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
             <Button
               variant="outline"
-              disabled={page >= totalPages || pageSize === "all"}
+              disabled={page >= totalPages || recordsPerPage === "all"}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               aria-label="Página seguinte"
             >
@@ -286,7 +373,13 @@ export default function PaymentsTable({
         </div>
       </div>
 
-      <TableView rows={paginatedRows} onChanged={onChanged} />
+      <TableView 
+        rows={paginatedRows} 
+        onChanged={onChanged}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+      />
     </div>
   );
 }

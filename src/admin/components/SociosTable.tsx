@@ -1,13 +1,13 @@
 // src/admin/components/SociosTable.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { listSocios, type SocioRow } from "../services/adminSociosService";
 import { supabase } from "../../supabaseClient";
 import MemberDetailsDialog from "./MemberDetailsDialog";
 
 /* ================= Tipos ================= */
-type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio";
+type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio" | "situacao" | "docs";
 type OrderDir = "asc" | "desc";
 
 type InscStatus = "Regularizado" | "Pendente de validação" | "Por regularizar" | "Em atraso";
@@ -50,6 +50,52 @@ function deriveInscStatus(row: { validado?: boolean; comprovativo_url?: string |
     if (Date.now() > dt.getTime()) return "Em atraso";
   }
   return "Por regularizar";
+}
+
+/* ================= Sortable Header Component ================= */
+function SortableTh({
+  children,
+  sortKey,
+  currentOrderBy,
+  currentOrderDir,
+  onSort,
+}: {
+  children: React.ReactNode;
+  sortKey: OrderBy;
+  currentOrderBy: OrderBy;
+  currentOrderDir: OrderDir;
+  onSort?: (orderBy: OrderBy, orderDir: OrderDir) => void;
+}) {
+  const isActive = currentOrderBy === sortKey;
+  const getSortIcon = () => {
+    if (!isActive) return <ArrowUpDown className="h-3 w-3 ml-1 inline text-gray-400" />;
+    if (currentOrderDir === "asc") return <ArrowUp className="h-3 w-3 ml-1 inline" />;
+    return <ArrowDown className="h-3 w-3 ml-1 inline" />;
+  };
+
+  const handleClick = () => {
+    if (onSort) {
+      if (isActive) {
+        // Toggle direction if already sorting by this column
+        onSort(sortKey, currentOrderDir === "asc" ? "desc" : "asc");
+      } else {
+        // Set new column with default direction
+        onSort(sortKey, "asc");
+      }
+    }
+  };
+
+  return (
+    <th
+      className={`text-left px-3 py-2 font-medium cursor-pointer hover:bg-neutral-600 select-none ${
+        isActive ? "bg-neutral-600" : ""
+      }`}
+      onClick={handleClick}
+    >
+      {children}
+      {getSortIcon()}
+    </th>
+  );
 }
 
 /* ================= Normalização do filtro ================= */
@@ -97,6 +143,7 @@ export default function SociosTable({
   orderBy,
   orderDir,
   limit = 20,
+  onSortChange,
 }: {
   search: string;
   status: string;
@@ -110,6 +157,7 @@ export default function SociosTable({
   orderBy: OrderBy;
   orderDir: OrderDir;
   limit?: number;
+  onSortChange?: (orderBy: OrderBy, orderDir: OrderDir) => void;
 }) {
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<SocioRow[]>([]);
@@ -132,11 +180,13 @@ export default function SociosTable({
   async function load() {
     setLoading(true);
     try {
+      // Para campos calculados (situacao, docs), usamos ordenação padrão na BD e ordenamos no cliente
+      const dbOrderBy = (orderBy === "situacao" || orderBy === "docs") ? "created_at" : orderBy;
       const { data, count } = await listSocios({
         search,
         status: undefined, // derivamos no cliente
         tipoSocio,
-        orderBy,
+        orderBy: dbOrderBy,
         orderDir,
         limit: effectiveLimit,
         page,
@@ -218,6 +268,13 @@ export default function SociosTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, status, tipoSocio, orderBy, orderDir, effectiveLimit, page]);
 
+  // Reset to page 1 when sorting changes (for client-side sorting)
+  useEffect(() => {
+    if (orderBy === "situacao" || orderBy === "docs") {
+      setPage(1);
+    }
+  }, [orderBy]);
+
   // Reset to page 1 when records per page changes
   useEffect(() => {
     setPage(1);
@@ -293,11 +350,11 @@ export default function SociosTable({
     URL.revokeObjectURL(url);
   }
 
-  // filtro efetivo (inclui N/A quando não há filtro por estado)
+  // filtro efetivo (inclui N/A quando não há filtro por estado) + ordenação
   const effectiveRows = useMemo(() => {
     const { include, onlyNA } = normalizeInscFilter(status);
 
-    return rows.filter((r) => {
+    let filtered = rows.filter((r) => {
       const isSocio = !!r.tipo_socio && !/não\s*pretendo/i.test(r.tipo_socio);
       const insc = inscMap[r.user_id];
 
@@ -311,7 +368,72 @@ export default function SociosTable({
       if (!insc) return true;
       return include.includes(insc.status as InscStatus);
     });
-  }, [rows, inscMap, status]);
+
+    // Ordenação client-side para campos calculados
+    if (orderBy === "situacao" || orderBy === "docs") {
+      filtered = [...filtered].sort((a, b) => {
+        if (orderBy === "situacao") {
+          const isSocioA = !!a.tipo_socio && !/não\s*pretendo/i.test(a.tipo_socio);
+          const isSocioB = !!b.tipo_socio && !/não\s*pretendo/i.test(b.tipo_socio);
+          const inscA = isSocioA ? (inscMap[a.user_id] ?? null) : null;
+          const inscB = isSocioB ? (inscMap[b.user_id] ?? null) : null;
+          
+          // Ordenação: N/A primeiro (não-sócios), depois por status
+          if (!isSocioA && !isSocioB) return 0;
+          if (!isSocioA) return orderDir === "asc" ? -1 : 1;
+          if (!isSocioB) return orderDir === "asc" ? 1 : -1;
+          
+          const statusA = inscA?.status ?? "Por regularizar";
+          const statusB = inscB?.status ?? "Por regularizar";
+          
+          // Ordem de prioridade dos status
+          const statusOrder: Record<InscStatus, number> = {
+            "Regularizado": 1,
+            "Pendente de validação": 2,
+            "Por regularizar": 3,
+            "Em atraso": 4,
+          };
+          
+          const orderA = statusOrder[statusA as InscStatus] ?? 99;
+          const orderB = statusOrder[statusB as InscStatus] ?? 99;
+          
+          if (orderA !== orderB) {
+            return orderDir === "asc" ? orderA - orderB : orderB - orderA;
+          }
+          
+          // Se mesmo status, ordenar por data limite
+          const dueA = inscA?.due ? new Date(inscA.due + "T00:00:00").getTime() : 0;
+          const dueB = inscB?.due ? new Date(inscB.due + "T00:00:00").getTime() : 0;
+          return orderDir === "asc" ? dueA - dueB : dueB - dueA;
+        } else if (orderBy === "docs") {
+          const isSocioA = !!a.tipo_socio && !/não\s*pretendo/i.test(a.tipo_socio);
+          const isSocioB = !!b.tipo_socio && !/não\s*pretendo/i.test(b.tipo_socio);
+          const docsA = docsMap[a.user_id];
+          const docsB = docsMap[b.user_id];
+          
+          // Ordenação: N/A primeiro (não-sócios), depois por missing/total
+          if (!isSocioA && !isSocioB) return 0;
+          if (!isSocioA) return orderDir === "asc" ? -1 : 1;
+          if (!isSocioB) return orderDir === "asc" ? 1 : -1;
+          
+          const missingA = docsA === "N/A" ? 0 : (docsA?.missing ?? 0);
+          const missingB = docsB === "N/A" ? 0 : (docsB?.missing ?? 0);
+          
+          if (missingA !== missingB) {
+            return orderDir === "asc" ? missingA - missingB : missingB - missingA;
+          }
+          
+          // Se mesmo número de missing, ordenar por total
+          const totalA = docsA === "N/A" ? 0 : (docsA?.total ?? 0);
+          const totalB = docsB === "N/A" ? 0 : (docsB?.total ?? 0);
+          return orderDir === "asc" ? totalA - totalB : totalB - totalA;
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [rows, inscMap, docsMap, status, orderBy, orderDir]);
 
   const filteredCount = effectiveRows.length;
 
@@ -319,22 +441,20 @@ export default function SociosTable({
     <Container>
       <Header>
         <div className="text-xs/6 text-gray-600 font-semibold">
-          {loading ? "A carregar…" : `${filteredCount} registo(s)`}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-600">Registos por página:</span>
-            <select
-              className="w-full rounded-xl border px-3 py-2 text-sm"
+          <select
+              className="rounded-xl border px-3 py-2 text-sm"
               value={recordsPerPage}
               onChange={(e) => setRecordsPerPage(e.target.value)}
+              aria-label="Registos por página"
             >
               <option value="25">25</option>
               <option value="50">50</option>
               <option value="100">100</option>
               <option value="all">Todos</option>
             </select>
-          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
           <Button variant="dark" onClick={exportCsv} className="text-sm">
             Exportar CSV
           </Button>
@@ -365,13 +485,48 @@ export default function SociosTable({
         <table className="min-w-[1120px] w-full text-sm">
           <thead>
             <tr className="bg-neutral-700 text-white uppercase">
-              <th className="text-left px-3 py-2 font-medium">Nome</th>
-              <th className="text-left px-3 py-2 font-medium">Email</th>
+              <SortableTh
+                sortKey="nome_completo"
+                currentOrderBy={orderBy}
+                currentOrderDir={orderDir}
+                onSort={onSortChange}
+              >
+                Nome
+              </SortableTh>
+              <SortableTh
+                sortKey="email"
+                currentOrderBy={orderBy}
+                currentOrderDir={orderDir}
+                onSort={onSortChange}
+              >
+                Email
+              </SortableTh>
               <th className="text-left px-3 py-2 font-medium">Telefone</th>
-              <th className="text-left px-3 py-2 font-medium">Tipo de sócio</th>
-              <th className="text-left px-3 py-2 font-medium">Situação</th>
+              <SortableTh
+                sortKey="tipo_socio"
+                currentOrderBy={orderBy}
+                currentOrderDir={orderDir}
+                onSort={onSortChange}
+              >
+                Tipo de sócio
+              </SortableTh>
+              <SortableTh
+                sortKey="situacao"
+                currentOrderBy={orderBy}
+                currentOrderDir={orderDir}
+                onSort={onSortChange}
+              >
+                Situação
+              </SortableTh>
               <th className="text-left px-3 py-2 font-medium">Data limite</th>
-              <th className="text-left px-3 py-2 font-medium">Docs <span className="text-xs">(falta/total)</span> </th>
+              <SortableTh
+                sortKey="docs"
+                currentOrderBy={orderBy}
+                currentOrderDir={orderDir}
+                onSort={onSortChange}
+              >
+                Docs <span className="text-xs">(falta/total)</span>
+              </SortableTh>
               <th className="text-right px-3 py-2 font-medium">Ações</th>
             </tr>
           </thead>

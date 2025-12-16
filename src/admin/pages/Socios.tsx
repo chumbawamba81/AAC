@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import SociosTable from "../components/SociosTable";
 
-type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio";
+type OrderBy = "created_at" | "nome_completo" | "email" | "situacao_tesouraria" | "tipo_socio" | "situacao" | "docs";
 type OrderDir = "asc" | "desc";
 
 export default function SociosPage() {
@@ -87,9 +87,11 @@ export default function SociosPage() {
               <option value="created_at">Data (criação)</option>
               <option value="nome_completo">Nome</option>
               <option value="email">Email</option>
-              {/* Nota: “Tesouraria” é derivado cliente; se quiseres, retiro esta opção. */}
+              {/* Nota: "Tesouraria" é derivado cliente; se quiseres, retiro esta opção. */}
               <option value="situacao_tesouraria">Tesouraria</option>
               <option value="tipo_socio">Tipo de sócio</option>
+              <option value="situacao">Situação</option>
+              <option value="docs">Docs</option>
             </select>
             <select
               className="rounded-xl border px-3 py-2 text-sm"
@@ -111,6 +113,10 @@ export default function SociosPage() {
         tipoSocio={tipoSocio}
         orderBy={orderBy}
         orderDir={orderDir}
+        onSortChange={(newOrderBy, newOrderDir) => {
+          setOrderBy(newOrderBy);
+          setOrderDir(newOrderDir);
+        }}
       />
     </div>
   );
