@@ -334,16 +334,12 @@ export default function PaymentsTable({
 
       {/* Pagination controls */}
       <div className="flex items-center justify-between">
-        <div className="text-xs/6 text-gray-600 font-semibold">
-          {sortedRows.length} registo(s)
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Registos por página:</label>
-            <select
-              className="rounded-xl border px-3 py-2 text-sm"
-              value={recordsPerPage}
+          <div className="text-xs/6 text-gray-600 font-semibold">
+            <select 
+              className="rounded-xl border px-3 py-2 text-sm" 
+              value={recordsPerPage} 
               onChange={(e) => setRecordsPerPage(e.target.value)}
+              aria-label="Registos por página"
             >
               <option value="25">25</option>
               <option value="50">50</option>
@@ -351,6 +347,8 @@ export default function PaymentsTable({
               <option value="all">Todos</option>
             </select>
           </div>
+        <div className="flex items-center gap-3">
+
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
