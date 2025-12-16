@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw, Search, Users, Eye } from "lucide-react";
+import { Download, RefreshCw, Search, Users, Eye, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import {
   listAtletasAdmin,
   getMissingCountsForAtletas,
@@ -54,7 +54,45 @@ function quotasNaoAplicaveis(escalao?: string | null) {
   const e = (escalao || "").toLowerCase();
   return e.includes("master") || e.includes("sub 23") || e.includes("sub-23");
 }
-function Th({ children }: { children: React.ReactNode }) { return <th className="text-left px-3 py-2 font-medium">{children}</th>; }
+type SortableColumn = "nome" | "escalao" | "opcao_pagamento" | "inscricao" | "quotas" | "docs";
+function Th({ 
+  children, 
+  sortable, 
+  sortKey, 
+  currentSort, 
+  onSort 
+}: { 
+  children: React.ReactNode; 
+  sortable?: boolean; 
+  sortKey?: SortableColumn; 
+  currentSort?: string; 
+  onSort?: (key: SortableColumn) => void;
+}) {
+  const getSortIcon = () => {
+    if (!sortable || !sortKey) return null;
+    const isAsc = currentSort === `${sortKey}_asc`;
+    const isDesc = currentSort === `${sortKey}_desc`;
+    if (isAsc) return <ArrowUp className="h-3 w-3 ml-1 inline" />;
+    if (isDesc) return <ArrowDown className="h-3 w-3 ml-1 inline" />;
+    return <ArrowUpDown className="h-3 w-3 ml-1 inline text-gray-400" />;
+  };
+  
+  const handleClick = () => {
+    if (sortable && sortKey && onSort) {
+      onSort(sortKey);
+    }
+  };
+  
+  return (
+    <th 
+      className={`text-left px-3 py-2 font-medium ${sortable ? "cursor-pointer hover:bg-neutral-600 select-none" : ""}`}
+      onClick={handleClick}
+    >
+      {children}
+      {getSortIcon()}
+    </th>
+  );
+}
 function Td({ children }: { children: React.ReactNode }) { return <td className="px-3 py-2 align-top">{children}</td>; }
 function StatusBadge({ status }: { status: InscStatus }) {
   const map: Record<InscStatus, string> = {
@@ -77,7 +115,7 @@ export default function AthletesTable() {
   const [escalao, setEscalao] = useState<string>("");
   const [filtroInsc, setFiltroInsc] = useState<"" | InscStatus>("");
   const [filtroQuotas, setFiltroQuotas] = useState<"" | InscStatus | "N/A">("");
-  const [sort, setSort] = useState<"nome_asc" | "nome_desc" | "created_desc" | "created_asc">("nome_asc");
+  const [sort, setSort] = useState<"nome_asc" | "nome_desc" | "created_desc" | "created_asc" | "escalao_asc" | "escalao_desc" | "opcao_pagamento_asc" | "opcao_pagamento_desc" | "inscricao_asc" | "inscricao_desc" | "quotas_asc" | "quotas_desc" | "docs_asc" | "docs_desc">("nome_asc");
 
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState<RowVM | null>(null);
@@ -91,7 +129,13 @@ export default function AthletesTable() {
   async function reload() {
     setLoading(true);
     try {
-      const { data: base, count } = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort, page, limit });
+      // Map client-side sorts to server-side sorts
+      const serverSort = (sort === "inscricao_asc" || sort === "inscricao_desc" || 
+                          sort === "quotas_asc" || sort === "quotas_desc" ||
+                          sort === "docs_asc" || sort === "docs_desc")
+        ? "nome_asc" // Default server-side sort for client-side sorted columns
+        : sort as "nome_asc" | "nome_desc" | "created_desc" | "created_asc" | "escalao_asc" | "escalao_desc" | "opcao_pagamento_asc" | "opcao_pagamento_desc";
+      const { data: base, count } = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort: serverSort, page, limit });
       setTotal(count);
       const vm: RowVM[] = base.map((x) => ({ atleta: x.atleta, titular: x.titular }));
       setRows(vm);
@@ -188,8 +232,33 @@ export default function AthletesTable() {
     a.href = url; a.download = "atletas.csv"; a.click(); URL.revokeObjectURL(url);
   }
 
+  const handleSort = (column: SortableColumn) => {
+    if (column === "nome" || column === "escalao" || column === "opcao_pagamento") {
+      // Server-side sorting
+      const currentAsc = `${column}_asc`;
+      const currentDesc = `${column}_desc`;
+      if (sort === currentAsc) {
+        setSort(currentDesc);
+      } else {
+        setSort(currentAsc);
+      }
+    } else {
+      // Client-side sorting for derived columns
+      // This will be handled in effectiveRows
+      const currentAsc = `${column}_asc`;
+      const currentDesc = `${column}_desc`;
+      if (sort === currentAsc) {
+        setSort(currentDesc);
+      } else if (sort === currentDesc) {
+        setSort("nome_asc"); // Reset to default
+      } else {
+        setSort(currentAsc);
+      }
+    }
+  };
+
   const effectiveRows = useMemo(() => {
-    return rows.filter((r) => {
+    let filtered = rows.filter((r) => {
       const a = r.atleta;
       const sInsc = maps.insc[a.id];
       const sQuo = maps.quotas[a.id];
@@ -201,7 +270,50 @@ export default function AthletesTable() {
       }
       return true;
     });
-  }, [rows, maps, filtroInsc, filtroQuotas]);
+
+    // Client-side sorting for inscricao, quotas, and docs
+    if (sort === "inscricao_asc" || sort === "inscricao_desc") {
+      const statusRank = (status: InscStatus): number => {
+        switch (status) {
+          case "Regularizado": return 0;
+          case "Pendente de validação": return 1;
+          case "Por regularizar": return 2;
+          case "Em atraso": return 3;
+          default: return 4;
+        }
+      };
+      filtered = [...filtered].sort((a, b) => {
+        const aStatus = maps.insc[a.atleta.id]?.status || "Por regularizar";
+        const bStatus = maps.insc[b.atleta.id]?.status || "Por regularizar";
+        const diff = statusRank(aStatus) - statusRank(bStatus);
+        return sort === "inscricao_asc" ? diff : -diff;
+      });
+    } else if (sort === "quotas_asc" || sort === "quotas_desc") {
+      const statusRank = (q: QuotasInfo): number => {
+        if (q === "N/A") return 4;
+        switch (q.status) {
+          case "Regularizado": return 0;
+          case "Pendente de validação": return 1;
+          case "Por regularizar": return 2;
+          case "Em atraso": return 3;
+          default: return 5;
+        }
+      };
+      filtered = [...filtered].sort((a, b) => {
+        const aQuotas = maps.quotas[a.atleta.id] || "Por regularizar";
+        const bQuotas = maps.quotas[b.atleta.id] || "Por regularizar";
+        const diff = statusRank(aQuotas) - statusRank(bQuotas);
+        return sort === "quotas_asc" ? diff : -diff;
+      });
+    } else if (sort === "docs_asc" || sort === "docs_desc") {
+      filtered = [...filtered].sort((a, b) => {
+        const diff = (a.missing ?? 0) - (b.missing ?? 0);
+        return sort === "docs_asc" ? diff : -diff;
+      });
+    }
+
+    return filtered;
+  }, [rows, maps, filtroInsc, filtroQuotas, sort]);
 
   const filteredCount = effectiveRows.length;
 
@@ -264,6 +376,16 @@ export default function AthletesTable() {
         <select className="rounded-xl border px-3 py-2 text-sm" value={sort} onChange={(e)=>setSort(e.target.value as any)}>
           <option value="nome_asc">Ordenar: Nome ↑</option>
           <option value="nome_desc">Ordenar: Nome ↓</option>
+          <option value="escalao_asc">Ordenar: Escalão ↑</option>
+          <option value="escalao_desc">Ordenar: Escalão ↓</option>
+          <option value="opcao_pagamento_asc">Ordenar: Pagamento ↑</option>
+          <option value="opcao_pagamento_desc">Ordenar: Pagamento ↓</option>
+          <option value="inscricao_asc">Ordenar: Inscrição ↑</option>
+          <option value="inscricao_desc">Ordenar: Inscrição ↓</option>
+          <option value="quotas_asc">Ordenar: Quotas ↑</option>
+          <option value="quotas_desc">Ordenar: Quotas ↓</option>
+          <option value="docs_asc">Ordenar: Docs ↑</option>
+          <option value="docs_desc">Ordenar: Docs ↓</option>
           <option value="created_desc">Ordenar: Recentes</option>
           <option value="created_asc">Ordenar: Antigos</option>
         </select>
@@ -313,12 +435,12 @@ export default function AthletesTable() {
           <table className="min-w-[1120px] w-full text-sm">
             <thead>
               <tr className="bg-neutral-700 text-white uppercase">
-                <Th>Nome</Th>
-                <Th>Escalão</Th>
-                <Th>Opção pagamento</Th>
-                <Th>Inscrição</Th>
-                <Th>Quotas</Th>
-                <Th>Docs <span className="text-xs">(falta/total)</span></Th>
+                <Th sortable sortKey="nome" currentSort={sort} onSort={handleSort}>Nome</Th>
+                <Th sortable sortKey="escalao" currentSort={sort} onSort={handleSort}>Escalão</Th>
+                <Th sortable sortKey="opcao_pagamento" currentSort={sort} onSort={handleSort}>Opção pagamento</Th>
+                <Th sortable sortKey="inscricao" currentSort={sort} onSort={handleSort}>Inscrição</Th>
+                <Th sortable sortKey="quotas" currentSort={sort} onSort={handleSort}>Quotas</Th>
+                <Th sortable sortKey="docs" currentSort={sort} onSort={handleSort}>Docs <span className="text-xs">(falta/total)</span></Th>
                 <Th>Ações</Th>
               </tr>
             </thead>

@@ -114,7 +114,7 @@ export async function listAtletasAdmin(opts?: {
   genero?: "Feminino" | "Masculino" | "";
   escalao?: string | "";
   tipoSocio?: string | "";
-  sort?: "nome_asc" | "nome_desc" | "created_desc" | "created_asc";
+  sort?: "nome_asc" | "nome_desc" | "created_desc" | "created_asc" | "escalao_asc" | "escalao_desc" | "opcao_pagamento_asc" | "opcao_pagamento_desc";
   page?: number;
   limit?: number;
 }): Promise<{
@@ -150,6 +150,10 @@ export async function listAtletasAdmin(opts?: {
     case "nome_desc": q = q.order("nome", { ascending: false }); break;
     case "created_asc": q = q.order("created_at", { ascending: true, nullsFirst: true }); break;
     case "created_desc": q = q.order("created_at", { ascending: false, nullsFirst: true }); break;
+    case "escalao_asc": q = q.order("escalao", { ascending: true, nullsFirst: true }); break;
+    case "escalao_desc": q = q.order("escalao", { ascending: false, nullsFirst: true }); break;
+    case "opcao_pagamento_asc": q = q.order("opcao_pagamento", { ascending: true, nullsFirst: true }); break;
+    case "opcao_pagamento_desc": q = q.order("opcao_pagamento", { ascending: false, nullsFirst: true }); break;
     default: q = q.order("nome", { ascending: true });
   }
 
