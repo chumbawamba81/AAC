@@ -118,8 +118,15 @@ export default function SociosTable({
   const [inscMap, setInscMap] = useState<Record<string, SocioInsc>>({});
   const [docsMap, setDocsMap] = useState<Record<string, { missing: number; total: number } | "N/A">>({});
   const [openId, setOpenId] = useState<string | null>(null);
+  const [recordsPerPage, setRecordsPerPage] = useState<string>(limit?.toString() || "25");
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  // Calculate effective limit (use a large number for "all")
+  const effectiveLimit = useMemo(() => {
+    if (recordsPerPage === "all") return 10000;
+    return parseInt(recordsPerPage, 10);
+  }, [recordsPerPage]);
+
+  const totalPages = Math.max(1, Math.ceil(total / effectiveLimit));
 
   // carregar linhas + inscrições + docs (todos em lote)
   async function load() {
@@ -131,7 +138,7 @@ export default function SociosTable({
         tipoSocio,
         orderBy,
         orderDir,
-        limit,
+        limit: effectiveLimit,
         page,
       });
       setRows(data);
@@ -209,7 +216,12 @@ export default function SociosTable({
   useEffect(() => {
     load().catch(console.error);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, tipoSocio, orderBy, orderDir, limit, page]);
+  }, [search, status, tipoSocio, orderBy, orderDir, effectiveLimit, page]);
+
+  // Reset to page 1 when records per page changes
+  useEffect(() => {
+    setPage(1);
+  }, [recordsPerPage]);
 
   // === Export CSV a partir da grelha ===
   function exportCsv() {
@@ -310,26 +322,43 @@ export default function SociosTable({
           {loading ? "A carregar…" : `${filteredCount} registo(s)`}
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-600">Registos por página:</span>
+            <select
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              value={recordsPerPage}
+              onChange={(e) => setRecordsPerPage(e.target.value)}
+            >
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">Todos</option>
+            </select>
+          </div>
           <Button variant="dark" onClick={exportCsv} className="text-sm">
             Exportar CSV
           </Button>
-          <Button
-            variant="outline"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            aria-label="Página anterior"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-          </Button>
-          <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
-          <Button
-            variant="outline"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            aria-label="Página seguinte"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </Button>
+          {recordsPerPage !== "all" && (
+            <>
+              <Button
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label="Página anterior"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+              </Button>
+              <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
+              <Button
+                variant="outline"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                aria-label="Página seguinte"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </Button>
+            </>
+          )}
         </div>
       </Header>
       <TableWrap>

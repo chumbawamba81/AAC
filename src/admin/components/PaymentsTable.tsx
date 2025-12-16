@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { AdminPagamento } from "./services/adminPagamentosService";
-import { marcarPagamentoValidado } from "./services/adminPagamentosService";
+import type { AdminPagamento } from "../services/adminPagamentosService";
+import { marcarPagamentoValidado } from "../services/adminPagamentosService";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -174,16 +174,17 @@ export default function PaymentsTable({
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<string>(limit.toString());
 
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim().toLowerCase()), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Reset page when search or tab changes
+  // Reset page when search, tab, or page size changes
   useEffect(() => {
     setPage(1);
-  }, [q, tab]);
+  }, [q, tab, pageSize]);
 
   const filteredRows = useMemo(() => {
     if (!q) return rows;
@@ -208,9 +209,10 @@ export default function PaymentsTable({
   const countMens = typeof mensalidadesCount === "number" ? mensalidadesCount : mensalidades.length;
 
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / limit));
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
+  const actualLimit = pageSize === "all" ? filteredRows.length : parseInt(pageSize, 10);
+  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(filteredRows.length / actualLimit));
+  const startIndex = pageSize === "all" ? 0 : (page - 1) * actualLimit;
+  const endIndex = pageSize === "all" ? filteredRows.length : startIndex + actualLimit;
   const paginatedRows = filteredRows.slice(startIndex, endIndex);
 
   return (
@@ -248,24 +250,39 @@ export default function PaymentsTable({
         <div className="text-xs/6 text-gray-600 font-semibold">
           {filteredRows.length} registo(s)
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            aria-label="Página anterior"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-          </Button>
-          <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
-          <Button
-            variant="outline"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            aria-label="Página seguinte"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Registos por página:</label>
+            <select
+              className="rounded-xl border px-3 py-2 text-sm"
+              value={pageSize}
+              onChange={(e) => setPageSize(e.target.value)}
+            >
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="all">Todos</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={page <= 1 || pageSize === "all"}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              aria-label="Página anterior"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+            </Button>
+            <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
+            <Button
+              variant="outline"
+              disabled={page >= totalPages || pageSize === "all"}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              aria-label="Página seguinte"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -273,3 +290,4 @@ export default function PaymentsTable({
     </div>
   );
 }
+

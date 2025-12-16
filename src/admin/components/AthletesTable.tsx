@@ -109,7 +109,7 @@ export default function AthletesTable() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const limit = 20;
+  const [limit, setLimit] = useState<25 | 50 | 100 | "all">(25);
 
   const [search, setSearch] = useState("");
   const [escalao, setEscalao] = useState<string>("");
@@ -124,7 +124,8 @@ export default function AthletesTable() {
   const [maps, setMaps] = useState<StatusMaps>({ insc: {}, quotas: {} });
   const [escaloes, setEscaloes] = useState<string[]>([]);
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const effectiveLimit = limit === "all" ? 999999 : limit;
+  const totalPages = limit === "all" ? 1 : Math.max(1, Math.ceil(total / effectiveLimit));
 
   async function reload() {
     setLoading(true);
@@ -135,7 +136,7 @@ export default function AthletesTable() {
                           sort === "docs_asc" || sort === "docs_desc")
         ? "nome_asc" // Default server-side sort for client-side sorted columns
         : sort as "nome_asc" | "nome_desc" | "created_desc" | "created_asc" | "escalao_asc" | "escalao_desc" | "opcao_pagamento_asc" | "opcao_pagamento_desc";
-      const { data: base, count } = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort: serverSort, page, limit });
+      const { data: base, count } = await listAtletasAdmin({ search, escalao, tipoSocio: "", sort: serverSort, page: limit === "all" ? 1 : page, limit: effectiveLimit });
       setTotal(count);
       const vm: RowVM[] = base.map((x) => ({ atleta: x.atleta, titular: x.titular }));
       setRows(vm);
@@ -184,9 +185,9 @@ export default function AthletesTable() {
 
   useEffect(() => {
     setPage(1); // Reset to first page when filters change
-  }, [search, escalao, sort]);
+  }, [search, escalao, sort, limit]);
 
-  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort, page]);
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [search, escalao, sort, page, limit]);
 
   useEffect(() => {
     async function loadEscaloes() {
@@ -411,23 +412,38 @@ export default function AthletesTable() {
             >
               <RefreshCw className="h-4 w-4" /> Atualizar
             </Button>
-            <Button
-              variant="outline"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              aria-label="Página anterior"
+            <select 
+              className="rounded-xl border px-3 py-2 text-sm" 
+              value={limit} 
+              onChange={(e) => setLimit(e.target.value as 25 | 50 | 100 | "all")}
+              aria-label="Registos por página"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-            </Button>
-            <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
-            <Button
-              variant="outline"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              aria-label="Página seguinte"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </Button>
+              <option value={25}>25 por página</option>
+              <option value={50}>50 por página</option>
+              <option value={100}>100 por página</option>
+              <option value="all">Todos</option>
+            </select>
+            {limit !== "all" && (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  aria-label="Página anterior"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left-icon lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                </Button>
+                <div className="text-xs/6 text-gray-600 font-semibold">Página {page}/{totalPages}</div>
+                <Button
+                  variant="outline"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  aria-label="Página seguinte"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right-icon lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </Button>
+              </>
+            )}
           </div>
         </div>
 

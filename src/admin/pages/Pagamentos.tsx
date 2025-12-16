@@ -1,6 +1,6 @@
 // src/admin/pages/Pagamentos.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import PaymentsTable from "../PaymentsTable";
+import PaymentsTable from "../components/PaymentsTable";
 import {
   listPagamentosAdmin,
   type AdminPagamento,
