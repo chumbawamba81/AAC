@@ -282,10 +282,17 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular, o
                           </div>
                         </div>
                         {signed ? (
-                          <a className="underline inline-flex items-center gap-1" href={signed} target="_blank" rel="noreferrer">
-                            <LinkIcon className="h-4 w-4" />
-                            Abrir
-                          </a>
+                          <div className="text-right">
+                            <a className="underline inline-flex items-center gap-1" href={signed} target="_blank" rel="noreferrer">
+                              <LinkIcon className="h-4 w-4" />
+                              Abrir
+                            </a>
+                            {p.created_at && (
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                Carregado em: {fmtDate(p.created_at)}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-gray-500">Sem ficheiro</span>
                         )}
