@@ -15,6 +15,7 @@ import SociosPage from "./pages/Socios";
 import AtletasPage from "./pages/Atletas";
 import PagamentosPage from "./pages/Pagamentos";
 import EpocasPage from "./pages/Epocas";
+import ListPayments from "./components/ListPayments";
 
 function Layout({ children }: { children: React.ReactNode }) {
   const baseItem = "px-2 py-1 text-sm transition-colors";
@@ -97,6 +98,17 @@ function Layout({ children }: { children: React.ReactNode }) {
               >
                 Épocas
               </NavLink>
+
+              <NavLink
+                to="/admin/ListaPagamentos"
+                className={({ isActive }) =>
+                  `px-2 py-1 rounded hover:text-gray-300 ${
+                    isActive ? "text-white font-semibold underline" : "text-gray-300"
+                  }`
+                }
+              >
+                Lista Pagamentos
+              </NavLink>
             </nav>
           </div>
 
@@ -139,6 +151,7 @@ export default function AdminApp() {
             <Route path="/admin/atletas" element={<AtletasPage />} />
             <Route path="/admin/pagamentos" element={<PagamentosPage />} />
             <Route path="/admin/epocas" element={<EpocasPage />} />
+            <Route path="/admin/ListaPagamentos" element={<ListPayments />} />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </Layout>
