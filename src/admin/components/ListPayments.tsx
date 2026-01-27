@@ -19,7 +19,7 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
-type SortColumn = "data" | "atleta" | "estado";
+type SortColumn = "data" | "atleta" | "descricao" | "estado";
 type SortDir = "asc" | "desc";
 
 export default function ListPayments() {
@@ -48,6 +48,10 @@ export default function ListPayments() {
         const na = (a.atletaNome ?? "").trim().toLowerCase();
         const nb = (b.atletaNome ?? "").trim().toLowerCase();
         cmp = na.localeCompare(nb);
+      } else if (sortColumn === "descricao") {
+        const da = (a.descricao ?? "").trim().toLowerCase();
+        const db = (b.descricao ?? "").trim().toLowerCase();
+        cmp = da.localeCompare(db);
       } else {
         cmp = (a.status ?? "").localeCompare(b.status ?? "");
       }
@@ -122,7 +126,18 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
-              <th className="px-3 py-2 font-medium text-gray-700">Descrição</th>
+              <th className="px-3 py-2 font-medium text-gray-700">
+                <button
+                  type="button"
+                  onClick={() => handleSort("descricao")}
+                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
+                >
+                  Descrição
+                  {sortColumn === "descricao" && (
+                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
+                  )}
+                </button>
+              </th>
               <th className="px-3 py-2 font-medium text-gray-700">
                 <button
                   type="button"
@@ -152,7 +167,9 @@ export default function ListPayments() {
                 sorted.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2">{fmtDate(r.createdAt)}</td>
-                  <td className="px-3 py-2">{r.atletaNome || "—"}</td>
+                  <td className="px-3 py-2">
+                    {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
+                  </td>
                   <td className="px-3 py-2">{r.descricao || "—"}</td>
                   <td className="px-3 py-2">
                     <span
