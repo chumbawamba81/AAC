@@ -1,8 +1,23 @@
 import React, { useEffect, useState } from "react";
 import {
   listPagamentosAdmin,
+  marcarPagamentoValidado,
   type AdminPagamento,
 } from "../services/adminPagamentosService";
+
+function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
+  const map: Record<AdminPagamento["status"], string> = {
+    "Regularizado": "bg-green-50 text-green-700 inset-ring-green-600/20",
+    "Pendente de validação": "bg-yellow-50 text-yellow-800 inset-ring-yellow-600/20",
+    "Por regularizar": "bg-gray-50 text-gray-600 inset-ring-gray-500/10",
+    "Em atraso": "bg-red-50 text-red-700 inset-ring-red-600/10",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium inset-ring ${map[status]}`}>
+      {status}
+    </span>
+  );
+}
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return "—";
@@ -27,6 +42,7 @@ export default function ListPayments() {
   const [loading, setLoading] = useState(true);
   const [sortColumn, setSortColumn] = useState<SortColumn>("data");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   function handleSort(col: SortColumn) {
     if (sortColumn === col) {
@@ -72,6 +88,32 @@ export default function ListPayments() {
     }
   }
 
+  async function toggle(row: AdminPagamento, next: boolean) {
+    try {
+      setBusyId(row.id);
+      const updated = await marcarPagamentoValidado(row.id, next);
+      if (updated) {
+        setRows((prevRows) =>
+          prevRows.map((r) =>
+            r.id === row.id
+              ? {
+                  ...r,
+                  validado: updated.validado,
+                  status: updated.status,
+                  validadoEm: updated.validadoEm,
+                  validadoPor: updated.validadoPor,
+                }
+              : r
+          )
+        );
+      }
+    } catch (e: any) {
+      alert(e?.message || "Não foi possível alterar a validação.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, []);
@@ -98,15 +140,15 @@ export default function ListPayments() {
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-2 font-medium text-gray-700">
+      <div className="overflow-x-auto border">
+      <table className="min-w-[1120px] w-full text-sm">
+          <thead>
+            <tr className="bg-neutral-700 text-white uppercase">
+              <th className="text-left px-3 py-2 font-medium">
                 <button
                   type="button"
                   onClick={() => handleSort("data")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
+                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
                 >
                   Data
                   {sortColumn === "data" && (
@@ -114,23 +156,32 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
-              <th className="px-3 py-2 font-medium text-gray-700">
+              <th className="text-left px-3 py-2 font-medium">
                 <button
                   type="button"
                   onClick={() => handleSort("atleta")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
+                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
                 >
-                  Atleta
+                  Atleta/sócio
                   {sortColumn === "atleta" && (
                     <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
                   )}
                 </button>
               </th>
+<<<<<<< HEAD
+              <th className="text-left px-3 py-2 font-medium">Escalão</th>
+              <th className="text-left px-3 py-2 font-medium">
+                <button
+                  type="button"
+                  onClick={() => handleSort("descricao")}
+                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
+=======
               <th className="px-3 py-2 font-medium text-gray-700">
                 <button
                   type="button"
                   onClick={() => handleSort("descricao")}
                   className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
+>>>>>>> e7526ace42baa53651cf92ae4ab04e1e8c21ab8e
                 >
                   Descrição
                   {sortColumn === "descricao" && (
@@ -138,11 +189,15 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
+<<<<<<< HEAD
+              <th className="text-left px-3 py-2 font-medium">
+=======
               <th className="px-3 py-2 font-medium text-gray-700">
+>>>>>>> e7526ace42baa53651cf92ae4ab04e1e8c21ab8e
                 <button
                   type="button"
                   onClick={() => handleSort("estado")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
+                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
                 >
                   Estado
                   {sortColumn === "estado" && (
@@ -150,20 +205,32 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
-              <th className="px-3 py-2 font-medium text-gray-700">Ficheiro</th>
+              <th className="text-left px-3 py-2 font-medium">Ficheiro</th>
+              <th className="text-left px-3 py-2 font-medium">Ação</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y">
             {(() => {
               const filtered = rows.filter((r) => r.status !== "Por regularizar");
               const sorted = sortRows(filtered);
               return sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-gray-500">
+                  <td colSpan={7} className="px-3 py-4 text-gray-500">
                     Nenhum pagamento encontrado.
                   </td>
                 </tr>
               ) : (
+<<<<<<< HEAD
+                sorted.map((r, index) => (
+                <tr key={r.id} className={`border-t ${
+                  index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                } hover:bg-amber-400`}>
+                  <td className="px-3 py-2 whitespace-nowrap text-[0.7rem]">
+                    {fmtDate(r.createdAt).split(" ").map((part, i) => (
+                      <div key={i}>{part}</div>
+                    ))}
+                  </td>
+=======
                 sorted.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2">{fmtDate(r.createdAt)}</td>
@@ -171,18 +238,14 @@ export default function ListPayments() {
                     {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
                   </td>
                   <td className="px-3 py-2">{r.descricao || "—"}</td>
+>>>>>>> e7526ace42baa53651cf92ae4ab04e1e8c21ab8e
                   <td className="px-3 py-2">
-                    <span
-                      className={
-                        r.status === "Regularizado"
-                          ? "text-green-700"
-                          : r.status === "Em atraso"
-                            ? "text-red-700"
-                            : "text-gray-700"
-                      }
-                    >
-                      {r.status}
-                    </span>
+                    {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
+                  </td>
+                  <td className="px-3 py-2 text-[0.7rem]">{r.atletaEscalao || "—"}</td>
+                  <td className="px-3 py-2 text-[0.7rem]">{r.descricao || "—"}</td>
+                  <td className="px-3 py-2">
+                    <StatusBadge status={r.status} />
                   </td>
                   <td className="px-3 py-2">
                     {r.signedUrl ? (
@@ -197,6 +260,21 @@ export default function ListPayments() {
                     ) : (
                       "—"
                     )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2 justify-end">
+                      <button
+                        disabled={busyId === r.id}
+                        className={`inline-flex items-center justify-center gap-1.5 transition active:scale-[.98] cursor-pointer text-sm h-8 px-3 rounded-md ${
+                          r.validado
+                            ? "bg-red-600 text-white hover:bg-red-700"
+                            : "bg-green-600 text-white hover:bg-green-700"
+                        }`}
+                        onClick={() => toggle(r, !r.validado)}
+                      >
+                        {r.validado ? "Anular" : "Validar"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )));
