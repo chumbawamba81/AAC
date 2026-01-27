@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import {
   listPagamentosAdmin,
   marcarPagamentoValidado,
@@ -34,44 +35,90 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
-type SortColumn = "data" | "atleta" | "descricao" | "estado";
-type SortDir = "asc" | "desc";
+type SortColumn = "data" | "atleta" | "escalao" | "descricao" | "estado";
+type SortValue = `${SortColumn}_asc` | `${SortColumn}_desc`;
+
+function Th({ 
+  children, 
+  sortable, 
+  sortKey, 
+  currentSort, 
+  onSort 
+}: { 
+  children: React.ReactNode; 
+  sortable?: boolean; 
+  sortKey?: SortColumn; 
+  currentSort?: SortValue; 
+  onSort?: (key: SortColumn) => void;
+}) {
+  const getSortIcon = () => {
+    if (!sortable || !sortKey) return null;
+    const isAsc = currentSort === `${sortKey}_asc`;
+    const isDesc = currentSort === `${sortKey}_desc`;
+    if (isAsc) return <ArrowUp className="h-3 w-3 ml-1 inline" />;
+    if (isDesc) return <ArrowDown className="h-3 w-3 ml-1 inline" />;
+    return <ArrowUpDown className="h-3 w-3 ml-1 inline text-gray-400" />;
+  };
+  
+  const handleClick = () => {
+    if (sortable && sortKey && onSort) {
+      onSort(sortKey);
+    }
+  };
+  
+  return (
+    <th 
+      className={`text-left px-3 py-2 font-medium ${sortable ? "cursor-pointer hover:bg-neutral-600 select-none" : ""}`}
+      onClick={handleClick}
+    >
+      {children}
+      {getSortIcon()}
+    </th>
+  );
+}
 
 export default function ListPayments() {
   const [rows, setRows] = useState<AdminPagamento[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortColumn, setSortColumn] = useState<SortColumn>("data");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sort, setSort] = useState<SortValue>("data_desc");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   function handleSort(col: SortColumn) {
-    if (sortColumn === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    const currentAsc = `${col}_asc` as SortValue;
+    const currentDesc = `${col}_desc` as SortValue;
+    if (sort === currentAsc) {
+      setSort(currentDesc);
+    } else if (sort === currentDesc) {
+      setSort(col === "data" ? "data_desc" : currentAsc);
     } else {
-      setSortColumn(col);
-      setSortDir(col === "data" ? "desc" : "asc");
+      setSort(col === "data" ? "data_desc" : currentAsc);
     }
   }
 
   function sortRows(list: AdminPagamento[]) {
+    const [column, dir] = sort.split("_") as [SortColumn, "asc" | "desc"];
     return [...list].sort((a, b) => {
       let cmp = 0;
-      if (sortColumn === "data") {
+      if (column === "data") {
         const ta = a.createdAt ?? "";
         const tb = b.createdAt ?? "";
         cmp = ta.localeCompare(tb);
-      } else if (sortColumn === "atleta") {
+      } else if (column === "atleta") {
         const na = (a.atletaNome ?? "").trim().toLowerCase();
         const nb = (b.atletaNome ?? "").trim().toLowerCase();
         cmp = na.localeCompare(nb);
-      } else if (sortColumn === "descricao") {
+      } else if (column === "escalao") {
+        const ea = (a.atletaEscalao ?? "").trim().toLowerCase();
+        const eb = (b.atletaEscalao ?? "").trim().toLowerCase();
+        cmp = ea.localeCompare(eb);
+      } else if (column === "descricao") {
         const da = (a.descricao ?? "").trim().toLowerCase();
         const db = (b.descricao ?? "").trim().toLowerCase();
         cmp = da.localeCompare(db);
       } else {
         cmp = (a.status ?? "").localeCompare(b.status ?? "");
       }
-      return sortDir === "asc" ? cmp : -cmp;
+      return dir === "asc" ? cmp : -cmp;
     });
   }
 
@@ -144,57 +191,13 @@ export default function ListPayments() {
       <table className="min-w-[1120px] w-full text-sm">
           <thead>
             <tr className="bg-neutral-700 text-white uppercase">
-              <th className="text-left px-3 py-2 font-medium">
-                <button
-                  type="button"
-                  onClick={() => handleSort("data")}
-                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
-                >
-                  Data
-                  {sortColumn === "data" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="text-left px-3 py-2 font-medium">
-                <button
-                  type="button"
-                  onClick={() => handleSort("atleta")}
-                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
-                >
-                  Atleta/sócio
-                  {sortColumn === "atleta" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="text-left px-3 py-2 font-medium">Escalão</th>
-              <th className="text-left px-3 py-2 font-medium">
-                <button
-                  type="button"
-                  onClick={() => handleSort("descricao")}
-                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
-                >
-                  Descrição
-                  {sortColumn === "descricao" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="text-left px-3 py-2 font-medium">
-                <button
-                  type="button"
-                  onClick={() => handleSort("estado")}
-                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
-                >
-                  Estado
-                  {sortColumn === "estado" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="text-left px-3 py-2 font-medium">Ficheiro</th>
-              <th className="text-left px-3 py-2 font-medium">Ação</th>
+              <Th sortable sortKey="data" currentSort={sort} onSort={handleSort}>Data</Th>
+              <Th sortable sortKey="atleta" currentSort={sort} onSort={handleSort}>Atleta/sócio</Th>
+              <Th sortable sortKey="escalao" currentSort={sort} onSort={handleSort}>Escalão</Th>
+              <Th sortable sortKey="descricao" currentSort={sort} onSort={handleSort}>Descrição</Th>
+              <Th sortable sortKey="estado" currentSort={sort} onSort={handleSort}>Estado</Th>
+              <Th>Ficheiro</Th>
+              <Th>Ação</Th>
             </tr>
           </thead>
           <tbody className="divide-y">
