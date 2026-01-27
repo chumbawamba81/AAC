@@ -168,20 +168,12 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
-<<<<<<< HEAD
               <th className="text-left px-3 py-2 font-medium">Escalão</th>
               <th className="text-left px-3 py-2 font-medium">
                 <button
                   type="button"
                   onClick={() => handleSort("descricao")}
                   className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
-=======
-              <th className="px-3 py-2 font-medium text-gray-700">
-                <button
-                  type="button"
-                  onClick={() => handleSort("descricao")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
->>>>>>> e7526ace42baa53651cf92ae4ab04e1e8c21ab8e
                 >
                   Descrição
                   {sortColumn === "descricao" && (
@@ -189,11 +181,7 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
-<<<<<<< HEAD
               <th className="text-left px-3 py-2 font-medium">
-=======
-              <th className="px-3 py-2 font-medium text-gray-700">
->>>>>>> e7526ace42baa53651cf92ae4ab04e1e8c21ab8e
                 <button
                   type="button"
                   onClick={() => handleSort("estado")}
@@ -220,7 +208,6 @@ export default function ListPayments() {
                   </td>
                 </tr>
               ) : (
-<<<<<<< HEAD
                 sorted.map((r, index) => (
                 <tr key={r.id} className={`border-t ${
                   index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
@@ -230,15 +217,6 @@ export default function ListPayments() {
                       <div key={i}>{part}</div>
                     ))}
                   </td>
-=======
-                sorted.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2">{fmtDate(r.createdAt)}</td>
-                  <td className="px-3 py-2">
-                    {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
-                  </td>
-                  <td className="px-3 py-2">{r.descricao || "—"}</td>
->>>>>>> e7526ace42baa53651cf92ae4ab04e1e8c21ab8e
                   <td className="px-3 py-2">
                     {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
                   </td>
