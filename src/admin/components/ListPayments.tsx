@@ -168,11 +168,12 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
-              <th className="px-3 py-2 font-medium text-gray-700">
+              <th className="text-left px-3 py-2 font-medium">Escalão</th>
+              <th className="text-left px-3 py-2 font-medium">
                 <button
                   type="button"
                   onClick={() => handleSort("descricao")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
+                  className="flex items-center gap-1 hover:text-gray-300 focus:outline-none focus:underline"
                 >
                   Descrição
                   {sortColumn === "descricao" && (
@@ -180,7 +181,7 @@ export default function ListPayments() {
                   )}
                 </button>
               </th>
-              <th className="px-3 py-2 font-medium text-gray-700">
+              <th className="text-left px-3 py-2 font-medium">
                 <button
                   type="button"
                   onClick={() => handleSort("estado")}
@@ -207,13 +208,15 @@ export default function ListPayments() {
                   </td>
                 </tr>
               ) : (
-                sorted.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2">{fmtDate(r.createdAt)}</td>
-                  <td className="px-3 py-2">
-                    {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
+                sorted.map((r, index) => (
+                <tr key={r.id} className={`border-t ${
+                  index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                } hover:bg-amber-400`}>
+                  <td className="px-3 py-2 whitespace-nowrap text-[0.7rem]">
+                    {fmtDate(r.createdAt).split(" ").map((part, i) => (
+                      <div key={i}>{part}</div>
+                    ))}
                   </td>
-                  <td className="px-3 py-2">{r.descricao || "—"}</td>
                   <td className="px-3 py-2">
                     {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
                   </td>
