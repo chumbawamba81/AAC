@@ -166,6 +166,29 @@ export default function FAQ({ items = [], allowMultiple = false }) {
       content:
         "Se encontrar algum problema técnico, por favor contacte-nos através do email basquetebol.secretaria@academica.pt com uma descrição detalhada do problema.",
     },
+    {
+      id: 'eight',
+      title: 'Como comprar equipamentos?',
+      content: () => (
+        <div>
+          Para encomendar equipamentos desportivos da secção de basquetebol,
+          preencha o formulário oficial. Após submissão, será enviada uma cópia
+          para o seu e-mail.
+          <br />
+          Os pedidos são compilados e enviados para a Dhika de duas em duas semanas. A entrega demora no minimo 5 semanas.
+          <br />
+          <br />
+          <a
+            href="https://forms.gle/8Uaudn8JW4CJCwde7"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline font-medium hover:no-underline"
+          >
+            Abrir formulário de encomenda de equipamentos →
+          </a>
+        </div>
+      ),
+    },
   ];
 
   // Example usage:
