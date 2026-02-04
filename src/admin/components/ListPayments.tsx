@@ -1,8 +1,24 @@
 import React, { useEffect, useState } from "react";
+import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import {
   listPagamentosAdmin,
+  marcarPagamentoValidado,
   type AdminPagamento,
 } from "../services/adminPagamentosService";
+
+function StatusBadge({ status }: { status: AdminPagamento["status"] }) {
+  const map: Record<AdminPagamento["status"], string> = {
+    "Regularizado": "bg-green-50 text-green-700 inset-ring-green-600/20",
+    "Pendente de validação": "bg-yellow-50 text-yellow-800 inset-ring-yellow-600/20",
+    "Por regularizar": "bg-gray-50 text-gray-600 inset-ring-gray-500/10",
+    "Em atraso": "bg-red-50 text-red-700 inset-ring-red-600/10",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium inset-ring ${map[status]}`}>
+      {status}
+    </span>
+  );
+}
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return "—";
@@ -19,43 +35,90 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
-type SortColumn = "data" | "atleta" | "descricao" | "estado";
-type SortDir = "asc" | "desc";
+type SortColumn = "data" | "atleta" | "escalao" | "descricao" | "estado";
+type SortValue = `${SortColumn}_asc` | `${SortColumn}_desc`;
+
+function Th({ 
+  children, 
+  sortable, 
+  sortKey, 
+  currentSort, 
+  onSort 
+}: { 
+  children: React.ReactNode; 
+  sortable?: boolean; 
+  sortKey?: SortColumn; 
+  currentSort?: SortValue; 
+  onSort?: (key: SortColumn) => void;
+}) {
+  const getSortIcon = () => {
+    if (!sortable || !sortKey) return null;
+    const isAsc = currentSort === `${sortKey}_asc`;
+    const isDesc = currentSort === `${sortKey}_desc`;
+    if (isAsc) return <ArrowUp className="h-3 w-3 ml-1 inline" />;
+    if (isDesc) return <ArrowDown className="h-3 w-3 ml-1 inline" />;
+    return <ArrowUpDown className="h-3 w-3 ml-1 inline text-gray-400" />;
+  };
+  
+  const handleClick = () => {
+    if (sortable && sortKey && onSort) {
+      onSort(sortKey);
+    }
+  };
+  
+  return (
+    <th 
+      className={`text-left px-3 py-2 font-medium ${sortable ? "cursor-pointer hover:bg-neutral-600 select-none" : ""}`}
+      onClick={handleClick}
+    >
+      {children}
+      {getSortIcon()}
+    </th>
+  );
+}
 
 export default function ListPayments() {
   const [rows, setRows] = useState<AdminPagamento[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortColumn, setSortColumn] = useState<SortColumn>("data");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sort, setSort] = useState<SortValue>("data_desc");
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   function handleSort(col: SortColumn) {
-    if (sortColumn === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    const currentAsc = `${col}_asc` as SortValue;
+    const currentDesc = `${col}_desc` as SortValue;
+    if (sort === currentAsc) {
+      setSort(currentDesc);
+    } else if (sort === currentDesc) {
+      setSort(col === "data" ? "data_desc" : currentAsc);
     } else {
-      setSortColumn(col);
-      setSortDir(col === "data" ? "desc" : "asc");
+      setSort(col === "data" ? "data_desc" : currentAsc);
     }
   }
 
   function sortRows(list: AdminPagamento[]) {
+    const [column, dir] = sort.split("_") as [SortColumn, "asc" | "desc"];
     return [...list].sort((a, b) => {
       let cmp = 0;
-      if (sortColumn === "data") {
+      if (column === "data") {
         const ta = a.createdAt ?? "";
         const tb = b.createdAt ?? "";
         cmp = ta.localeCompare(tb);
-      } else if (sortColumn === "atleta") {
+      } else if (column === "atleta") {
         const na = (a.atletaNome ?? "").trim().toLowerCase();
         const nb = (b.atletaNome ?? "").trim().toLowerCase();
         cmp = na.localeCompare(nb);
-      } else if (sortColumn === "descricao") {
+      } else if (column === "escalao") {
+        const ea = (a.atletaEscalao ?? "").trim().toLowerCase();
+        const eb = (b.atletaEscalao ?? "").trim().toLowerCase();
+        cmp = ea.localeCompare(eb);
+      } else if (column === "descricao") {
         const da = (a.descricao ?? "").trim().toLowerCase();
         const db = (b.descricao ?? "").trim().toLowerCase();
         cmp = da.localeCompare(db);
       } else {
         cmp = (a.status ?? "").localeCompare(b.status ?? "");
       }
-      return sortDir === "asc" ? cmp : -cmp;
+      return dir === "asc" ? cmp : -cmp;
     });
   }
 
@@ -69,6 +132,32 @@ export default function ListPayments() {
       alert(msg);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggle(row: AdminPagamento, next: boolean) {
+    try {
+      setBusyId(row.id);
+      const updated = await marcarPagamentoValidado(row.id, next);
+      if (updated) {
+        setRows((prevRows) =>
+          prevRows.map((r) =>
+            r.id === row.id
+              ? {
+                  ...r,
+                  validado: updated.validado,
+                  status: updated.status,
+                  validadoEm: updated.validadoEm,
+                  validadoPor: updated.validadoPor,
+                }
+              : r
+          )
+        );
+      }
+    } catch (e: any) {
+      alert(e?.message || "Não foi possível alterar a validação.");
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -98,91 +187,46 @@ export default function ListPayments() {
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-2 font-medium text-gray-700">
-                <button
-                  type="button"
-                  onClick={() => handleSort("data")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
-                >
-                  Data
-                  {sortColumn === "data" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="px-3 py-2 font-medium text-gray-700">
-                <button
-                  type="button"
-                  onClick={() => handleSort("atleta")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
-                >
-                  Atleta
-                  {sortColumn === "atleta" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="px-3 py-2 font-medium text-gray-700">
-                <button
-                  type="button"
-                  onClick={() => handleSort("descricao")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
-                >
-                  Descrição
-                  {sortColumn === "descricao" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="px-3 py-2 font-medium text-gray-700">
-                <button
-                  type="button"
-                  onClick={() => handleSort("estado")}
-                  className="flex items-center gap-1 hover:text-gray-900 focus:outline-none focus:underline"
-                >
-                  Estado
-                  {sortColumn === "estado" && (
-                    <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>
-                  )}
-                </button>
-              </th>
-              <th className="px-3 py-2 font-medium text-gray-700">Ficheiro</th>
+      <div className="overflow-x-auto border">
+      <table className="min-w-[1120px] w-full text-sm">
+          <thead>
+            <tr className="bg-neutral-700 text-white uppercase">
+              <Th sortable sortKey="data" currentSort={sort} onSort={handleSort}>Data</Th>
+              <Th sortable sortKey="atleta" currentSort={sort} onSort={handleSort}>Atleta/sócio</Th>
+              <Th sortable sortKey="escalao" currentSort={sort} onSort={handleSort}>Escalão</Th>
+              <Th sortable sortKey="descricao" currentSort={sort} onSort={handleSort}>Descrição</Th>
+              <Th sortable sortKey="estado" currentSort={sort} onSort={handleSort}>Estado</Th>
+              <Th>Ficheiro</Th>
+              <Th>Ação</Th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y">
             {(() => {
               const filtered = rows.filter((r) => r.status !== "Por regularizar");
               const sorted = sortRows(filtered);
               return sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-gray-500">
+                  <td colSpan={7} className="px-3 py-4 text-gray-500">
                     Nenhum pagamento encontrado.
                   </td>
                 </tr>
               ) : (
-                sorted.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2">{fmtDate(r.createdAt)}</td>
+                sorted.map((r, index) => (
+                <tr key={r.id} className={`border-t ${
+                  index % 2 === 0 ? "bg-neutral-100" : "bg-neutral-300"
+                } hover:bg-amber-400`}>
+                  <td className="px-3 py-2 whitespace-nowrap text-[0.7rem]">
+                    {fmtDate(r.createdAt).split(" ").map((part, i) => (
+                      <div key={i}>{part}</div>
+                    ))}
+                  </td>
                   <td className="px-3 py-2">
                     {r.descricao === "Inscrição de Sócio" ? (r.titularName || "—") : (r.atletaNome || "—")}
                   </td>
-                  <td className="px-3 py-2">{r.descricao || "—"}</td>
+                  <td className="px-3 py-2 text-[0.7rem]">{r.atletaEscalao || "—"}</td>
+                  <td className="px-3 py-2 text-[0.7rem]">{r.descricao || "—"}</td>
                   <td className="px-3 py-2">
-                    <span
-                      className={
-                        r.status === "Regularizado"
-                          ? "text-green-700"
-                          : r.status === "Em atraso"
-                            ? "text-red-700"
-                            : "text-gray-700"
-                      }
-                    >
-                      {r.status}
-                    </span>
+                    <StatusBadge status={r.status} />
                   </td>
                   <td className="px-3 py-2">
                     {r.signedUrl ? (
@@ -197,6 +241,21 @@ export default function ListPayments() {
                     ) : (
                       "—"
                     )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2 justify-end">
+                      <button
+                        disabled={busyId === r.id}
+                        className={`inline-flex items-center justify-center gap-1.5 transition active:scale-[.98] cursor-pointer text-sm h-8 px-3 rounded-md ${
+                          r.validado
+                            ? "bg-red-600 text-white hover:bg-red-700"
+                            : "bg-green-600 text-white hover:bg-green-700"
+                        }`}
+                        onClick={() => toggle(r, !r.validado)}
+                      >
+                        {r.validado ? "Anular" : "Validar"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )));
