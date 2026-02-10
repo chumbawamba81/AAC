@@ -197,6 +197,62 @@ export async function listPagamentosAdmin(filtro: Filtro = "todos"): Promise<Adm
   return out;
 }
 
+/** Path helpers para upload admin */
+function toSafeSegment(input: string, fallback = "item"): string {
+  if (!input) return fallback;
+  let s = input.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  s = s.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
+  s = s.toLowerCase().replace(/^[-.]+|[-.]+$/g, "");
+  return s || fallback;
+}
+function toSafeFilename(name: string, fallback = "ficheiro.bin"): string {
+  if (!name) return fallback;
+  const idx = name.lastIndexOf(".");
+  if (idx <= 0 || idx === name.length - 1) {
+    const base = toSafeSegment(name);
+    return base.includes(".") ? base : `${base}.bin`;
+  }
+  const base = toSafeSegment(name.slice(0, idx)) || "ficheiro";
+  const ext = toSafeSegment(name.slice(idx + 1)) || "bin";
+  return `${base}.${ext}`;
+}
+function joinPath(...parts: Array<string | undefined | null>): string {
+  const cleaned = parts
+    .filter(Boolean)
+    .map((p) => String(p).replace(/^\/+|\/+$/g, ""))
+    .filter((p) => p.length > 0);
+  return cleaned.join("/");
+}
+
+/** Upload de comprovativo para um pagamento específico (por id). Usado no modal de detalhes do atleta. */
+export async function uploadComprovativoForPagamento(params: {
+  pagamentoId: string;
+  atletaId: string;
+  userId: string | null;
+  file: File;
+}): Promise<void> {
+  const { pagamentoId, atletaId, userId, file } = params;
+  const safe = toSafeFilename(file.name);
+  const path = userId
+    ? joinPath(userId, "atletas", atletaId, "admin", pagamentoId, `${Date.now()}_${safe}`)
+    : joinPath("atletas", atletaId, "admin", pagamentoId, `${Date.now()}_${safe}`);
+
+  const { error: upError } = await supabase.storage
+    .from("pagamentos")
+    .upload(path, file, {
+      upsert: true,
+      contentType: file.type || "application/octet-stream",
+      cacheControl: "3600",
+    });
+  if (upError) throw upError;
+
+  const { error: updError } = await supabase
+    .from("pagamentos")
+    .update({ comprovativo_url: path, validado: false })
+    .eq("id", pagamentoId);
+  if (updError) throw updError;
+}
+
 /** Alterna validação (true/false) e devolve a linha atualizada */
 export async function marcarPagamentoValidado(pagamentoId: string, next: boolean): Promise<AdminPagamento | null> {
   const { data: auth } = await supabase.auth.getUser();

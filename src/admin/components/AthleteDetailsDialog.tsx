@@ -1,6 +1,6 @@
 // src/admin/components/AthleteDetailsDialog.tsx
-import React, { useEffect, useState } from "react";
-import { X, Link as LinkIcon, FileText, FileCheck2, CreditCard, Edit } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { X, Link as LinkIcon, FileText, FileCheck2, CreditCard, Edit, Upload } from "lucide-react";
 import {
   listDocsByAtleta,
   listPagamentosByAtleta,
@@ -11,7 +11,10 @@ import {
   TitularMinimal,
   AtletaRow,
 } from "../services/adminAtletasService";
+import { uploadDoc } from "../../services/documentosService";
+import { uploadComprovativoForPagamento } from "../services/adminPagamentosService";
 import { Button } from "@/components/ui/button";
+import { showToast } from "@/components/MiniToast";
 
 type Props = {
   open: boolean;
@@ -53,43 +56,94 @@ function FieldIf({
 }
 
 /* --------------------- componente --------------------- */
+const DOC_TIPOS_TAB = DOCS_ATLETA.filter((t) => String(t) !== DOC_TIPO_INSCRICAO_ATLETA);
+
 export default function AthleteDetailsDialog({ open, onClose, atleta, titular, onEdit }: Props) {
   const [tab, setTab] = useState<Tab>("dados");
   const [docs, setDocs] = useState<DocumentoRow[]>([]);
   const [pags, setPags] = useState<PagamentoRow[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [loadingPags, setLoadingPags] = useState(false);
+  const [uploadingDocTipo, setUploadingDocTipo] = useState<string | null>(null);
+  const [uploadingPagamentoId, setUploadingPagamentoId] = useState<string | null>(null);
+  const docFileRef = useRef<HTMLInputElement>(null);
+  const pagFileRef = useRef<HTMLInputElement>(null);
+  const docTipoRef = useRef<string | null>(null);
+  const pagamentoIdRef = useRef<string | null>(null);
+
+  async function loadDocs() {
+    if (!atleta.user_id) return;
+    setLoadingDocs(true);
+    try {
+      const all = await listDocsByAtleta(atleta.user_id, atleta.id);
+      setDocs(all);
+    } catch {
+      setDocs([]);
+    } finally {
+      setLoadingDocs(false);
+    }
+  }
+
+  async function loadPags() {
+    setLoadingPags(true);
+    try {
+      const pg = await listPagamentosByAtleta(atleta.id);
+      setPags(pg);
+    } catch {
+      setPags([]);
+    } finally {
+      setLoadingPags(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
+    loadDocs();
+    loadPags();
+  }, [open, atleta.id]);
 
-    // Documentos do atleta
-    (async () => {
-      if (!atleta.user_id) return;
-      setLoadingDocs(true);
-      try {
-        const all = await listDocsByAtleta(atleta.user_id, atleta.id);
-        setDocs(all);
-      } catch {
-        setDocs([]);
-      } finally {
-        setLoadingDocs(false);
-      }
-    })();
+  async function handleDocUpload(tipo: string, file: File) {
+    if (!atleta.user_id) {
+      showToast("Atleta sem titular associado; não é possível carregar documentos.", "err");
+      return;
+    }
+    setUploadingDocTipo(tipo);
+    try {
+      await uploadDoc({
+        nivel: "atleta",
+        userId: atleta.user_id,
+        atletaId: atleta.id,
+        tipo,
+        file,
+      });
+      await loadDocs();
+      showToast(`Documento "${tipo}" carregado.`, "ok");
+    } catch (e) {
+      showToast((e as Error)?.message || "Falha no carregamento do documento", "err");
+    } finally {
+      setUploadingDocTipo(null);
+      if (docFileRef.current) docFileRef.current.value = "";
+    }
+  }
 
-    // Pagamentos do atleta
-    (async () => {
-      setLoadingPags(true);
-      try {
-        const pg = await listPagamentosByAtleta(atleta.id);
-        setPags(pg);
-      } catch {
-        setPags([]);
-      } finally {
-        setLoadingPags(false);
-      }
-    })();
-  }, [open, atleta]);
+  async function handlePagamentoUpload(pagamentoId: string, file: File) {
+    setUploadingPagamentoId(pagamentoId);
+    try {
+      await uploadComprovativoForPagamento({
+        pagamentoId,
+        atletaId: atleta.id,
+        userId: atleta.user_id ?? null,
+        file,
+      });
+      await loadPags();
+      showToast("Comprovativo carregado.", "ok");
+    } catch (e) {
+      showToast((e as Error)?.message || "Falha no carregamento do comprovativo", "err");
+    } finally {
+      setUploadingPagamentoId(null);
+      if (pagFileRef.current) pagFileRef.current.value = "";
+    }
+  }
 
   if (!open) return null;
 
@@ -211,49 +265,78 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular, o
           {/* --- DOCUMENTOS (exclui comprovativo de inscrição) --- */}
           {tab === "docs" && (
             <div className="space-y-3">
+              <input
+                type="file"
+                ref={docFileRef}
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png,.heic"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  const tipo = docTipoRef.current;
+                  if (file && tipo) handleDocUpload(tipo, file);
+                  docTipoRef.current = null;
+                }}
+              />
               {loadingDocs ? (
                 <p className="text-sm text-gray-500">A carregar documentos…</p>
+              ) : !atleta.user_id ? (
+                <p className="text-sm text-amber-600">Sem titular associado; não é possível carregar documentos.</p>
               ) : (
                 <>
-                  {DOCS_ATLETA
-                    .filter((tipo) => String(tipo) !== DOC_TIPO_INSCRICAO_ATLETA)
-                    .map((tipo) => {
-                      const files = docs.filter((d) => d.doc_tipo === tipo);
-                      return (
-                        <div key={String(tipo)} className="border rounded-lg p-3">
-                          <div className="font-medium mb-2">{String(tipo)}</div>
-                          {files.length === 0 ? (
-                            <p className="text-sm text-gray-500">Sem ficheiros.</p>
-                          ) : (
-                            <ul className="space-y-2">
-                              {files.map((row) => (
-                                <li key={row.id} className="flex items-center justify-between">
-                                  <div className="text-sm flex items-center gap-2 min-w-0">
-                                    <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5 shrink-0">
-                                      {(row.page ?? 0) > 0 ? `Ficheiro ${row.page}` : "Ficheiro"}
-                                    </span>
-                                    {(row as any).signedUrl ? (
-                                      <a
-                                        href={(row as any).signedUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="underline inline-flex items-center gap-1 truncate"
-                                        title={displayFileName(row)}
-                                      >
-                                        <LinkIcon className="h-4 w-4 shrink-0" />
-                                        <span className="truncate">{displayFileName(row)}</span>
-                                      </a>
-                                    ) : (
-                                      <span className="text-gray-500">{displayFileName(row)}</span>
-                                    )}
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                  {DOC_TIPOS_TAB.map((tipo) => {
+                    const files = docs.filter((d) => d.doc_tipo === tipo);
+                    const isUploading = uploadingDocTipo === tipo;
+                    return (
+                      <div key={String(tipo)} className="border rounded-lg p-3">
+                        <div className="font-medium mb-2 flex items-center justify-between gap-2 flex-wrap">
+                          <span>{String(tipo)}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={isUploading}
+                            onClick={() => {
+                              docTipoRef.current = tipo;
+                              docFileRef.current?.click();
+                            }}
+                            className="inline-flex items-center gap-1"
+                          >
+                            <Upload className="h-3.5 w-3.5" />
+                            {isUploading ? "A carregar…" : "Carregar documento"}
+                          </Button>
                         </div>
-                      );
-                    })}
+                        {files.length === 0 ? (
+                          <p className="text-sm text-gray-500">Sem ficheiros.</p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {files.map((row) => (
+                              <li key={row.id} className="flex items-center justify-between">
+                                <div className="text-sm flex items-center gap-2 min-w-0">
+                                  <span className="inline-block text-xs rounded bg-gray-100 px-2 py-0.5 shrink-0">
+                                    {(row.page ?? 0) > 0 ? `Ficheiro ${row.page}` : "Ficheiro"}
+                                  </span>
+                                  {(row as any).signedUrl ? (
+                                    <a
+                                      href={(row as any).signedUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="underline inline-flex items-center gap-1 truncate"
+                                      title={displayFileName(row)}
+                                    >
+                                      <LinkIcon className="h-4 w-4 shrink-0" />
+                                      <span className="truncate">{displayFileName(row)}</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-gray-500">{displayFileName(row)}</span>
+                                  )}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
                 </>
               )}
             </div>
@@ -262,6 +345,18 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular, o
           {/* --- PAGAMENTOS (inclui comprovativos) --- */}
           {tab === "pag" && (
             <div className="space-y-3">
+              <input
+                type="file"
+                ref={pagFileRef}
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png,.heic"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  const id = pagamentoIdRef.current;
+                  if (file && id) handlePagamentoUpload(id, file);
+                  pagamentoIdRef.current = null;
+                }}
+              />
               {loadingPags ? (
                 <p className="text-sm text-gray-500">A carregar pagamentos…</p>
               ) : pags.length === 0 ? (
@@ -269,33 +364,47 @@ export default function AthleteDetailsDialog({ open, onClose, atleta, titular, o
               ) : (
                 <ul className="space-y-2">
                   {pags.map((p) => {
-                    // PagamentoRow pode não ter 'devido_em' e 'signedUrl' tipados; usar cast seguro
                     const due = (p as any)?.devido_em as string | null | undefined;
                     const signed = (p as any)?.signedUrl as string | null | undefined;
+                    const isUploading = uploadingPagamentoId === p.id;
                     return (
-                      <li key={p.id} className="border rounded-lg p-2 flex items-center justify-between">
-                        <div className="text-sm">
+                      <li key={p.id} className="border rounded-lg p-2 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-sm min-w-0">
                           <div className="font-medium">{p.descricao}</div>
                           <div className="text-xs text-gray-500">
                             {fmtDate(due) ? `Devido em: ${fmtDate(due)} · ` : ""}
                             {fmtDate(p.created_at) ? `Registado: ${fmtDate(p.created_at)}` : ""}
                           </div>
                         </div>
-                        {signed ? (
-                          <div className="text-right">
-                            <a className="underline inline-flex items-center gap-1" href={signed} target="_blank" rel="noreferrer">
-                              <LinkIcon className="h-4 w-4" />
-                              Abrir
-                            </a>
-                            {p.created_at && (
-                              <div className="text-xs text-gray-500 mt-0.5">
-                                Carregado em: {fmtDate(p.created_at)}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-500">Sem ficheiro</span>
-                        )}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {signed ? (
+                            <>
+                              <a className="underline inline-flex items-center gap-1 text-sm" href={signed} target="_blank" rel="noreferrer">
+                                <LinkIcon className="h-4 w-4" />
+                                Abrir
+                              </a>
+                              {p.created_at && (
+                                <span className="text-xs text-gray-500">Carregado em: {fmtDate(p.created_at)}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-gray-500">Sem ficheiro</span>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={isUploading}
+                            onClick={() => {
+                              pagamentoIdRef.current = p.id;
+                              pagFileRef.current?.click();
+                            }}
+                            className="inline-flex items-center gap-1"
+                          >
+                            <Upload className="h-3.5 w-3.5" />
+                            {isUploading ? "A carregar…" : "Carregar comprovativo"}
+                          </Button>
+                        </div>
                       </li>
                     );
                   })}
