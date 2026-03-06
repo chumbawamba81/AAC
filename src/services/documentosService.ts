@@ -1,6 +1,7 @@
 // src/services/documentosService.ts
 import { supabase } from "../supabaseClient";
 import { joinPath, toSafeFilename, toSafeSegment } from "../utils/storagePath";
+import { optimizeFileBeforeUpload } from "./uploadInterceptor";
 
 export type Nivel = "socio" | "atleta";
 
@@ -38,9 +39,12 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
   if (!userId) throw new Error("uploadDoc: userId em falta");
   if (!file) throw new Error("uploadDoc: file em falta");
 
+  // Otimizar arquivo antes do upload (compressão de imagens, etc)
+  const optimizedFile = await optimizeFileBeforeUpload(file);
+
   // ——— Modo que já funcionava no Android (replicado p/ Sócio):
   const tipoSafe = toSafeSegment(args.tipo || "tipo");
-  const fileSafe = toSafeFilename(file.name);
+  const fileSafe = toSafeFilename(optimizedFile.name);
   const ts = Date.now();
 
   // Paths:
@@ -52,10 +56,10 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
       : joinPath(userId, "atleta", (args as any).atletaId, tipoSafe, `${ts}_${fileSafe}`);
 
   // 1) Upload para Storage
-  const up = await supabase.storage.from(BUCKET).upload(storagePath, file, {
+  const up = await supabase.storage.from(BUCKET).upload(storagePath, optimizedFile, {
     cacheControl: "3600",
     upsert: false,
-    contentType: file.type || "application/octet-stream",
+    contentType: optimizedFile.type || "application/octet-stream",
   });
   if (up.error) {
     throw new Error(`Storage upload falhou: ${up.error.message}`);
@@ -71,8 +75,8 @@ export async function uploadDoc(args: UploadArgs): Promise<DocumentoRow> {
     file_path: storagePath,
     path: storagePath,
     nome: file.name,
-    mime_type: file.type || null,
-    file_size: file.size ?? null,
+    mime_type: optimizedFile.type || null,
+    file_size: optimizedFile.size ?? null,
     uploaded_at: new Date().toISOString(),
   };
 
@@ -94,7 +98,8 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
   if (!id) throw new Error("replaceDoc: id em falta");
   if (!file) throw new Error("replaceDoc: file em falta");
 
-  // 1) Buscar row existente
+  // Otimizar arquivo antes do upload (compressão de imagens, etc)
+  const optimizedFile = await optimizeFileBeforeUpload(file);
   const sel = await supabase.from("documentos").select("*").eq("id", id).single();
   if (sel.error || !sel.data) {
     throw new Error(`Não foi possível obter o registo (${id}): ${sel.error?.message || "not found"}`);
@@ -103,7 +108,7 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
 
   // 2) Construir NOVA key “segura” (evita Invalid key se a key antiga tiver acentos/espaços)
   const tipoSafe = toSafeSegment(current.doc_tipo || "tipo");
-  const fileSafe = toSafeFilename(file.name);
+  const fileSafe = toSafeFilename(optimizedFile.name);
   const ts = Date.now();
 
   const base =
@@ -114,10 +119,10 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
   const newPath = joinPath(base, `${ts}_${fileSafe}`);
 
   // 3) Upload para a nova key
-  const up = await supabase.storage.from(BUCKET).upload(newPath, file, {
+  const up = await supabase.storage.from(BUCKET).upload(newPath, optimizedFile, {
     upsert: false,
     cacheControl: "3600",
-    contentType: file.type || "application/octet-stream",
+    contentType: optimizedFile.type || "application/octet-stream",
   });
   if (up.error) {
     throw new Error(`Storage replace (nova key) falhou: ${up.error.message}`);
@@ -136,8 +141,8 @@ export async function replaceDoc(id: string, file: File): Promise<DocumentoRow> 
       file_path: newPath,
       path: newPath,
       nome: file.name,
-      mime_type: file.type || null,
-      file_size: file.size ?? null,
+      mime_type: optimizedFile.type || null,
+      file_size: optimizedFile.size ?? null,
       uploaded_at: new Date().toISOString(),
     })
     .eq("id", id)
