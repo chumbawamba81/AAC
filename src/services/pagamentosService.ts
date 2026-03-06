@@ -1,6 +1,7 @@
 // src/services/pagamentosService.ts
 import { supabase } from "../supabaseClient";
 import type { PlanoPagamento } from "../types/Atleta";
+import { optimizeFileBeforeUpload } from "./uploadInterceptor";
 
 /* ======================= Tipos ======================= */
 export type PagamentoRow = {
@@ -180,11 +181,14 @@ export async function saveComprovativo(params: {
   descricao: string; // tem de existir na tabela (foi criado pelo schedule/seed)
   file: File;
 }) {
-  const safe = toSafeFilename(params.file.name);
+  // Otimizar arquivo antes do upload (compressão de imagens, etc)
+  const optimizedFile = await optimizeFileBeforeUpload(params.file);
+  
+  const safe = toSafeFilename(optimizedFile.name);
   const path = joinPath(params.userId, "atletas", params.atletaId, `${nowTs()}_${safe}`);
   const up = await supabase.storage
     .from("pagamentos")
-    .upload(path, params.file, { upsert: true, contentType: params.file.type || "application/octet-stream", cacheControl: "3600" });
+    .upload(path, optimizedFile, { upsert: true, contentType: optimizedFile.type || "application/octet-stream", cacheControl: "3600" });
   if (up.error) throw up.error;
 
   const { error } = await supabase
@@ -196,11 +200,14 @@ export async function saveComprovativo(params: {
 }
 
 export async function saveComprovativoSocioInscricao(userId: string, file: File) {
-  const safe = toSafeFilename(file.name);
+  // Otimizar arquivo antes do upload (compressão de imagens, etc)
+  const optimizedFile = await optimizeFileBeforeUpload(file);
+  
+  const safe = toSafeFilename(optimizedFile.name);
   const path = joinPath(userId, "socio", `${nowTs()}_${safe}`);
   const up = await supabase.storage
     .from("pagamentos")
-    .upload(path, file, { upsert: true, contentType: file.type || "application/octet-stream", cacheControl: "3600" });
+    .upload(path, optimizedFile, { upsert: true, contentType: optimizedFile.type || "application/octet-stream", cacheControl: "3600" });
   if (up.error) throw up.error;
 
   const { error } = await supabase
@@ -218,11 +225,14 @@ export async function saveComprovativoInscricaoAtleta(params: {
   atletaId: string;
   file: File;
 }) {
-  const safe = toSafeFilename(params.file.name);
+  // Otimizar arquivo antes do upload (compressão de imagens, etc)
+  const optimizedFile = await optimizeFileBeforeUpload(params.file);
+  
+  const safe = toSafeFilename(optimizedFile.name);
   const path = joinPath(params.userId, "atletas", params.atletaId, "inscricao", `${nowTs()}_${safe}`);
   const up = await supabase.storage
     .from("pagamentos")
-    .upload(path, params.file, { upsert: true, contentType: params.file.type || "application/octet-stream", cacheControl: "3600" });
+    .upload(path, optimizedFile, { upsert: true, contentType: optimizedFile.type || "application/octet-stream", cacheControl: "3600" });
   if (up.error) throw up.error;
 
   const { error } = await supabase

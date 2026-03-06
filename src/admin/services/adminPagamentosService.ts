@@ -1,5 +1,6 @@
 // src/admin/services/adminPagamentosService.ts
 import { supabase } from "../../supabaseClient";
+import { optimizeFileBeforeUpload } from "../../services/uploadInterceptor";
 
 /** Nível do pagamento */
 export type NivelPagamento = "socio" | "atleta";
@@ -232,16 +233,20 @@ export async function uploadComprovativoForPagamento(params: {
   file: File;
 }): Promise<void> {
   const { pagamentoId, atletaId, userId, file } = params;
-  const safe = toSafeFilename(file.name);
+  
+  // Otimizar arquivo antes do upload (compressão de imagens, etc)
+  const optimizedFile = await optimizeFileBeforeUpload(file);
+  
+  const safe = toSafeFilename(optimizedFile.name);
   const path = userId
     ? joinPath(userId, "atletas", atletaId, "admin", pagamentoId, `${Date.now()}_${safe}`)
     : joinPath("atletas", atletaId, "admin", pagamentoId, `${Date.now()}_${safe}`);
 
   const { error: upError } = await supabase.storage
     .from("pagamentos")
-    .upload(path, file, {
+    .upload(path, optimizedFile, {
       upsert: true,
-      contentType: file.type || "application/octet-stream",
+      contentType: optimizedFile.type || "application/octet-stream",
       cacheControl: "3600",
     });
   if (upError) throw upError;
