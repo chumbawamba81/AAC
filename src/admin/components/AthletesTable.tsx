@@ -243,6 +243,7 @@ export default function AthletesTable() {
       return;
     }
     setSendingEmail(atletaId);
+    showToast('A enviar email…', 'ok');
     try {
       const { error } = await supabase.functions.invoke('send-email', {
         body: { to: emailsPreferenciais.trim() },
