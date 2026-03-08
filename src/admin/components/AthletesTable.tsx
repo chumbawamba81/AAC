@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw, Search, Users, Eye, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Download, RefreshCw, Search, Users, Eye, ArrowUp, ArrowDown, ArrowUpDown, Mail } from "lucide-react";
 import {
   listAtletasAdmin,
   getMissingCountsForAtletas,
@@ -120,6 +120,7 @@ export default function AthletesTable() {
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState<RowVM | null>(null);
   const [editing, setEditing] = useState<RowVM | null>(null);
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   const [maps, setMaps] = useState<StatusMaps>({ insc: {}, quotas: {} });
   const [escaloes, setEscaloes] = useState<string[]>([]);
@@ -234,6 +235,25 @@ export default function AthletesTable() {
     const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a");
     a.href = url; a.download = "atletas.csv"; a.click(); URL.revokeObjectURL(url);
+  }
+
+  async function sendEmail(atletaId: string, emailsPreferenciais: string | null) {
+    if (!emailsPreferenciais?.trim()) {
+      showToast('Sem email preferencial registado', 'err');
+      return;
+    }
+    setSendingEmail(atletaId);
+    try {
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: { to: emailsPreferenciais.trim() },
+      });
+      if (error) throw error;
+      showToast('Email enviado com sucesso', 'ok');
+    } catch (err: any) {
+      showToast(`Erro ao enviar email: ${err?.message ?? 'desconhecido'}`, 'err');
+    } finally {
+      setSendingEmail(null);
+    }
   }
 
   const handleSort = (column: SortableColumn) => {
@@ -509,14 +529,26 @@ export default function AthletesTable() {
                     <Td>{quotasNode}</Td>
                     <Td>{`${r.missing ?? 0}/${DOCS_ATLETA.length}`}</Td>
                     <Td>
-                      <Button
-                        variant="stone"
-                        onClick={() => { setFocus(r); setOpen(true); }}
-                        aria-label="Ver detalhes"
-                        className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
-                      >
-                      <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="stone"
+                          onClick={() => { setFocus(r); setOpen(true); }}
+                          aria-label="Ver detalhes"
+                          className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={sendingEmail === a.id}
+                          onClick={() => sendEmail(a.id, a.emails_preferenciais)}
+                          aria-label="Enviar email de aviso de mensalidades"
+                          className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
+                          title={a.emails_preferenciais ? `Enviar email para: ${a.emails_preferenciais}` : 'Sem email preferencial'}
+                        >
+                          <Mail className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </Td>
                   </tr>
                 );
