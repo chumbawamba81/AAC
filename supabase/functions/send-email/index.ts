@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to } = await req.json() as { to: string };
+    const { to, atletaNome } = await req.json() as { to: string; atletaNome?: string };
 
     if (!to || !to.trim()) {
       return new Response(
@@ -45,22 +45,46 @@ serve(async (req) => {
       },
     });
 
-    const body = `Estimada/o encarregada/o de educação,
-
-Vimos por este meio notificar que tem mensalidades/trimestre em atraso.
-Agradecemos a sua liquidação com a máxima celeridade.
-
-
-
-Com os melhores cumprimentos,
-
-A Direção da Associação Académica de Coimbra - Secção de Basquetebol`;
+    const nomeAtleta = atletaNome?.trim() || "";
+    const html = `<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <p>Estimada/o encarregada/o de educação,</p>
+    <br />
+    <p>
+      Vimos por este meio notificar que o/a atleta
+      <strong>${nomeAtleta}</strong> tem mensalidades/trimestre em atraso.
+    </p>
+    <br />
+    <p>Agradecemos a sua liquidação com a máxima celeridade.</p>
+    <br /><br />
+    <p>Com os melhores cumprimentos,</p>
+    <div class="flex items-center gap-4">
+      <img
+        src="https://aac-sb.netlify.app/imgs/AAC-white2.png"
+        alt="AAC Logo"
+        class="w-8 h-8 object-contain"
+      />
+      <p>
+        <strong
+          >A Direção da Associação Académica de Coimbra - Secção de
+          Basquetebol</strong
+        >
+      </p>
+    </div>
+  </body>
+</html>
+`;
 
     await transporter.sendMail({
       from: EMAIL_LOGIN,
       to: to.trim(),
       subject: "AAC-SB - Mensalidades/Trimestre em Atraso",
-      text: body,
+      html,
     });
 
     return new Response(

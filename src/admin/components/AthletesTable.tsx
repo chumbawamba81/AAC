@@ -553,7 +553,7 @@ export default function AthletesTable() {
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="default"
                           disabled={sendingEmail === a.id}
                           onClick={() => sendEmail(a.id, a.emails_preferenciais)}
                           aria-label="Enviar email de aviso de mensalidades"
