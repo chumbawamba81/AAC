@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import nodemailer from "npm:nodemailer";
+import nodemailer from "npm:nodemailer@6.9.13";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,13 +30,15 @@ serve(async (req) => {
 
     if (!EMAIL_LOGIN || !EMAIL_PASSWORD) {
       return new Response(
-        JSON.stringify({ error: "Credenciais de email não configuradas" }),
+        JSON.stringify({ error: "Credenciais não configuradas — corre: supabase secrets set EMAIL_LOGIN=... EMAIL_PASSWORD=..." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
       auth: {
         user: EMAIL_LOGIN,
         pass: EMAIL_PASSWORD,
@@ -57,7 +59,7 @@ A Direção da Associação Académica de Coimbra - Secção de Basquetebol`;
     await transporter.sendMail({
       from: EMAIL_LOGIN,
       to: to.trim(),
-      subject: "Mensalidades/Trimestre em Atraso",
+      subject: "AAC-SB - Mensalidades/Trimestre em Atraso",
       text: body,
     });
 
@@ -66,8 +68,9 @@ A Direção da Associação Académica de Coimbra - Secção de Basquetebol`;
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
+    console.error("[send-email] error:", err);
     return new Response(
-      JSON.stringify({ error: err?.message ?? "Erro desconhecido" }),
+      JSON.stringify({ error: err?.message ?? "Erro desconhecido", stack: err?.stack }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
