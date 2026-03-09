@@ -237,7 +237,7 @@ export default function AthletesTable() {
     a.href = url; a.download = "atletas.csv"; a.click(); URL.revokeObjectURL(url);
   }
 
-  async function sendEmail(atletaId: string, emailsPreferenciais: string | null) {
+  async function sendEmail(atletaId: string, emailsPreferenciais: string | null, atletaNome: string) {
     if (!emailsPreferenciais?.trim()) {
       showToast('Sem email preferencial registado', 'err');
       return;
@@ -246,7 +246,7 @@ export default function AthletesTable() {
     showToast('A enviar email…', 'ok');
     try {
       const { data, error } = await supabase.functions.invoke('send-email', {
-        body: { to: emailsPreferenciais.trim() },
+        body: { to: emailsPreferenciais.trim(), atletaNome },
       });
       if (error) {
         // Extract the real error message from the response body
@@ -548,19 +548,19 @@ export default function AthletesTable() {
                           variant="stone"
                           onClick={() => { setFocus(r); setOpen(true); }}
                           aria-label="Ver detalhes"
-                          className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
+                          className="inline-flex h-12 w-12 items-center justify-center p-0 text-[0.7rem]"
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-8 w-8" />
                         </Button>
                         <Button
                           variant="default"
                           disabled={sendingEmail === a.id}
-                          onClick={() => sendEmail(a.id, a.emails_preferenciais)}
+                          onClick={() => sendEmail(a.id, a.emails_preferenciais, a.nome)}
                           aria-label="Enviar email de aviso de mensalidades"
-                          className="inline-flex h-9 w-9 items-center justify-center p-0 text-[0.7rem]"
+                          className="inline-flex h-12 w-12 items-center justify-center p-0 text-[0.7rem]"
                           title={a.emails_preferenciais ? `Enviar email para: ${a.emails_preferenciais}` : 'Sem email preferencial'}
                         >
-                          <Mail className="h-4 w-4" />
+                          <Mail className="h-8 w-8" />
                         </Button>
                       </div>
                     </Td>
