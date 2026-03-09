@@ -59,7 +59,6 @@ serve(async (req) => {
       Vimos por este meio notificar que o/a atleta
       <strong>${nomeAtleta}</strong> tem mensalidades/trimestre em atraso.
     </p>
-    <br />
     <p>Agradecemos a sua liquidação com a máxima celeridade.</p>
     <br /><br />
     <p>Com os melhores cumprimentos,</p>
