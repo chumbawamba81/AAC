@@ -9,6 +9,7 @@ import {
 import { LogOut, ExternalLink } from "lucide-react";
 import AdminGate from "./AdminGate";
 import { supabase } from "../supabaseClient";
+import { MiniToastPortal } from "@/components/MiniToast";
 
 import Dashboard from "./pages/Dashboard";
 import SociosPage from "./pages/Socios";
@@ -136,6 +137,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 
       <main className="w-full max-w-9/10 mx-auto px-4 py-6">{children}</main>
+      <MiniToastPortal />
     </div>
   );
 }

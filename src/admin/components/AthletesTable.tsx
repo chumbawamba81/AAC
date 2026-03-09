@@ -245,10 +245,23 @@ export default function AthletesTable() {
     setSendingEmail(atletaId);
     showToast('A enviar email…', 'ok');
     try {
-      const { error } = await supabase.functions.invoke('send-email', {
+      const { data, error } = await supabase.functions.invoke('send-email', {
         body: { to: emailsPreferenciais.trim() },
       });
-      if (error) throw error;
+      if (error) {
+        // Extract the real error message from the response body
+        let msg: string = error.message ?? 'desconhecido';
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) msg = body.error;
+        } catch { /* ignore parse errors */ }
+        showToast(`Erro: ${msg}`, 'err');
+        return;
+      }
+      if (data?.error) {
+        showToast(`Erro: ${data.error}`, 'err');
+        return;
+      }
       showToast('Email enviado com sucesso', 'ok');
     } catch (err: any) {
       showToast(`Erro ao enviar email: ${err?.message ?? 'desconhecido'}`, 'err');
