@@ -8,6 +8,7 @@ export type SocioRow = {
   nome_completo: string;
   email: string;
   telefone: string | null;
+  nif: string | null;
   tipo_socio: string | null;
   situacao_tesouraria: "Regularizado" | "Pendente" | "Parcial" | string;
   created_at: string | null;
@@ -39,14 +40,14 @@ export async function listSocios(args: ListArgs) {
 
   let q = supabase
     .from("dados_pessoais")
-    .select("id,user_id,nome_completo,email,telefone,tipo_socio,situacao_tesouraria,created_at", {
+    .select("id,user_id,nome_completo,email,telefone,nif,tipo_socio,situacao_tesouraria,created_at", {
       count: "exact",
       head: false,
     });
 
   if (search && search.trim() !== "") {
     const s = `%${search.trim()}%`;
-    q = q.or(`nome_completo.ilike.${s},email.ilike.${s},telefone.ilike.${s}`);
+    q = q.or(`nome_completo.ilike.${s},email.ilike.${s},telefone.ilike.${s},nif.ilike.${s}`);
   }
   if (status) q = q.eq("situacao_tesouraria", status);
   if (tipoSocio) q = q.eq("tipo_socio", tipoSocio);
