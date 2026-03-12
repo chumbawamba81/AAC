@@ -300,6 +300,7 @@ export default function SociosTable({
       "Nome",
       "Email",
       "Telefone",
+      "NIF",
       "Tipo de sócio",
       "Situação",
       "Data limite",
@@ -329,6 +330,7 @@ export default function SociosTable({
         r.nome_completo,
         r.email,
         r.telefone || "",
+        r.nif || "",
         r.tipo_socio || "",
         situacao,
         dueLabel,
@@ -502,6 +504,7 @@ export default function SociosTable({
                 Email
               </SortableTh>
               <th className="text-left px-3 py-2 font-medium">Telefone</th>
+              <th className="text-left px-3 py-2 font-medium">NIF</th>
               <SortableTh
                 sortKey="tipo_socio"
                 currentOrderBy={orderBy}
@@ -559,6 +562,7 @@ export default function SociosTable({
                   <td className="px-3 py-2">{r.nome_completo}</td>
                   <td className="px-3 py-2">{r.email}</td>
                   <td className="px-3 py-2">{r.telefone || "—"}</td>
+                  <td className="px-3 py-2">{r.nif || "—"}</td>
                   <td className="px-3 py-2 text-[0.7rem]">{r.tipo_socio || "—"}</td>
                   <td className="px-3 py-2 text-[0.7rem]">
                     {isSocio ? (
